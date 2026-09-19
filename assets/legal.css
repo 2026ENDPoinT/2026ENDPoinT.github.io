@@ -1,0 +1,180 @@
+/* ENDPoinT — 개인정보처리방침 · 이용약관 공통 스타일
+   index.html 의 디자인 토큰과 헤더·푸터를 그대로 가져와 같은 사이트처럼 보이게 한다. */
+
+:root{
+  --ink:#191919; --ink-2:#1F1F1F; --ink-3:#252525;
+  --fg:#E8E8E8; --dim:#A9A9A9; --dim-2:#828282;
+  --line:rgba(255,255,255,.16);
+  --blue:#6AA3F0; --red:#E8636D;
+  --font:"Gothic A1",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",Pretendard,system-ui,sans-serif;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --gut:clamp(20px,5vw,76px);
+  --maxw:1340px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;background:var(--ink);-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--ink);color:var(--fg);font-family:var(--font);font-weight:300;font-size:16px;line-height:1.85;
+  letter-spacing:-.005em;-webkit-font-smoothing:antialiased;overflow-x:clip}
+img{max-width:100%;display:block}
+h1,h2,h3{margin:0;font-weight:200;letter-spacing:-.02em;line-height:1.14;color:#fff}
+p{margin:0}
+a{color:inherit}
+strong,b{font-weight:500}
+.wrap{max-width:var(--maxw);margin:0 auto;padding-inline:var(--gut)}
+.lab{font-size:10.5px;letter-spacing:.26em;text-transform:uppercase;font-weight:500;color:var(--dim-2);display:inline-block}
+.lab.blue{color:var(--blue)}
+.sub{font-size:15px;font-weight:300;line-height:1.95;color:var(--dim);max-width:60ch}
+hr.rule{height:1px;background:var(--line);border:0;margin:0}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+/* ================= header ================= */
+header.top{position:sticky;top:0;z-index:60;background:rgba(25,25,25,.78);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);
+  border-bottom:1px solid transparent;transition:border-color .4s var(--ease),background .4s var(--ease)}
+header.top.scrolled{border-bottom-color:var(--line);background:rgba(25,25,25,.94)}
+.top-in{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:72px;transition:min-height .4s var(--ease)}
+header.top.scrolled .top-in{min-height:62px}
+.mark{text-decoration:none;display:block;line-height:1.4}
+.mark b{display:block;font-size:16px;font-weight:400;letter-spacing:.01em;color:#fff}
+.mark span{display:block;font-size:9px;letter-spacing:.28em;text-transform:uppercase;color:var(--dim-2);font-weight:400}
+.top nav{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.top nav a{position:relative;font-size:13.5px;font-weight:400;color:var(--dim);text-decoration:none;padding:8px 14px;transition:color .3s var(--ease)}
+.top nav a::after{content:"";position:absolute;left:14px;right:14px;bottom:2px;height:1px;background:#fff;
+  transform:scaleX(0);transform-origin:right;transition:transform .45s var(--ease)}
+.top nav a:hover{color:#fff}
+.top nav a:hover::after{transform:scaleX(1);transform-origin:left}
+.top nav a.apply{margin-left:14px;background:#fff;color:#151515;font-weight:500;padding:11px 20px}
+.top nav a.apply::after{display:none}
+.top nav a.apply:hover{background:var(--dim)}
+.progress{position:fixed;top:0;left:0;height:2px;width:100%;transform:scaleX(0);transform-origin:left;
+  background:linear-gradient(90deg,var(--blue),#fff);z-index:70;pointer-events:none}
+
+/* ================= page head ================= */
+.lhead{padding-top:clamp(52px,7vw,100px)}
+.pagehead{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:clamp(24px,4vw,60px);align-items:start}
+h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;margin-top:16px}
+.lhead .sub{margin-top:20px}
+.stack{border:1px solid var(--line)}
+.stack>div{padding:20px 24px;border-bottom:1px solid var(--line)}
+.stack>div:last-child{border-bottom:0}
+.stack b{display:block;font-size:16px;font-weight:200;color:#fff;margin-top:6px;word-break:break-all}
+
+/* 문서 전환 탭 — index 의 .tabs 와 같은 모양 */
+.ltabs{display:flex;border-bottom:1px solid var(--line);margin-top:clamp(40px,5vw,68px)}
+.ltabs a{position:relative;font-size:15px;font-weight:400;color:var(--dim-2);padding:16px 0;margin-right:32px;
+  text-decoration:none;transition:color .35s var(--ease)}
+.ltabs a::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:#fff;
+  transform:scaleX(0);transform-origin:right;transition:transform .45s var(--ease)}
+.ltabs a:hover{color:#fff}
+.ltabs a[aria-current="page"]{color:#fff}
+.ltabs a[aria-current="page"]::after{transform:scaleX(1);transform-origin:left}
+
+/* 한눈에 보기 */
+.lsum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);margin-top:clamp(28px,3.4vw,44px)}
+.lsum>div{background:var(--ink);padding:22px;display:flex;flex-direction:column;gap:8px}
+.lsum b{font-size:15px;font-weight:400;color:#fff;line-height:1.6}
+.lsum p{font-size:13px;color:var(--dim);line-height:1.8}
+
+/* ================= document ================= */
+.ldoc{padding:clamp(48px,6vw,92px) 0 clamp(64px,8vw,112px);border-bottom:1px solid var(--line)}
+.ldoc-in{display:grid;grid-template-columns:230px minmax(0,1fr);gap:clamp(32px,5.4vw,88px);align-items:start}
+
+.toc{position:sticky;top:96px}
+.toc ol{list-style:none;margin:16px 0 0;padding:0;border-left:1px solid var(--line)}
+.toc a{display:flex;gap:12px;padding:6px 0 6px 16px;margin-left:-1px;border-left:1px solid transparent;
+  font-size:13.5px;line-height:1.6;color:var(--dim-2);text-decoration:none;
+  transition:color .3s var(--ease),border-color .3s var(--ease)}
+.toc a i{font-style:normal;font-size:10.5px;letter-spacing:.12em;font-weight:500;min-width:20px;padding-top:2px;opacity:.75}
+.toc a:hover{color:#fff}
+.toc a.on{color:#fff;border-left-color:var(--blue)}
+
+.toc,.prose{min-width:0}
+.prose{max-width:780px}
+.art{padding:clamp(32px,3.8vw,46px) 0;border-top:1px solid var(--line);scroll-margin-top:92px}
+.art:first-child{border-top:0;padding-top:0}
+.art>.lab{display:block;margin-bottom:12px;letter-spacing:.16em}
+.art h2{font-size:clamp(21px,2.4vw,27px);font-weight:200;letter-spacing:-.025em;margin-bottom:18px}
+.art h3{font-size:15px;font-weight:400;color:#fff;letter-spacing:-.01em;margin:24px 0 8px}
+.art p,.art li{font-size:15px;line-height:1.95;color:var(--dim)}
+.art p+p,.art p+ul,.art p+ol,.art ul+p,.art ol+p{margin-top:12px}
+.art strong{color:#fff;font-weight:400}
+.art a{color:var(--blue);text-decoration:underline;text-underline-offset:3px;word-break:break-all}
+.art ul,.art ol{margin:12px 0 0;padding:0;list-style:none}
+.art li{position:relative;padding-left:20px}
+.art li+li{margin-top:6px}
+.art ul>li::before{content:"";position:absolute;left:3px;top:.95em;width:7px;height:1px;background:var(--dim-2)}
+.art ol{counter-reset:n}
+.art ol>li{counter-increment:n;padding-left:26px}
+.art ol>li::before{content:counter(n) ".";position:absolute;left:0;top:0;font-size:13px;font-weight:500;color:var(--dim-2)}
+.art li ul{margin-top:6px}
+
+/* 표 */
+.tbl-wrap{margin-top:16px;overflow-x:auto;border-top:1px solid var(--line)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:520px}
+.tbl th,.tbl td{padding:14px 18px 14px 0;text-align:left;vertical-align:top;line-height:1.8;border-bottom:1px solid var(--line)}
+.tbl thead th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:500;color:var(--dim-2);padding-top:16px}
+.tbl td{color:var(--dim)}
+.tbl td:first-child,.tbl tbody th{color:#fff;font-weight:400;white-space:nowrap}
+.tbl:not(.kv) td:last-child,.tbl:not(.kv) thead th:last-child{white-space:nowrap;padding-right:0}
+.tbl.kv{min-width:0}
+.tbl.kv th{width:132px;font-size:13.5px}
+
+/* 강조 문단 */
+.tbl-wrap+p{margin-top:16px}
+.note{margin-top:16px;padding:2px 0 2px 16px;border-left:1px solid var(--blue);font-size:14px;line-height:1.9;color:var(--dim)}
+.note+.note{margin-top:10px}
+
+/* 아직 채우지 않은 자리 — 공개 전에 반드시 바꿔야 해서 눈에 띄게 둔다 */
+.ph{font-style:normal;color:var(--red);border-bottom:1px dashed var(--red)}
+
+.art.fin{padding-bottom:0}
+.art.fin p{font-size:14px}
+
+/* 문서 끝 이동 */
+.lnext{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);margin-top:clamp(40px,5vw,64px)}
+.lnext a{background:var(--ink);padding:24px;display:flex;flex-direction:column;gap:8px;text-decoration:none;
+  transition:background .45s var(--ease)}
+.lnext a:hover{background:var(--ink-3)}
+.lnext b{font-size:17px;font-weight:300;color:#fff;letter-spacing:-.015em}
+
+/* ================= footer ================= */
+footer{padding:clamp(44px,5vw,72px) 0 clamp(52px,6vw,80px);color:var(--dim-2);font-size:13px;line-height:1.95;font-weight:300}
+footer .f-in{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:start;margin-top:clamp(30px,4vw,46px)}
+footer a{color:var(--dim);text-decoration:none;transition:color .3s var(--ease)}
+footer a:hover{color:#fff}
+.f-links{display:flex;gap:30px;flex-wrap:wrap}
+.f-links a.pp{color:#fff;font-weight:500}
+.host{display:flex;align-items:center;gap:22px;margin-top:30px;padding-top:26px;border-top:1px solid var(--line);flex-wrap:wrap}
+.dept{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
+.dept-mark{height:48px;width:auto;opacity:.92}
+.dept-name,.dept-sub{font-size:17px;font-weight:600;color:#fff;letter-spacing:-.02em;line-height:1.2}
+.dept-bar{width:1px;height:19px;background:rgba(255,255,255,.34)}
+
+/* ================= responsive ================= */
+@media (max-width:1060px){
+  .pagehead{grid-template-columns:1fr}
+  .lsum{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ldoc-in{grid-template-columns:minmax(0,1fr)}
+  .toc{position:static;border:1px solid var(--line);padding:22px 24px}
+  .toc ol{border-left:0;columns:2;column-gap:28px}
+  .toc a{padding-left:0;border-left:0;break-inside:avoid}
+  .prose{max-width:none}
+}
+@media (max-width:720px){
+  .top nav a{padding:7px 8px;font-size:12.5px}
+  .top nav a.apply{padding:10px 14px;margin-left:6px}
+  .top nav a.sm-hide{display:none}
+  .mark span{display:none}
+  .top-in{min-height:60px;gap:10px}
+  header.top.scrolled .top-in{min-height:56px}
+  .lsum,.lnext{grid-template-columns:1fr}
+  .toc ol{columns:1}
+  .tbl.kv th{width:96px}
+  footer .f-in{grid-template-columns:1fr}
+  .dept{gap:11px}
+  .dept-mark{height:38px}
+  .dept-name,.dept-sub{font-size:14.5px}
+  .dept-bar{height:15px}
+}
