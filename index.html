@@ -334,6 +334,27 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
   transition:color .3s var(--ease)}
 .af-out:hover{color:#fff}
 
+/* 신청 상태 띠 — 이미 낸 신청서를 보고 있을 때 */
+.af-state{padding:16px clamp(20px,2.6vw,28px);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;background:rgba(106,163,240,.07)}
+.af-state.edit{background:rgba(232,99,109,.08)}
+.af-state .lab{color:var(--blue)}
+.af-state.edit .lab{color:var(--red)}
+.af-state b{font-size:14.5px;font-weight:400;color:#fff}
+.af-state i{font-style:normal;font-size:13px;color:var(--dim)}
+
+/* 제출 바의 버튼들 */
+.af-acts{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.af-acts .btn[hidden]{display:none}
+
+/* 조회 모드 — 값은 또렷하게 두고 입력만 막는다 */
+.af.ro .tin:disabled,.af.ro .tar:disabled{opacity:1;color:#fff;-webkit-text-fill-color:#fff}
+.af.ro select.tin:disabled{background-image:none}
+.af.ro .opt input:disabled+span{opacity:1;cursor:default}
+.af.ro .opt input:disabled:not(:checked)+span{opacity:.28}
+.af.ro .chipset,.af.ro .qhint{display:none}
+.af.ro .fld-pad{padding-top:clamp(16px,2vw,22px)}
+
 /* 진행률 */
 .af-prog{display:flex;align-items:center;gap:14px;padding:16px clamp(20px,2.6vw,28px);border-bottom:1px solid var(--line)}
 .af-prog .t{flex:1;height:2px;background:rgba(255,255,255,.12);overflow:hidden}
@@ -1204,6 +1225,7 @@ select.tin option{background:var(--ink-2);color:#fff}
       '구글 계정 정보를 어떻게 쓰는지는 <a href="privacy/#p6">개인정보처리방침</a>에 있습니다.</span></div>' +
       '<div id="af-auth"></div>' +
     '</div>' +
+    '<div class="af-state" id="af-state" hidden></div>' +
     '<div class="af-prog"><span class="n" id="af-n">0 / ' + SCHEMA.length + '</span>' +
     '<span class="t"><span class="f" id="af-f"></span></span></div>' +
     SCHEMA.map(fieldHTML).join('') +
@@ -1211,7 +1233,11 @@ select.tin option{background:var(--ink-2);color:#fff}
       '<div class="t"><p id="af-tip">먼저 <b>구글 로그인</b>을 해주세요.</p>' +
       '<p class="af-legal">제출하면 <a href="terms/">이용약관</a>에 동의하고 ' +
       '<a href="privacy/">개인정보처리방침</a>을 확인한 것으로 봅니다.</p></div>' +
-      '<button class="btn" type="button" id="af-go" disabled><span>신청서 제출</span></button>' +
+      '<div class="af-acts">' +
+        '<button class="btn btn-o" type="button" id="af-cancel" hidden><span>취소</span></button>' +
+        '<button class="btn btn-o" type="button" id="af-edit" hidden><span>수정하기</span></button>' +
+        '<button class="btn" type="button" id="af-go" disabled><span>신청서 제출</span></button>' +
+      '</div>' +
     '</div>' +
     '<p class="af-msg" id="af-msg"></p>';
 
@@ -1223,6 +1249,9 @@ select.tin option{background:var(--ink-2);color:#fff}
   var elMsg = document.getElementById('af-msg');
   var elSend = document.getElementById('af-send');
   var elAuth = document.getElementById('af-auth');
+  var elState = document.getElementById('af-state');
+  var elEdit = document.getElementById('af-edit');
+  var elCancel = document.getElementById('af-cancel');
 
   /* ========================== 값 읽기 · 검증 ========================== */
   function read() {
@@ -1256,6 +1285,9 @@ select.tin option{background:var(--ink-2);color:#fff}
 
   /* ============================ 상태 갱신 ============================ */
   var submitted = false;
+  var mode = 'new';   // new(새로 작성) | view(낸 신청서 보기) | edit(수정 중) | loading
+  var mine = null;    // 시트에서 불러온 기존 신청 내용
+
 
   function refresh() {
     var v = read();
@@ -1283,11 +1315,14 @@ select.tin option{background:var(--ink-2);color:#fff}
     elF.style.width = Math.round(done / SCHEMA.length * 100) + '%';
 
     var ready = auth.on && done === SCHEMA.length;
-    elGo.disabled = !ready || submitted;
-    elSend.classList.toggle('ready', ready && !submitted);
+    elGo.disabled = !ready || submitted || mode === 'view' || mode === 'loading';
+    elSend.classList.toggle('ready', ready && !submitted && mode !== 'view');
 
     if (!auth.on) elTip.innerHTML = '먼저 <b>구글 로그인</b>을 해주세요.';
-    else if (!ready) elTip.innerHTML = '<b>*</b> 표시된 항목을 모두 채우면 제출할 수 있습니다.';
+    else if (mode === 'loading') elTip.innerHTML = '신청 내역을 확인하는 중입니다...';
+    else if (mode === 'view') elTip.innerHTML = '<b>' + esc(auth.email) + '</b> 계정으로 접수된 신청서입니다.';
+    else if (!ready) elTip.innerHTML = '<b>*</b> 표시된 항목을 모두 채우면 ' + (mode === 'edit' ? '저장' : '제출') + '할 수 있습니다.';
+    else if (mode === 'edit') elTip.innerHTML = '저장하면 <b>' + esc(auth.email) + '</b> 계정의 기존 신청서를 덮어씁니다.';
     else elTip.innerHTML = '<b>' + esc(auth.email) + '</b> 계정으로 제출됩니다. 제출 후에도 다시 로그인하면 수정할 수 있습니다.';
 
     saveDraft(v);
@@ -1350,28 +1385,154 @@ select.tin option{background:var(--ink-2);color:#fff}
     refresh();
   });
 
-  /* ============================ 임시 저장 ============================ */
-  var saveT = 0;
-  function saveDraft(v) {
-    clearTimeout(saveT);
-    saveT = setTimeout(function () {
-      try { localStorage.setItem(CFG.DRAFT_KEY, JSON.stringify(v)); } catch (e) {}
-    }, 400);
+  /* ======================= 폼 비우기 · 채우기 ======================= */
+  function clearForm() {
+    qsa('[data-k]', af).forEach(function (n) {
+      if (n.type === 'checkbox' || n.type === 'radio') n.checked = false;
+      else n.value = '';
+    });
+    flds.forEach(function (n) { n.classList.remove('done', 'bad'); pin(n, false); });
   }
-  function loadDraft() {
-    var v = null;
-    try { v = JSON.parse(localStorage.getItem(CFG.DRAFT_KEY) || 'null'); } catch (e) {}
-    if (!v) return;
+
+  // 시트에서 온 값은 여러 개 고른 항목이 '가, 나' 처럼 한 칸에 합쳐져 있으므로 되돌린다
+  function fillForm(v) {
+    clearForm();
     qsa('[data-k]', af).forEach(function (n) {
       var x = v[n.getAttribute('data-k')];
-      if (x == null) return;
+      if (x === null || x === undefined || x === '') return;
       if (n.type === 'checkbox' || n.type === 'radio') {
-        n.checked = Array.isArray(x) ? x.indexOf(n.value) !== -1 : x === n.value;
-      } else if (!Array.isArray(x)) {
-        n.value = x;
+        var list = Array.isArray(x) ? x : String(x).split(',').map(function (t) { return t.trim(); });
+        n.checked = list.indexOf(n.value) !== -1;
+      } else {
+        n.value = Array.isArray(x) ? x.join(', ') : String(x);
       }
     });
   }
+
+  /* ============================ 임시 저장 ============================ */
+  // 누구의 임시 저장본인지 같이 적어둔다. 계정이 바뀌면 쓰지 않는다.
+  var saveT = 0;
+  function saveDraft(v) {
+    if (!auth.on || (mode !== 'new' && mode !== 'edit')) return;
+    clearTimeout(saveT);
+    saveT = setTimeout(function () {
+      try {
+        localStorage.setItem(CFG.DRAFT_KEY, JSON.stringify({ owner: auth.email, v: v }));
+      } catch (e) {}
+    }, 400);
+  }
+  function dropDraft() {
+    clearTimeout(saveT);
+    try { localStorage.removeItem(CFG.DRAFT_KEY); } catch (e) {}
+  }
+  function loadDraft() {
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(CFG.DRAFT_KEY) || 'null'); } catch (e) {}
+    // 형식이 옛날이거나 다른 계정 것이면 버린다 (계정 전환 시 남아 있던 버그)
+    if (!d || !d.v || !d.owner || d.owner !== auth.email) { dropDraft(); return false; }
+    fillForm(d.v);
+    return true;
+  }
+
+  /* ============================= 모드 전환 ============================= */
+  function setReadonly(on) {
+    qsa('input, select, textarea, .chipin', af).forEach(function (n) { n.disabled = on; });
+  }
+
+  function when(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d)) return String(iso);
+    var p2 = function (x) { return (x < 10 ? '0' : '') + x; };
+    return d.getFullYear() + '.' + p2(d.getMonth() + 1) + '.' + p2(d.getDate()) +
+           ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+  }
+
+  function setMode(m) {
+    mode = m;
+    af.classList.toggle('ro', m === 'view');   // 라우터의 .view 와 겹치지 않도록 ro(read-only)
+    setReadonly(m === 'view' || m === 'loading');
+
+    elEdit.hidden = m !== 'view';
+    elCancel.hidden = m !== 'edit';
+    elGo.hidden = m === 'view' || m === 'loading';
+    elGo.querySelector('span').textContent = m === 'edit' ? '수정 내용 저장' : '신청서 제출';
+
+    if (m === 'view' || m === 'edit') {
+      elState.hidden = false;
+      elState.classList.toggle('edit', m === 'edit');
+      var at = mine && mine.answers ? when(mine.answers['제출시각']) : '';
+      elState.innerHTML = m === 'view'
+        ? '<span class="lab">신청 완료</span><b>' + (at ? at + ' 에 접수되었습니다.' : '이미 신청하셨습니다.') + '</b>' +
+          '<i>내용을 바꾸려면 오른쪽 수정하기를 누르세요.</i>'
+        : '<span class="lab">수정 중</span><b>저장을 누르면 기존 신청서가 새 내용으로 바뀝니다.</b>' +
+          '<i>새로 접수되는 것이 아니라 같은 행이 갱신됩니다.</i>';
+    } else {
+      elState.hidden = true;
+    }
+    refresh();
+  }
+
+  /* ====================== 기존 신청 내역 불러오기 ====================== */
+  function lookUp() {
+    setMode('loading');
+    // 먼저 서버가 조회를 아는 버전인지 확인한다.
+    // 옛 버전은 조회 요청을 빈 제출로 처리해 기존 답변을 지워버리므로, 그럴 땐 아예 묻지 않는다.
+    fetch(CFG.ENDPOINT + (CFG.ENDPOINT.indexOf('?') === -1 ? '?' : '&') + 'probe=1')
+      .then(function (r) { return r.json(); })
+      .then(function (h) {
+        if (!h || !(h.api >= 2)) {
+          loadDraft();
+          setMode('new');
+          return null;
+        }
+        return askMine();
+      })
+      ['catch'](function () { loadDraft(); setMode('new'); });
+  }
+
+  function askMine() {
+    return fetch(CFG.ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'me', idToken: auth.token })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok && d.found) {
+          mine = d;
+          dropDraft();            // 시트 내용이 기준이므로 임시 저장본은 버린다
+          fillForm(d.answers);
+          setMode('view');
+          return;
+        }
+        if (d && d.error === 'AUTH_FAILED') {
+          msg('로그인이 만료되었습니다. 다시 로그인해 주세요.', 'err');
+          signOut();
+          return;
+        }
+        loadDraft();
+        setMode('new');
+      })
+      ['catch'](function () {
+        loadDraft();
+        setMode('new');
+        msg('기존 신청 내역을 불러오지 못했습니다. 그대로 제출하면 기존 신청서가 갱신되므로 중복 접수되지는 않습니다.', 'err');
+      });
+  }
+
+  elEdit.addEventListener('click', function () {
+    elMsg.className = 'af-msg';
+    setMode('edit');
+    scrollTo(flds[0], 'start');
+  });
+
+  elCancel.addEventListener('click', function () {
+    if (mine && mine.answers) fillForm(mine.answers);
+    dropDraft();
+    elMsg.className = 'af-msg';
+    setMode('view');
+  });
 
   /* =========================== 구글 로그인 =========================== */
   var auth = { on: false, token: '', email: '', name: '', pic: '' };
@@ -1395,16 +1556,29 @@ select.tin option{background:var(--ink-2);color:#fff}
       '</div>';
     document.getElementById('af-out').addEventListener('click', signOut);
     af.classList.remove('locked');
-    refresh();
+
+    // 계정이 바뀌었을 수 있으니 항상 비우고 시작한다
+    mine = null;
+    clearForm();
+
+    if (DEV) { loadDraft(); setMode('new'); return; }
+    lookUp();
   }
 
   function signOut() {
     try { if (window.google && window.google.accounts) window.google.accounts.id.disableAutoSelect(); } catch (e) {}
     auth = { on: false, token: '', email: '', name: '', pic: '' };
+    // 다음 사람에게 앞사람 입력이 남지 않도록 화면과 임시 저장본을 함께 지운다
+    mine = null;
+    submitted = false;
+    dropDraft();
+    clearForm();
+    afDone.classList.remove('on');
+    af.style.display = '';
+    elMsg.className = 'af-msg';
     af.classList.add('locked');
-    flds.forEach(function (n) { pin(n, false); });
     mountLogin();
-    refresh();
+    setMode('new');
   }
 
   function mountLogin() {
@@ -1470,9 +1644,10 @@ select.tin option{background:var(--ink-2);color:#fff}
       return;
     }
 
+    var editing = mode === 'edit';
     elGo.disabled = true;
-    elGo.querySelector('span').textContent = '제출 중...';
-    msg('구글 시트에 기록하는 중입니다...', '');
+    elGo.querySelector('span').textContent = editing ? '저장 중...' : '제출 중...';
+    msg(editing ? '수정 내용을 저장하는 중입니다...' : '구글 시트에 기록하는 중입니다...', '');
 
     if (DEV) {
       console.log('[미리보기 모드] 실제 전송 없이 아래 내용이 시트로 갑니다:', v);
@@ -1487,7 +1662,21 @@ select.tin option{background:var(--ink-2);color:#fff}
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d && d.ok) { finish(v, false); return; }
+        if (d && d.ok) {
+          if (editing) {
+            // 수정은 완료 화면까지 갈 필요 없이 제자리에서 마무리한다
+            v['제출시각'] = new Date().toISOString();
+            v['이메일'] = auth.email;
+            mine = { found: true, answers: v };
+            dropDraft();
+            setMode('view');
+            msg('수정 내용을 저장했습니다.', 'ok');
+            scrollTo(elState, 'center');
+            return;
+          }
+          finish(v, false);
+          return;
+        }
         if (d && d.error === 'AUTH_FAILED') {
           fail('로그인이 만료되었거나 허용되지 않은 계정입니다. 다시 로그인해 주세요.');
           signOut();
@@ -1503,7 +1692,7 @@ select.tin option{background:var(--ink-2);color:#fff}
   function fail(text) {
     msg(text, 'err');
     elGo.disabled = false;
-    elGo.querySelector('span').textContent = '다시 제출';
+    elGo.querySelector('span').textContent = mode === 'edit' ? '다시 저장' : '다시 제출';
   }
 
   function finish(v, preview) {
@@ -1545,15 +1734,19 @@ select.tin option{background:var(--ink-2);color:#fff}
       submitted = false;
       afDone.classList.remove('on');
       af.style.display = '';
-      elGo.querySelector('span').textContent = '신청서 제출';
-      refresh();
+      if (!preview) {
+        v['제출시각'] = v['제출시각'] || new Date().toISOString();
+        mine = { found: true, answers: v };
+        setMode('view');
+      } else {
+        setMode('new');
+      }
       scrollTo(af, 'start');
     });
   }
 
   /* ============================== 시작 ============================== */
   mountLogin();
-  loadDraft();
   refresh();
 })();
 </script>

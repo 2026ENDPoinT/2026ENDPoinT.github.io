@@ -67,9 +67,14 @@ function setup() {
   Logger.log('준비 완료: ' + sh.getName() + ' (' + sh.getLastRow() + '행)');
 }
 
-/** 배포 상태 확인용. 브라우저로 /exec 주소를 열면 이게 보인다. */
+/**
+ * 배포 상태 확인용. 브라우저로 /exec 주소를 열면 이게 보인다.
+ * api 는 이 스크립트가 어떤 기능까지 아는지 알리는 표시다.
+ * 신청서 화면은 이 값을 먼저 확인하고, 2 이상일 때만 기존 신청 조회를 요청한다.
+ * (옛 버전이 조회 요청을 '빈 제출'로 잘못 처리해 기존 답변을 지우는 것을 막는다)
+ */
 function doGet() {
-  return json_({ ok: true, service: 'ENDPoinT apply endpoint' });
+  return json_({ ok: true, service: 'ENDPoinT apply endpoint', api: 2 });
 }
 
 /** 사이트에서 오는 신청서 수신 */
@@ -81,6 +86,11 @@ function doPost(e) {
     var claims = verifyIdToken_(body.idToken);
     if (!claims) {
       return json_({ ok: false, error: 'AUTH_FAILED' });
+    }
+
+    // 1-2) 조회 요청이면 기존 신청 내용을 돌려주고 끝낸다
+    if (body.action === 'me') {
+      return json_(findMine_(claims));
     }
 
     // 2) 신청 값 정리 (이메일은 폼 입력이 아니라 토큰에서 가져온다)
@@ -97,7 +107,7 @@ function doPost(e) {
       var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
       var row = headers.map(function (h) { return toCell_(answers[h]); });
 
-      var target = CONFIG.UPDATE_IF_EXISTS ? findRowByEmail_(sh, headers, claims.email) : 0;
+      var target = CONFIG.UPDATE_IF_EXISTS ? findRowByAccount_(sh, headers, claims) : 0;
       if (target > 0) {
         sh.getRange(target, 1, 1, row.length).setValues([row]);
       } else {
@@ -158,15 +168,47 @@ function getSheet_() {
   return sh;
 }
 
-/** 이미 제출한 이메일이면 그 행 번호를, 없으면 0 을 돌려준다. */
-function findRowByEmail_(sh, headers, email) {
-  var col = headers.indexOf('이메일') + 1;
-  if (col < 1 || sh.getLastRow() < 2) return 0;
-  var values = sh.getRange(2, col, sh.getLastRow() - 1, 1).getValues();
-  for (var i = 0; i < values.length; i++) {
-    if (String(values[i][0]).toLowerCase() === String(email).toLowerCase()) return i + 2;
+/**
+ * 이미 제출한 사람이면 그 행 번호를, 없으면 0 을 돌려준다.
+ * 계정 식별자를 먼저 보고, 없으면 이메일로 찾는다.
+ * (식별자는 구글 계정마다 고정이라, 이메일 주소가 바뀌어도 같은 사람으로 인식한다)
+ */
+function findRowByAccount_(sh, headers, claims) {
+  if (sh.getLastRow() < 2) return 0;
+  var n = sh.getLastRow() - 1;
+
+  function findIn(name, want) {
+    var col = headers.indexOf(name) + 1;
+    if (col < 1 || !want) return 0;
+    var values = sh.getRange(2, col, n, 1).getValues();
+    for (var i = 0; i < values.length; i++) {
+      if (String(values[i][0]).toLowerCase() === String(want).toLowerCase()) return i + 2;
+    }
+    return 0;
   }
-  return 0;
+
+  return findIn('계정 식별자', claims.sub) || findIn('이메일', claims.email);
+}
+
+/**
+ * 이 계정이 낸 신청서를 돌려준다. 신청서 화면에서 기존 내용을 불러와 보여주고
+ * 수정할 수 있게 하는 데 쓴다.
+ * 계정 식별자는 화면에 쓸 일이 없으므로 돌려주지 않는다.
+ */
+function findMine_(claims) {
+  var sh = getSheet_();
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  var row = findRowByAccount_(sh, headers, claims);
+  if (!row) return { ok: true, found: false };
+
+  var values = sh.getRange(row, 1, 1, headers.length).getValues()[0];
+  var answers = {};
+  headers.forEach(function (h, i) {
+    if (h === '계정 식별자') return;
+    var v = values[i];
+    answers[h] = (v instanceof Date) ? v.toISOString() : v;
+  });
+  return { ok: true, found: true, row: row, answers: answers };
 }
 
 /** 배열·객체를 시트 셀에 들어갈 문자열로 편다. */
