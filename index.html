@@ -316,7 +316,7 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
 }
 
 /* ================= apply form ================= */
-.af{border:1px solid var(--line);margin-top:clamp(20px,2.6vw,30px)}
+.af{border:1px solid var(--line);margin-top:clamp(20px,2.6vw,30px);scroll-margin-top:92px}
 
 /* 로그인 게이트 */
 .af-gate{padding:clamp(24px,3vw,36px);display:flex;align-items:center;justify-content:space-between;
@@ -973,6 +973,7 @@ select.tin option{background:var(--ink-2);color:#fff}
 
   /* ---------- routing ---------- */
   var ROUTES = { '/':'v-home', '/apply':'v-apply', '/teams':'v-teams' };
+  var VIEW_KEY = { 'v-home':'/', 'v-apply':'/apply', 'v-teams':'/teams' };
   function show(id){
     document.querySelectorAll('.view').forEach(function(v){ v.classList.toggle('on', v.id===id); });
     var v = document.getElementById(id);
@@ -984,9 +985,15 @@ select.tin option{background:var(--ink-2);color:#fff}
   function route(){
     var h = location.hash || '#/';
     if(h.indexOf('#/') !== 0){
-      show('v-home'); mark('/');
-      var t = document.querySelector(h);
-      if(t) t.scrollIntoView({behavior: reduce ? 'auto' : 'smooth'});
+      // #af 처럼 홈이 아닌 화면 안에 있는 앵커도 있으므로, 먼저 그 화면을 띄운다
+      var t = null;
+      try { t = h.length > 1 ? document.querySelector(h) : null; } catch(e) {}
+      var host = t && t.closest ? t.closest('.view') : null;
+      var id = host ? host.id : 'v-home';
+      show(id); mark(VIEW_KEY[id] || '/');
+      if(t) requestAnimationFrame(function(){
+        t.scrollIntoView({behavior: reduce ? 'auto' : 'smooth', block: 'start'});
+      });
       return;
     }
     var key = h.slice(1);
@@ -1024,13 +1031,13 @@ select.tin option{background:var(--ink-2);color:#fff}
   var CFG = {
     // (1) Google Cloud Console > 사용자 인증 정보 > OAuth 클라이언트 ID
     //     예: '123456789-abcdefg.apps.googleusercontent.com'
-    CLIENT_ID: '',
+    CLIENT_ID: '100824066944-7s6di7cbhsedtnms675fka8bbbka3u7p.apps.googleusercontent.com',
 
     // (2) Apps Script > 배포 > 웹 앱 URL
     //     예: 'https://script.google.com/macros/s/AKfycb..../exec'
-    ENDPOINT: '',
+    ENDPOINT: 'https://script.google.com/macros/s/AKfycbwLCUGPLUdwJx-uFbahvdl6K3i7zkarEPfGlUgXX47iO6HfgyZJjjQf6cgg9Ah8d1xl/exec',
 
-    DRAFT_KEY: 'endpoint.apply.v2'
+    DRAFT_KEY: '해카톡등록서비스'
   };
 
   var DEV = !CFG.CLIENT_ID || !CFG.ENDPOINT;
