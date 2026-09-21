@@ -22,14 +22,14 @@
 var CONFIG = {
   // 응답을 쌓을 스프레드시트 ID
   // https://docs.google.com/spreadsheets/d/[여기가 ID]/edit
-  SHEET_ID: '',
+  SHEET_ID: '1OuBWYahA6O3JIpN3ITZdqsH8wB64_Tb1diamCjOq97U',
 
   // 기록할 탭 이름. 구글 폼 응답 탭에 직접 쓰면 폼 제출과 충돌하므로 별도 탭 권장
   SHEET_NAME: '웹신청',
 
   // OAuth 2.0 클라이언트 ID (....apps.googleusercontent.com)
   // 사이트에서 보낸 로그인 토큰이 정말 우리 사이트에서 발급된 것인지 검증하는 데 쓴다
-  CLIENT_ID: '',
+  CLIENT_ID: '100824066944-7s6di7cbhsedtnms675fka8bbbka3u7p.apps.googleusercontent.com',
 
   // 특정 도메인 계정만 허용하려면 입력 (예: 'seoultech.ac.kr')
   // 빈 문자열이면 모든 구글 계정 허용
@@ -37,7 +37,10 @@ var CONFIG = {
 
   // true  : 같은 이메일이 다시 제출하면 기존 행을 덮어쓴다 (수정 제출)
   // false : 제출할 때마다 새 행이 쌓인다
-  UPDATE_IF_EXISTS: true
+  UPDATE_IF_EXISTS: true,
+
+  // 팀 모집 게시판을 저장할 탭 (Board.gs). 없으면 자동 생성
+  BOARD_SHEET: '게시판'
 };
 
 /**
@@ -70,11 +73,11 @@ function setup() {
 /**
  * 배포 상태 확인용. 브라우저로 /exec 주소를 열면 이게 보인다.
  * api 는 이 스크립트가 어떤 기능까지 아는지 알리는 표시다.
- * 신청서 화면은 이 값을 먼저 확인하고, 2 이상일 때만 기존 신청 조회를 요청한다.
+ * 신청서 화면은 2 이상일 때 기존 신청 조회를, 게시판은 3 이상일 때 게시판 API 를 쓴다.
  * (옛 버전이 조회 요청을 '빈 제출'로 잘못 처리해 기존 답변을 지우는 것을 막는다)
  */
 function doGet() {
-  return json_({ ok: true, service: 'ENDPoinT apply endpoint', api: 2 });
+  return json_({ ok: true, service: 'ENDPoinT apply endpoint', api: 3 });
 }
 
 /** 사이트에서 오는 신청서 수신 */
@@ -93,6 +96,16 @@ function doPost(e) {
       return json_(findMine_(claims));
     }
 
+    // 1-3) 팀 모집 게시판 (Board.gs)
+    if (body.action && String(body.action).indexOf('board.') === 0) {
+      return json_(board_(String(body.action).slice(6), claims, body));
+    }
+
+    // 1-4) 그 밖의 action 은 거부한다. (신청서 제출은 action 없이 오거나 'submit')
+    if (body.action && body.action !== 'submit') {
+      return json_({ ok: false, error: 'UNKNOWN_ACTION' });
+    }
+
     // 2) 신청 값 정리 (이메일은 폼 입력이 아니라 토큰에서 가져온다)
     var answers = body.answers || {};
     answers['제출시각'] = new Date();
@@ -108,12 +121,14 @@ function doPost(e) {
       var row = headers.map(function (h) { return toCell_(answers[h]); });
 
       var target = CONFIG.UPDATE_IF_EXISTS ? findRowByAccount_(sh, headers, claims) : 0;
-      if (target > 0) {
-        sh.getRange(target, 1, 1, row.length).setValues([row]);
-      } else {
-        sh.appendRow(row);
-        target = sh.getLastRow();
-      }
+      if (!(target > 0)) target = sh.getLastRow() + 1;
+      // 셀을 텍스트 서식(@)으로 고정해서 '=' 로 시작하는 입력이 수식으로 해석되지 않게 한다.
+      // 계정 식별자(21자리 숫자)가 숫자로 바뀌어 정밀도를 잃는 것도 함께 막는다.
+      var range = sh.getRange(target, 1, 1, row.length);
+      range.setNumberFormat('@');
+      var tsCol = headers.indexOf('제출시각') + 1;
+      if (tsCol > 0) sh.getRange(target, tsCol).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+      range.setValues([row]);
       SpreadsheetApp.flush();
       return json_({ ok: true, row: target, updated: CONFIG.UPDATE_IF_EXISTS && target > 0 });
     } finally {
@@ -211,14 +226,25 @@ function findMine_(claims) {
   return { ok: true, found: true, row: row, answers: answers };
 }
 
+/**
+ * 사용자 문자열을 셀에 넣기 전에 다듬는다.
+ * '=' 로 시작하면 시트가 수식으로 해석할 수 있으므로 앞의 '=' 를 걷어낸다.
+ * (쓸 때 텍스트 서식도 같이 걸지만, 두 겹으로 막는다)
+ */
+function safeText_(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/^[=\s]+/, function (m) { return m.replace(/=/g, ''); });
+}
+
 /** 배열·객체를 시트 셀에 들어갈 문자열로 편다. */
 function toCell_(v) {
   if (v === null || v === undefined) return '';
   if (v instanceof Date) return v;
-  if (Array.isArray(v)) return v.join(', ');
+  if (Array.isArray(v)) return safeText_(v.map(function (x) { return safeText_(x); }).join(', '));
   if (typeof v === 'boolean') return v ? 'O' : '';
-  if (typeof v === 'object') return JSON.stringify(v);
-  return v;
+  if (typeof v === 'object') return safeText_(JSON.stringify(v));
+  if (typeof v === 'number') return v;
+  return safeText_(v);
 }
 
 function json_(obj) {

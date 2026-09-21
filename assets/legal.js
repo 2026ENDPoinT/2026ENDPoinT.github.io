@@ -6,8 +6,11 @@
   var ticking = false;
   // 헤더 색을 배경 그라데이션의 현재 밝기에 맞춘다 (23 -> 44)
   var root = document.documentElement;
+  var lastTint = -1;
   function tintHeader(t) {
     var v = Math.round(23 + (44 - 23) * t);
+    if (v === lastTint) return;
+    lastTint = v;
     root.style.setProperty('--hdr-rgb', v + ',' + v + ',' + v);
   }
 

@@ -1,6 +1,6 @@
 # 백엔드 연동 가이드
 
-> 2026년 9월 22일 갱신. 구글 콘솔 화면이 2025년에 크게 바뀌어서, 이 문서는 **바뀐 화면 기준**으로 썼습니다.
+> 2026년 9월 23일 갱신. 구글 콘솔 화면이 2025년에 크게 바뀌어서, 이 문서는 **바뀐 화면 기준**으로 썼습니다.
 > 예전 `apps-script/README.md`의 메뉴 경로는 지금 존재하지 않습니다.
 
 ---
@@ -14,13 +14,15 @@
 | 개인정보처리방침 · 이용약관 | 완료 | 일부 빈칸만 남음 (9절) |
 | 1단계 · 구글 OAuth 설정 | **완료** | `2026endpoint.github.io` 원본 허용 확인 |
 | 2단계 · Apps Script 배포 | **완료** | `/exec` 응답 · 토큰 검증 동작 확인 |
-| 3단계 · 프론트에 값 넣기 | **로컬만** | 커밋·푸시해야 실제 사이트에 반영 |
-| 기존 신청 조회·수정 | **완료** | 5절 — `Code.gs` 재배포 필요 |
-| 4단계 · 팀 모집 게시판 | 가짜 데이터 | 6절 |
+| 3단계 · 프론트에 값 넣기 | **완료** | `EPCONFIG` 한 곳 (index.html 위쪽) |
+| 기존 신청 조회·수정 | **완료** | 5절 — 서버 `api ≥ 2` 필요 |
+| 사이트 공통 구글 로그인 | **완료** | `EPSession` — 신청서·게시판이 같은 로그인을 씀 |
+| 4단계 · 팀 모집 게시판 | **완료 (시트 DB)** | 6절 — `Board.gs` 배포 필요, 서버 `api ≥ 3` |
 
-> ⚠️ **배포 순서**: `Code.gs`를 먼저 재배포하고, 그다음 사이트를 푸시하세요.
-> 순서가 바뀌어도 데이터는 안전합니다 — 신청서 화면이 `doGet`의 `api` 값을 먼저 확인해서,
-> 옛 버전이면 조회를 아예 요청하지 않습니다. 다만 그동안은 조회·수정 기능이 동작하지 않습니다.
+> ⚠️ **지금 배포된 Apps Script 는 맨 처음 버전**입니다 (`doGet` 응답에 `api` 값이 없음).
+> `Code.gs` 를 다시 붙여넣고 **`Board.gs` 파일을 새로 추가**한 뒤 새 버전으로 배포해야
+> 신청서 조회·수정과 게시판이 열립니다. 순서가 바뀌어도 데이터는 안전합니다 —
+> 화면이 `doGet` 의 `api` 값을 먼저 확인해서 옛 버전에는 새 요청을 보내지 않습니다.
 
 **지금 상태**: 로컬에서는 구글 로그인 버튼까지 뜹니다. 하지만 **배포된 사이트는 아직 미리보기 모드**입니다 — `CFG` 값이 커밋되지 않아서입니다. `index.html`을 커밋·푸시하면 바로 실제 모드로 바뀝니다.
 
@@ -141,17 +143,16 @@ https://docs.google.com/spreadsheets/d/⬛⬛⬛여기가 ID⬛⬛⬛/edit
 ### 3-2. Apps Script 배포
 
 1. 스프레드시트 → `확장 프로그램` → `Apps Script`
-2. [apps-script/Code.gs](apps-script/Code.gs) 내용을 전부 붙여넣기
-3. 맨 위 `CONFIG` 채우기
-   ```js
-   SHEET_ID : '3-1에서 복사한 시트 ID',
-   CLIENT_ID: '2-5에서 복사한 클라이언트 ID',
-   ```
-4. 함수 선택창에서 `setup` 실행 → 권한 승인 팝업 허용 (한 번만)
-5. `배포` → `새 배포` → 유형 **웹 앱**
+2. [apps-script/Code.gs](apps-script/Code.gs) 내용을 `Code.gs` 에 전부 붙여넣기
+3. 편집기 왼쪽 `파일` 옆 **+** → `스크립트` → 이름 `Board` → [apps-script/Board.gs](apps-script/Board.gs) 내용을 붙여넣기
+   (Apps Script 는 프로젝트의 모든 `.gs` 를 한 스코프로 합치므로 `Code.gs` 가 `Board.gs` 의 함수를 바로 씁니다)
+4. `CONFIG` 는 이미 채워져 있습니다 (시트 ID · 클라이언트 ID · 게시판 탭 이름). 다른 시트를 쓰면 `SHEET_ID` 만 바꾸세요.
+5. 함수 선택창에서 `setup` 실행 → 권한 승인 팝업 허용 (한 번만). `게시판` 탭은 첫 요청 때 자동으로 생깁니다.
+6. `배포` → `새 배포` → 유형 **웹 앱**
    - 실행 계정: **나**
    - 액세스 권한: **모든 사용자**
-6. 나오는 `https://script.google.com/macros/s/.../exec` 주소 복사
+7. 나오는 `https://script.google.com/macros/s/.../exec` 주소 복사
+   (이미 배포된 프로젝트면 `배포 관리` → 연필 → 버전 **새 버전** → 배포. URL 은 그대로입니다)
 
 > **"모든 사용자"가 불안한데요?** URL이 공개돼도 안전합니다. 코드가 받은 ID 토큰을 구글 서버에 직접 조회해서 검증하고(`verifyIdToken_`), 우리 클라이언트 ID로 발급된 토큰이 아니면 거부합니다. 신청자는 Apps Script 동의 화면을 볼 일이 없습니다 — "실행 계정: 나"라서 스크립트는 운영진 권한으로 돌아갑니다.
 
@@ -161,21 +162,18 @@ https://docs.google.com/spreadsheets/d/⬛⬛⬛여기가 ID⬛⬛⬛/edit
 
 ## 4. 3단계 — 프론트에 값 넣기 (1분)
 
-[index.html](index.html) 아래쪽 `참가 신청 폼` 스크립트의 `CFG`를 채웁니다. (`Ctrl+F`로 `CLIENT_ID` 검색)
+[index.html](index.html)의 `사이트 공통` 스크립트에 있는 `EPCONFIG` 한 곳만 채웁니다. (`Ctrl+F`로 `EPCONFIG` 검색)
 
 ```js
-var CFG = {
+window.EPCONFIG = {
   CLIENT_ID: '....apps.googleusercontent.com',               // 2-5
-  ENDPOINT:  'https://script.google.com/macros/s/.../exec',   // 3-2
-  DRAFT_KEY: 'endpoint.apply.v2'
+  ENDPOINT:  'https://script.google.com/macros/s/.../exec'    // 3-2
 };
 ```
 
-두 값이 채워지는 순간 미리보기 모드가 풀리고 **실제 구글 로그인 버튼**이 뜹니다. 코드에 이렇게 돼 있습니다.
+신청서와 게시판이 모두 이 값을 읽습니다. 둘 중 하나라도 비면 사이트 전체가 **미리보기(데모) 모드**로 돌고, 채워지면 실제 구글 로그인 버튼이 뜹니다.
 
-```js
-var DEV = !CFG.CLIENT_ID || !CFG.ENDPOINT;
-```
+**로그인은 사이트 전체에서 한 번입니다.** `EPSession` 이 구글 로그인을 한 번만 초기화하고, 신청서·게시판은 그 상태를 구독합니다. 로그인 결과는 탭이 살아 있는 동안 `sessionStorage` 에 남고, 구글 ID 토큰은 1시간 뒤 만료되며 만료되면 자동으로 로그아웃됩니다.
 
 ### 확인하는 법
 
@@ -270,85 +268,49 @@ headers: { 'Content-Type': 'text/plain;charset=utf-8' }   // 이 줄을 바꾸�
 
 ---
 
-## 6. 4단계 — 앞으로 만들 API (진짜 남은 작업)
+## 6. 팀 모집 게시판 API (구현 완료 · `Board.gs`)
 
-팀 모집 게시판(`#/teams`)이 **아직 가짜 데이터**입니다. [index.html](index.html)의 `var POSTS = [...]` 에 12건이 박혀 있고, `지원하기`·`팀에 초대`·`팀원 모집글 쓰기` 버튼은 아무 동작도 하지 않습니다. `내 신청 상태` 패널도 고정 문구입니다.
+게시판은 구글 시트의 **`게시판` 탭을 DB 로** 씁니다. 화면(`index.html` 맨 아래 스크립트)은 아래 네 요청만 보냅니다. 모두 POST 이고 `idToken` 이 필수입니다.
 
-이걸 실제 신청 데이터와 잇는 게 남은 백엔드 작업입니다. 엔드포인트 두 개면 됩니다.
+| 요청 | 하는 일 | 규칙 |
+|---|---|---|
+| `{action:'board.list'}` | 글 목록 + 내 신청 요약(`me`) | 이메일·계정 식별자는 내려가지 않고 `mine` 만 준다 |
+| `{action:'board.create', data:{kind:'team'│'person', …}}` | 새 글 | **계정당 팀 글 1개, 팀 찾는 글 1개** (초과 시 `LIMIT`) |
+| `{action:'board.update', id, data:{…}}` | 내 글 수정 | 글쓴이만 (`FORBIDDEN`). `kind:'done'` 을 보내면 모집 완료로 전환. 완료된 글은 `intro`·`github` 만 바뀐다 |
+| `{action:'board.delete', id}` | 내 글 삭제 | 글쓴이만. 지우면 슬롯이 다시 비어 새로 쓸 수 있다 |
 
-### GET `?action=board` — 게시판 목록
+`data` 필드: `kind, club, title, desc, tags(쉼표 문자열), showName(bool), name` 공통 · 팀 글은 `team, have, cap` · 팀 찾는 글은 `meta`(참석 가능 여부).
+`me` 에는 `applied`(신청 여부), `hasTeam`, `hasPerson`, 그리고 신청서에서 가져온 `name, club, role, stack, sched` 가 담겨 **글쓰기 폼을 미리 채우는 데** 쓰입니다.
 
-```
-요청  GET  https://script.google.com/macros/s/.../exec?action=board
+**서버가 검사하는 것** — 동아리 이름(5개 중), 제목·팀명 필수, 인원 1~6 & 현재 ≤ 정원, GitHub 는 `https://github.com/…` 만, 길이 제한(제목 80 · 설명 600 · 소개 800), 쓰기 요청은 `LockService` 로 직렬화(같은 사람이 두 번 눌러도 글 하나).
 
-응답  { "ok": true, "items": [
-        { "kind":"person", "club":"NL", "title":"백엔드 · 2학년, 팀 찾습니다",
-          "tags":["Spring","MySQL"], "meta":"전체 일정 참석 가능" }
-      ] }
-```
+**권한** — 모든 판단은 토큰에서 나온 계정으로 서버가 합니다. 화면의 버튼 숨김은 편의일 뿐이고, 남의 `id` 로 직접 요청해도 `FORBIDDEN` 입니다.
 
-> **개인정보를 서버에서 걸러야 합니다.** [개인정보처리방침 04](privacy/)에 *"성함, 연락처, 이메일, 학번은 게시하지 않습니다"* 라고 이미 약속해 뒀습니다. 프론트에서 숨기는 게 아니라 **서버 응답에 아예 담지 않아야** 합니다.
+**아직 없는 것** — `지원하기`·`팀에 초대` 는 안내 메시지만 띄웁니다(알림·수락 흐름은 미구현). 팀 매칭을 운영진이 수동으로 한다면 지금 상태로도 충분합니다.
 
-`Code.gs`에 붙일 뼈대입니다. **기존 `doGet`(배포 확인용)을 이걸로 교체**하고 `board_`를 새로 추가하세요.
-`getSheet_`, `json_`은 이미 있는 함수라 그대로 씁니다.
+**시트 열** (`게시판` 탭, 자동 생성): `id, kind, 계정 식별자, 이메일, 이름, 동아리, 팀명, 제목, 설명, 태그, 현재 인원, 정원, 참석, 팀 소개, GitHub, 작성시각, 수정시각` — 열 순서를 바꾸지 마세요 (코드가 이 순서로 읽고 씁니다).
 
-```js
-function doGet(e) {
-  if (e && e.parameter && e.parameter.action === 'board') return json_(board_());
-  return json_({ ok: true, service: 'ENDPoinT apply endpoint' });
-}
+### 보안 조치 (리뷰에서 나온 것)
 
-function board_() {
-  var sh = getSheet_();
-  if (sh.getLastRow() < 2) return { ok: true, items: [] };
-  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, headers.length).getValues();
-  var col = function (r, name) { return r[headers.indexOf(name)]; };
+**시트에 쓰는 값은 모두 텍스트 서식(@)으로 고정하고, 앞의 `=` 를 걷어냅니다.**
+구글 시트는 셀 값이 `=` 로 시작하면 수식으로 해석합니다. 그러면 신청자가 제목에
+`=TEXTJOIN(",",1,'웹신청'!A2:M)` 같은 걸 적기만 해도 그 셀이 **다른 탭(신청서)의 이메일·연락처를
+통째로 읽어 와서** 게시판 목록으로 다른 사람에게 내려갑니다. 그래서 `Board.gs` 의 `boardWrite_` 와
+`Code.gs` 의 제출 경로가 행 전체를 `setNumberFormat('@')` 로 고정한 뒤에 쓰고, `safeText_` 가 앞의
+`=` 를 제거합니다(두 겹). 같은 조치로 21자리 구글 계정 식별자가 숫자로 바뀌어 정밀도를 잃는 문제도
+막았습니다. **시트를 손으로 고칠 때도 이 열들의 서식을 "일반 텍스트"로 두세요.**
 
-  var items = rows.map(function (r) {
-    var team = String(col(r, '팀 보유 여부 및 팀원') || '');
-    var solo = /없|혼자|미정/.test(team);
-    return {
-      kind: solo ? 'person' : 'team',
-      club: String(col(r, '소속동아리') || ''),
-      title: (solo ? '팀 찾는 중 · ' : '팀원 모집 · ') + String(col(r, '희망역할') || ''),
-      tags: String(col(r, '기술스택 및 개발 경험') || '').split(/[,\/]/)
-              .map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 3),
-      meta: String(col(r, '전체 일정 참석 가능여부') || '')
-      // 성함·학번·연락처·이메일은 절대 담지 않는다
-    };
-  });
-  return { ok: true, items: items };
-}
-```
+**모르는 `action` 은 거부합니다.** 예전에는 알 수 없는 `action` 이 신청서 제출로 흘러가
+기존 신청 행을 빈 값으로 덮어쓸 수 있었습니다. 지금은 `UNKNOWN_ACTION` 으로 거부합니다.
 
-프론트는 `POSTS` 상수를 지우고 이걸로 바꾸면 됩니다.
+**게시판 화면은 서버 버전(`api ≥ 3`)을 확인한 뒤에만 열립니다.** 확인 전에는 글쓰기 버튼도
+나오지 않습니다. 옛 서버에 글쓰기 요청이 닿으면 위와 같은 사고가 나기 때문입니다.
 
-```js
-fetch(CFG.ENDPOINT + '?action=board')
-  .then(function (r) { return r.json(); })
-  .then(function (d) { POSTS = d.items || []; render(); })
-  ['catch'](function () { /* 실패해도 빈 보드로 두고 안내 문구 */ });
-```
+**카드에 보이는 이름은 서버가 정합니다.** 클라이언트가 보낸 이름은 쓰지 않고, 신청서의 성함
+(없으면 구글 계정 이름)을 씁니다. 다른 사람 이름으로 글을 올릴 수 없습니다.
 
-> 시트를 매번 읽으면 느리니 `CacheService`로 1~5분 캐시를 두는 걸 권합니다. 모집 기간에 방문이 몰려도 견딥니다.
-
-### POST `{ action:'me' }` — 내 신청 상태
-
-```
-요청  { "action": "me", "idToken": "<구글 ID 토큰>" }
-응답  { "ok": true, "found": true, "answers": { ... } }
-```
-
-같은 계정으로 다시 로그인했을 때 **이전에 쓴 내용을 불러와** 수정 제출할 수 있게 하는 용도입니다. 지금은 브라우저 임시저장(localStorage)에만 남아 있고, 제출이 끝나면 지워집니다(공용 PC 대비). 그래서 다른 기기에서 고치려면 처음부터 다시 써야 합니다.
-
-토큰은 주소창·서버 로그에 남지 않도록 **GET이 아니라 POST 본문**으로 보내세요.
-
-### 지원하기 / 팀에 초대 버튼
-
-여기까지 만들면 "누가 누구에게 지원했는가"를 저장할 곳이 필요합니다. 시트에 `지원내역` 탭을 하나 더 두고 `(신청자 식별자, 대상 식별자, 시각)`을 쌓는 정도면 충분합니다. **다만 이건 없어도 행사는 돌아갑니다** — 팀 매칭을 운영진이 수동으로 한다면 게시판은 "읽기 전용"으로 두고 연락은 오프라인으로 돌리는 게 현실적입니다. 2주 안에 할 일로는 무리일 수 있으니 우선순위를 낮게 두세요.
-
----
+**열은 이름으로 찾습니다.** `게시판` 탭의 헤더 행을 읽어 이름으로 읽고 쓰므로, 운영진이 열을
+끼워 넣어도 어긋나지 않습니다(빠진 열은 자동으로 끝에 추가됩니다).
 
 ## 7. 한도와 비용
 

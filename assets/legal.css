@@ -33,8 +33,7 @@ header.top{position:sticky;top:0;z-index:60;background:rgba(var(--hdr-rgb),.78);
   -webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);
   border-bottom:1px solid transparent;transition:border-color .4s var(--ease),background .4s var(--ease)}
 header.top.scrolled{border-bottom-color:var(--line);background:rgba(var(--hdr-rgb),.94)}
-.top-in{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:72px;transition:min-height .4s var(--ease)}
-header.top.scrolled .top-in{min-height:62px}
+.top-in{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:72px}
 .mark{text-decoration:none;display:block;line-height:1.4}
 .mark b{display:block;font-size:16px;font-weight:400;letter-spacing:.01em;color:#fff}
 .mark span{display:block;font-size:9px;letter-spacing:.28em;text-transform:uppercase;color:var(--dim-2);font-weight:400}
@@ -167,7 +166,6 @@ footer a:hover{color:#fff}
   .top nav a.sm-hide{display:none}
   .mark span{display:none}
   .top-in{min-height:60px;gap:10px}
-  header.top.scrolled .top-in{min-height:56px}
   .lsum,.lnext{grid-template-columns:1fr}
   .toc ol{columns:1}
   .tbl.kv th{width:96px}
