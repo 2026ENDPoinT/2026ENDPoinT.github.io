@@ -8,12 +8,13 @@
   --blue:#6AA3F0; --red:#E8636D;
   --font:"Gothic A1",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",Pretendard,system-ui,sans-serif;
   --ease:cubic-bezier(.22,.61,.36,1);
+  --hdr-rgb:23,23,23;
   --gut:clamp(20px,5vw,76px);
   --maxw:1340px;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;background:var(--ink);-webkit-text-size-adjust:100%;text-size-adjust:100%}
-body{margin:0;background:var(--ink);color:var(--fg);font-family:var(--font);font-weight:300;font-size:16px;line-height:1.85;
+html{scroll-behavior:smooth;background:linear-gradient(180deg,#171717 0%,#1C1C1C 25%,#222222 55%,#282828 80%,#2C2C2C 100%);background-repeat:no-repeat;min-height:100vh;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;color:var(--fg);font-family:var(--font);font-weight:300;font-size:16px;line-height:1.85;
   letter-spacing:-.005em;-webkit-font-smoothing:antialiased;overflow-x:clip}
 img{max-width:100%;display:block}
 h1,h2,h3{margin:0;font-weight:200;letter-spacing:-.02em;line-height:1.14;color:#fff}
@@ -28,10 +29,10 @@ hr.rule{height:1px;background:var(--line);border:0;margin:0}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 
 /* ================= header ================= */
-header.top{position:sticky;top:0;z-index:60;background:rgba(25,25,25,.78);
+header.top{position:sticky;top:0;z-index:60;background:rgba(var(--hdr-rgb),.78);
   -webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);
   border-bottom:1px solid transparent;transition:border-color .4s var(--ease),background .4s var(--ease)}
-header.top.scrolled{border-bottom-color:var(--line);background:rgba(25,25,25,.94)}
+header.top.scrolled{border-bottom-color:var(--line);background:rgba(var(--hdr-rgb),.94)}
 .top-in{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:72px;transition:min-height .4s var(--ease)}
 header.top.scrolled .top-in{min-height:62px}
 .mark{text-decoration:none;display:block;line-height:1.4}
@@ -70,9 +71,8 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .ltabs a[aria-current="page"]::after{transform:scaleX(1);transform-origin:left}
 
 /* 한눈에 보기 */
-.lsum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);
-  border:1px solid var(--line);margin-top:clamp(28px,3.4vw,44px)}
-.lsum>div{background:var(--ink);padding:22px;display:flex;flex-direction:column;gap:8px}
+.lsum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:clamp(28px,3.4vw,44px)}
+.lsum>div{box-shadow:0 0 0 1px var(--line);padding:22px;display:flex;flex-direction:column;gap:8px}
 .lsum b{font-size:15px;font-weight:400;color:#fff;line-height:1.6}
 .lsum p{font-size:13px;color:var(--dim);line-height:1.8}
 
@@ -132,11 +132,10 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .art.fin p{font-size:14px}
 
 /* 문서 끝 이동 */
-.lnext{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);
-  border:1px solid var(--line);margin-top:clamp(40px,5vw,64px)}
-.lnext a{background:var(--ink);padding:24px;display:flex;flex-direction:column;gap:8px;text-decoration:none;
+.lnext{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:clamp(40px,5vw,64px)}
+.lnext a{box-shadow:0 0 0 1px var(--line);padding:24px;display:flex;flex-direction:column;gap:8px;text-decoration:none;
   transition:background .45s var(--ease)}
-.lnext a:hover{background:var(--ink-3)}
+.lnext a:hover{background:rgba(255,255,255,.05)}
 .lnext b{font-size:17px;font-weight:300;color:#fff;letter-spacing:-.015em}
 
 /* ================= footer ================= */

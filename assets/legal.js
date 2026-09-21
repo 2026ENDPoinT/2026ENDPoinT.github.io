@@ -4,6 +4,13 @@
   var bar = document.getElementById('top-bar');
   var prog = document.getElementById('progress');
   var ticking = false;
+  // 헤더 색을 배경 그라데이션의 현재 밝기에 맞춘다 (23 -> 44)
+  var root = document.documentElement;
+  function tintHeader(t) {
+    var v = Math.round(23 + (44 - 23) * t);
+    root.style.setProperty('--hdr-rgb', v + ',' + v + ',' + v);
+  }
+
 
   function onScroll() {
     if (ticking) return;
@@ -12,7 +19,9 @@
       var y = window.scrollY || 0;
       if (bar) bar.classList.toggle('scrolled', y > 8);
       var max = document.documentElement.scrollHeight - window.innerHeight;
-      if (prog) prog.style.transform = 'scaleX(' + (max > 0 ? Math.min(y / max, 1) : 0) + ')';
+      var t = max > 0 ? Math.min(y / max, 1) : 0;
+      if (prog) prog.style.transform = 'scaleX(' + t + ')';
+      tintHeader(t);
       ticking = false;
     });
   }
