@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/img/hero.png" width="820" alt="ENDPoinT — 참가 동아리 로고 배너">
+<img src="assets/img/hero-1024.png" width="420" alt="ENDPoinT 엠블럼">
 
 # ENDPoinT
 
@@ -8,7 +8,9 @@
 
 EC · NL · 다락방 · Plum · TCP
 
-2026. 11. 13 (금) – 11. 14 (토) · 1박 2일 · 미래관 109호
+2026 / 11 / 13 (금) – 11 / 14 (토)
+
+1박 2일 · 미래관 109호
 
 <br>
 

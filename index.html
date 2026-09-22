@@ -7,12 +7,32 @@
 <script>document.documentElement.className+=" js";</script>
 <title>ENDPoinT</title>
 <meta name="description" content="서울과학기술대학교 5개 학술 동아리 연합 해커톤 ENDPoinT. 2026년 11월 13일–14일, 1박 2일.">
+<!-- 엠블럼: 탭 아이콘 · 홈 화면 아이콘 -->
+<link rel="icon" href="assets/img/icon-192.png" sizes="192x192" type="image/png">
+<link rel="icon" href="assets/img/icon-512.png" sizes="512x512" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<!-- 카카오톡·메신저로 링크를 보냈을 때 뜨는 카드 -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ENDPoinT">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="ENDPoinT — 서울과학기술대학교 연합 해커톤">
+<meta property="og:description" content="EC · NL · 다락방 · Plum · TCP가 함께 여는 연합 해커톤. 2026년 11월 13일–14일, 1박 2일, 미래관 109호.">
+<meta property="og:url" content="https://2026endpoint.github.io/">
+<meta property="og:image" content="https://2026endpoint.github.io/assets/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ENDPoinT 엠블럼">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@100;200;300;400;500;600;700&display=swap">
 <!-- 로그인·신청서·게시판이 쓰는 구글 서버와 미리 손을 잡아 둔다. 첫 요청에서 DNS 조회와
      TLS 악수에 드는 0.2~0.4초를 페이지가 그려지는 동안 미리 치러 두는 것이다.
      script.googleusercontent.com 은 /exec 가 결과를 넘겨주는 곳이라 같이 걸어 둔다. -->
+<!-- 첫 화면을 채우는 엠블럼은 화면 폭에 맞는 크기 하나만 미리 받아 둔다 -->
+<link rel="preload" as="image" type="image/webp"
+      imagesrcset="assets/img/hero-512.webp 512w, assets/img/hero-768.webp 768w, assets/img/hero-1024.webp 1024w, assets/img/hero-1536.webp 1536w"
+      imagesizes="(max-width:1060px) 360px, 520px">
 <link rel="preconnect" href="https://accounts.google.com">
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -112,13 +132,20 @@ header.top.scrolled{border-bottom-color:var(--line);background:rgba(var(--hdr-rg
 
 /* ================= hero ================= */
 .hero{border-bottom:1px solid var(--line);overflow:hidden}
-.hero-grid{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr);min-height:clamp(460px,66vh,660px)}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr);min-height:clamp(440px,64vh,660px)}
 .hero-txt{padding:clamp(48px,7vw,96px) var(--gut) clamp(44px,6vw,80px);
   max-width:calc(var(--maxw)*.52 + var(--gut));margin-left:auto;width:100%;
   display:flex;flex-direction:column;justify-content:center;gap:22px}
-.hero-img{position:relative;border-left:1px solid var(--line);background:rgba(255,255,255,.028);
-  display:grid;place-items:center;padding:clamp(24px,3.4vw,58px);overflow:hidden}
-.hero-img img{width:100%;height:auto;border:1px solid rgba(0,0,0,.28)}
+.hero-img{position:relative;border-left:1px solid var(--line);
+  background:radial-gradient(58% 56% at 50% 46%,rgba(255,255,255,.07),rgba(255,255,255,0) 72%);
+  display:grid;place-items:center;padding:clamp(20px,3.2vw,52px);overflow:hidden}
+/* 엠블럼은 가로·세로 둘 다 화면에 맞춰 줄인다 (세로로 짧은 화면에서도 글씨가 밀려나지 않게) */
+.hero-img img{display:block;width:auto;height:auto;max-width:100%;max-height:min(56vh,520px);border:0;
+  filter:drop-shadow(0 24px 52px rgba(0,0,0,.5))}
+@supports (height:1svh){
+  .hero-grid{min-height:clamp(440px,64svh,660px)}
+  .hero-img img{max-height:min(56svh,520px)}
+}
 h1.title{font-size:clamp(44px,7.4vw,110px);font-weight:100;line-height:.96;letter-spacing:-.045em;color:#fff;padding-right:.06em;white-space:nowrap}
 h1.title .o{color:var(--dim-2)}
 .lede{font-size:clamp(18px,2.2vw,26px);font-weight:200;line-height:1.5;color:#fff;max-width:21ch;letter-spacing:-.015em}
@@ -401,7 +428,9 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
 
 @media (max-width:1060px){
   .hero-grid{grid-template-columns:1fr}
-  .hero-img{border-left:0;border-top:1px solid var(--line);order:-1;padding:clamp(18px,4vw,34px)}
+  .hero-img{border-left:0;border-top:1px solid var(--line);order:-1;padding:clamp(14px,3.4vw,28px)}
+  .hero-grid{min-height:0}
+  .hero-img img{max-height:min(38vh,340px)}
   .hero-txt{max-width:none;margin:0}
   .clubs{grid-template-columns:repeat(3,minmax(0,1fr))}
   .fields,.posts,.cards3{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -410,6 +439,7 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
   .slot p{grid-column:2}
   }
 @media (max-width:720px){
+  .hero-img img{max-height:min(32vh,280px)}
   .facts{grid-template-columns:1fr}
   .facts>div{border-left:0;border-top:1px solid var(--line)}
   .facts>div:first-child{border-top:0}
@@ -436,6 +466,17 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
   .top nav a[data-nav="/apply"]{display:none}
   .hero-cta .btn{flex:1 1 100%}
   footer .f-in{grid-template-columns:1fr}
+}
+
+@media (max-width:1060px){@supports (height:1svh){.hero-img img{max-height:min(38svh,340px)}}}
+@media (max-width:720px){@supports (height:1svh){.hero-img img{max-height:min(32svh,280px)}}}
+/* 가로로 눕힌 폰처럼 세로가 아주 짧은 화면: 엠블럼을 글 옆으로 되돌린다 */
+@media (max-width:1060px) and (max-height:540px) and (orientation:landscape){
+  .hero-grid{grid-template-columns:minmax(0,1fr) minmax(0,.82fr)}
+  .hero-img{order:0;border-top:0;border-left:1px solid var(--line);padding:clamp(12px,2.4vw,24px)}
+  .hero-img img{max-height:min(68vh,250px)}
+  .hero-txt{padding-top:clamp(24px,5vw,40px);padding-bottom:clamp(24px,5vw,40px)}
+  @supports (height:1svh){.hero-img img{max-height:min(68svh,250px)}}
 }
 
 /* ================= apply form ================= */
@@ -716,7 +757,13 @@ p{text-wrap:pretty}
         </div>
       </div>
       <div class="hero-img">
-        <img class="parallax" data-anim="plate" data-hero src="assets/img/hero.png" width="1400" height="781" alt="ENDPoinT 참가 동아리 로고 배너">
+        <!-- 원본(4096px · 27MB)은 assets/img/hero.png 에 그대로 두고, 화면에는 폭에 맞는 사본만 내려받는다 -->
+        <picture>
+          <source type="image/webp" sizes="(max-width:1060px) 360px, 520px"
+                  srcset="assets/img/hero-512.webp 512w, assets/img/hero-768.webp 768w, assets/img/hero-1024.webp 1024w, assets/img/hero-1536.webp 1536w">
+          <img class="parallax" data-anim="plate" data-hero src="assets/img/hero-1024.png" width="1024" height="1024"
+               fetchpriority="high" decoding="async" alt="ENDPoinT 엠블럼 — EC · NL · 다락방 · Plum · TCP 로고를 하나로 합친 조형물">
+        </picture>
       </div>
     </div>
   </div>
