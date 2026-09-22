@@ -264,6 +264,39 @@ br.opt{display:inline}
 .stack>div:last-child{border-bottom:0}
 .stack b{display:block;font-size:16px;font-weight:200;color:#fff;margin-top:6px}
 
+/* ==============================================================
+   로딩 표시 — 안드로이드 킷캣(Holo)의 원형 인디케이터.
+   원 전체가 일정하게 돌고, 그 위에서 호가 늘었다 줄었다 한다.
+   회색 한 톤이라 어느 배경에 놓아도 튀지 않는다.
+   ============================================================== */
+.spin{display:inline-block;width:26px;height:26px;flex-shrink:0;
+  animation:spin-rot 2s linear infinite;transform-origin:50% 50%}
+.spin circle{fill:none;stroke:#8A8A8A;stroke-width:3.2;stroke-linecap:butt;
+  stroke-dasharray:6 120;stroke-dashoffset:0;
+  animation:spin-arc 1.5s ease-in-out infinite}
+.spin.sm{width:16px;height:16px}
+.spin.sm circle{stroke-width:4.4}
+.spin.ink circle{stroke:currentColor}
+@keyframes spin-rot{to{transform:rotate(360deg)}}
+/* 호가 짧게 시작해 4분의 3까지 자랐다가 다시 오므라든다 — 아주 사라지지는 않는다 */
+@keyframes spin-arc{
+  0%  {stroke-dasharray:6 120;stroke-dashoffset:0}
+  50% {stroke-dasharray:56 120;stroke-dashoffset:-20}
+  100%{stroke-dasharray:56 120;stroke-dashoffset:-70}
+}
+/* 로딩 한 줄 — 표시 + 설명 */
+.loading{display:flex;align-items:center;gap:12px;
+  font-size:13.5px;font-weight:300;color:var(--dim);padding:10px 0}
+.loading.pad{padding:clamp(28px,4vw,46px) 0;justify-content:flex-start}
+/* 버튼 안에 들어갈 때 */
+.btn .spin{margin-right:8px;vertical-align:-2px}
+/* 결과를 기다리는 동안 눌리지 않게 */
+.wait{pointer-events:none}
+@media (prefers-reduced-motion:reduce){
+  .spin{animation-duration:3.4s}
+  .spin circle{animation:none;stroke-dasharray:38 120}
+}
+
 /* teams — 로그인 게이트 */
 /* display:flex 가 브라우저 기본 [hidden] 을 이기므로 명시적으로 숨긴다 */
 .tb-gate[hidden],.tb-form[hidden],#tb-body[hidden]{display:none}
@@ -301,7 +334,21 @@ br.opt{display:inline}
   font-family:var(--font);font-size:13.5px;font-weight:300;padding:9px 11px;line-height:1.7}
 .tb-in:focus{outline:none;border-color:var(--blue-k)}
 textarea.tb-in{resize:vertical;min-height:74px}
-.tb-edit .row{display:flex;gap:8px;flex-wrap:wrap}
+.tb-edit .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:4px}
+.tb-edit .num{display:flex;gap:8px;align-items:center}
+.tb-edit .num .tb-in{width:76px}
+.tb-edit .tb-opt{display:flex;flex-direction:row;align-items:center;gap:9px;cursor:pointer;
+  font-size:12.5px;font-weight:300;color:#4E4E4E;padding:2px 0}
+.tb-edit .tb-opt input{position:static;width:15px;height:15px;opacity:1;pointer-events:auto;
+  accent-color:var(--blue-k);cursor:pointer;flex-shrink:0;margin:0}
+.tb-edit .tb-opt span{display:inline;min-height:0;padding:0;border:0;background:none;color:inherit;font-weight:inherit}
+select.tb-in{appearance:none;-webkit-appearance:none;border-radius:0;
+  background-image:linear-gradient(45deg,transparent 50%,#7E7E7E 50%),linear-gradient(135deg,#7E7E7E 50%,transparent 50%);
+  background-position:calc(100% - 15px) 51%,calc(100% - 10px) 51%;background-size:5px 5px;background-repeat:no-repeat}
+/* 수정 중에는 카드가 들썩이지 않게 한다 (입력하는데 움직이면 거슬린다) */
+.post.editing,.post.editing:hover{transform:none;animation:none}
+/* 서버 응답을 기다리는 동안 — 누른 버튼만 또렷하게 남긴다 */
+.wait .btn:not([disabled]),.wait a{opacity:.4}
 
 /* 팀 등록 폼 */
 .tb-form{border:1px solid var(--line);padding:clamp(22px,2.8vw,32px);margin-top:clamp(20px,2.6vw,28px);
@@ -1094,6 +1141,7 @@ window.EPSession = (function () {
     leader: { email: 'leader@demo', name: '박지훈', sub: 'demo-leader' }
   };
   var user = null, subs = [], inited = false, initWait = [];
+  var probeWait = null;           // 같은 질문을 동시에 여러 번 보내지 않으려고
 
   function decodeJWT(t) {
     try {
@@ -1217,15 +1265,58 @@ window.EPSession = (function () {
       }).then(function (r) { return r.json(); });
     },
 
-    /** 서버가 어떤 기능까지 아는지 (doGet 의 api 값). 실패하면 0. */
+    /**
+     * 서버가 어떤 기능까지 아는지 (doGet 의 api 값). 실패하면 0.
+     * 한 번 확인한 값은 탭이 닫힐 때까지 기억한다. 화면을 옮길 때마다
+     * 같은 것을 다시 묻느라 왕복 한 번(0.5~2초)을 날리지 않게 하려는 것이다.
+     * 실패(0)는 기억하지 않는다 — 잠깐의 장애로 기능이 계속 잠기면 안 되니까.
+     */
     probe: function () {
+      var PKEY = 'endpoint.api.v1';
+      try {
+        var c = Number(sessionStorage.getItem(PKEY));
+        if (c > 0) return Promise.resolve(c);
+      } catch (e) {}
+      if (probeWait) return probeWait;
+
       var sep = CFG.ENDPOINT.indexOf('?') === -1 ? '?' : '&';
-      return fetch(CFG.ENDPOINT + sep + 'probe=1')
+      probeWait = fetch(CFG.ENDPOINT + sep + 'probe=1')
         .then(function (r) { return r.json(); })
-        .then(function (h) { return (h && h.api) || 0; })
-        ['catch'](function () { return 0; });
+        .then(function (h) {
+          var n = (h && h.api) || 0;
+          probeWait = null;
+          if (n > 0) { try { sessionStorage.setItem(PKEY, String(n)); } catch (e) {} }
+          return n;
+        })
+        ['catch'](function () { probeWait = null; return 0; });
+      return probeWait;
     }
   };
+})();
+
+/* ==============================================================
+   EPUI — 화면 여기저기서 쓰는 로딩 표시.
+   Apps Script 는 요청이 없다가 처음 오면 컨테이너를 띄우느라 1~2초가 더 걸린다.
+   그래서 첫 화면이 그려지고 한가해지면 서버를 미리 한 번 깨워 둔다.
+   이 요청이 probe 결과까지 채워 주므로 로그인 직후가 눈에 띄게 빨라진다.
+   ============================================================== */
+window.EPUI = {
+  /** 킷캣풍 원형 로딩 표시. cls 에 'sm'(작게) · 'ink'(글자색 따라가기) */
+  spin: function (cls) {
+    return '<svg class="spin ' + (cls || '') + '" viewBox="0 0 28 28" aria-hidden="true">' +
+           '<circle cx="14" cy="14" r="12"></circle></svg>';
+  },
+  /** 로딩 표시 + 설명 한 줄 */
+  loading: function (text, cls) {
+    return '<div class="loading ' + (cls || '') + '" role="status">' +
+           this.spin('') + '<span>' + String(text == null ? '불러오는 중' : text) + '</span></div>';
+  }
+};
+(function () {
+  if (!window.EPCONFIG.ENDPOINT) return;
+  var warm = function () { window.EPSession.probe(); };
+  if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 2500 });
+  else setTimeout(warm, 1200);
 })();
 
 /* ==============================================================
@@ -1535,7 +1626,7 @@ window.EPSession = (function () {
     elSend.classList.toggle('ready', ready && !submitted && mode !== 'view');
 
     if (!auth.on) elTip.innerHTML = '먼저 <b>구글 로그인</b>을 해주세요.';
-    else if (mode === 'loading') elTip.innerHTML = '신청 내역을 확인하는 중입니다...';
+    else if (mode === 'loading') elTip.innerHTML = window.EPUI.loading('신청 내역을 확인하는 중');
     else if (mode === 'view') elTip.innerHTML = '<b>' + esc(auth.email) + '</b> 계정으로 접수된 신청서입니다.';
     else if (!ready) elTip.innerHTML = '<b>*</b> 표시된 항목을 모두 채우면 ' + (mode === 'edit' ? '저장' : '제출') + '할 수 있습니다.';
     else if (mode === 'edit') elTip.innerHTML = '저장하면 <b>' + esc(auth.email) + '</b> 계정의 기존 신청서를 덮어씁니다.';
@@ -1669,6 +1760,11 @@ window.EPSession = (function () {
            ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
   }
 
+  /** 제출 버튼을 대기 상태로 바꾼다. 켜지면 버튼 안에서 로딩 표시가 돈다. */
+  function goBusy(on, text) {
+    elGo.disabled = !!on;
+    elGo.innerHTML = (on ? window.EPUI.spin('sm ink') : '') + '<span>' + text + '</span>';
+  }
   function setMode(m) {
     mode = m;
     af.classList.toggle('ro', m === 'view');   // 라우터의 .view 와 겹치지 않도록 ro(read-only)
@@ -1677,7 +1773,7 @@ window.EPSession = (function () {
     elEdit.hidden = m !== 'view';
     elCancel.hidden = m !== 'edit';
     elGo.hidden = m === 'view' || m === 'loading';
-    elGo.querySelector('span').textContent = m === 'edit' ? '수정 내용 저장' : '신청서 제출';
+    goBusy(false, m === 'edit' ? '수정 내용 저장' : '신청서 제출');
 
     if (m === 'view' || m === 'edit') {
       elState.hidden = false;
@@ -1838,8 +1934,7 @@ window.EPSession = (function () {
     }
 
     var editing = mode === 'edit';
-    elGo.disabled = true;
-    elGo.querySelector('span').textContent = editing ? '저장 중...' : '제출 중...';
+    goBusy(true, editing ? '저장 중' : '제출 중');
     msg(editing ? '수정 내용을 저장하는 중입니다...' : '구글 시트에 기록하는 중입니다...', '');
 
     if (DEV) {
@@ -1883,8 +1978,7 @@ window.EPSession = (function () {
 
   function fail(text) {
     msg(text, 'err');
-    elGo.disabled = false;
-    elGo.querySelector('span').textContent = mode === 'edit' ? '다시 저장' : '다시 제출';
+    goBusy(false, mode === 'edit' ? '다시 저장' : '다시 제출');
   }
 
   function finish(v, preview) {
@@ -1895,6 +1989,9 @@ window.EPSession = (function () {
       try { localStorage.removeItem(CFG.DRAFT_KEY); } catch (e) {}
     }
     elMsg.className = 'af-msg';
+    // 완료 화면으로 넘어가기 전에 제출 버튼의 로딩 표시를 걷어낸다.
+    // 폼이 숨겨질 뿐 사라지지는 않아서, 안 그러면 보이지도 않는 채로 계속 돈다.
+    goBusy(false, '신청서 제출');
     af.style.display = 'none';
 
     var rows = [
@@ -1983,6 +2080,15 @@ window.EPSession = (function () {
     elMsg.className = 'tb-msg' + (err ? ' err' : '');
     elMsg.hidden = !text;
   }
+  /** 버튼을 누른 자리에 로딩 표시를 띄우고, 되돌리는 함수를 준다 */
+  function btnBusy(el) {
+    if (!el) return function () {};
+    var html = el.innerHTML;
+    var label = (el.textContent || '').trim();
+    el.disabled = true;
+    el.innerHTML = window.EPUI.spin('sm ink') + '<span>' + esc(label) + '</span>';
+    return function () { try { el.disabled = false; el.innerHTML = html; } catch (e) {} };
+  }
   var ERR = {
     LIMIT: '팀 모집글과 팀 찾는 글은 계정당 하나씩만 쓸 수 있습니다. 기존 글을 내리면 다시 쓸 수 있습니다.',
     FORBIDDEN: '이 글은 작성자만 고칠 수 있습니다.',
@@ -2002,7 +2108,7 @@ window.EPSession = (function () {
     });
   }
   function load() {
-    state.busy = true; renderBusy('불러오는 중...');
+    state.busy = true; renderBusy('게시판을 불러오는 중');
     return call('board.list').then(function (d) {
       state.busy = false;
       if (!d || !d.ok) { msg((d && ERR[d.error]) || '게시판을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.', true); return; }
@@ -2011,15 +2117,22 @@ window.EPSession = (function () {
       render();
     })['catch'](function () { state.busy = false; msg('네트워크 오류로 게시판을 불러오지 못했습니다.', true); });
   }
-  function act(action, extra, okText) {
+  function act(action, extra, okText, btnEl) {
     if (state.busy) return Promise.resolve(null);
     state.busy = true; msg('');
+    var restore = btnBusy(btnEl);
+    elBoard.classList.add('wait');
+    var settle = function () { state.busy = false; elBoard.classList.remove('wait'); restore(); };
+
     return call(action, extra).then(function (d) {
-      state.busy = false;
+      settle();
       if (!d || !d.ok) { msg((d && ERR[d.error]) || '처리하지 못했습니다. (' + ((d && d.error) || '오류') + ')', true); return null; }
       if (okText) msg(okText);
+      // 새 서버(api 4)는 바뀐 목록을 응답에 함께 준다. 그러면 다시 물을 필요가 없어
+      // 글 하나 올릴 때마다 들던 왕복 한 번이 사라진다. 옛 서버면 예전처럼 다시 읽는다.
+      if (d.items) { items = d.items; me = d.me || me; state.ready = true; render(); return d; }
       return load().then(function () { return d; });
-    })['catch'](function () { state.busy = false; msg('네트워크 오류로 처리하지 못했습니다.', true); return null; });
+    })['catch'](function () { settle(); msg('네트워크 오류로 처리하지 못했습니다.', true); return null; });
   }
 
   /* ============================== 카드 ============================== */
@@ -2030,49 +2143,98 @@ window.EPSession = (function () {
   function btn(a, id, label, cls) {
     return '<button class="btn btn-k btn-sm ' + (cls || '') + '" type="button" data-act="' + a + '" data-id="' + esc(id) + '"><span>' + esc(label) + '</span></button>';
   }
+  /* ---------- 수정 폼 — 세 탭이 같은 틀을 쓰고, 종류에 따라 칸만 달라진다 ---------- */
+  function row(label, inner) { return '<label><span class="lab">' + label + '</span>' + inner + '</label>'; }
+  function inp(f, v, ph, type) {
+    return '<input class="tb-in" type="' + (type || 'text') + '" data-f="' + f + '" value="' +
+           esc(v == null ? '' : v) + '" placeholder="' + esc(ph || '') + '">';
+  }
+  function area(f, v, ph) {
+    return '<textarea class="tb-in" data-f="' + f + '" placeholder="' + esc(ph || '') + '">' + esc(v || '') + '</textarea>';
+  }
+  function clubPick(v) {
+    return '<select class="tb-in" data-f="club">' + CLUB_OPTS.map(function (c) {
+      return '<option' + (c === v ? ' selected' : '') + '>' + c + '</option>';
+    }).join('') + '</select>';
+  }
+  /** 카드 안에서 바로 고치는 폼. 글 종류에 따라 보여 줄 칸이 달라진다. */
+  function cardEdit(p) {
+    var done = p.kind === 'done', person = p.kind === 'person';
+    var f = '';
+    if (!person) f += row('팀명', inp('team', p.team, '팀 이름'));
+    f += row('동아리', clubPick(p.club));
+    // 완료된 글은 카드에 제목을 쓰지 않으므로(팀명이 그 자리다) 칸도 두지 않는다
+    if (!done) f += row(person ? '한 줄 소개' : '모집 제목',
+             inp('title', p.title, person ? '예) 백엔드 · 2학년, 팀 찾습니다' : '예) 백엔드 1명 구합니다'));
+    f += done
+      ? row('팀 소개', area('intro', p.intro, '무엇을 만드는 팀인지 적어주세요.')) +
+        row('GitHub 링크', inp('github', p.github, 'https://github.com/...', 'url'))
+      : row('설명', area('desc', p.desc, person ? '해 본 것, 맡고 싶은 역할을 적어주세요.'
+                                               : '팀 구성, 하려는 것, 필요한 역할을 적어주세요.'));
+    f += person ? row('참석 가능 여부', inp('meta', p.meta, '예) 전체 일정 참석 가능'))
+      : done
+        // 모집이 끝났으면 정원은 의미가 없다. 최종 인원 하나만 받는다.
+        ? row('팀 인원', '<span class="num"><input class="tb-in" type="number" min="2" max="6" data-f="have" value="' + p.have + '"><span class="lab">명</span></span>')
+        : row('현재 인원 / 정원',
+            '<span class="num">' +
+              '<input class="tb-in" type="number" min="1" max="6" data-f="have" value="' + p.have + '">' +
+              '<span class="lab">/</span>' +
+              '<input class="tb-in" type="number" min="2" max="6" data-f="cap" value="' + p.cap + '">' +
+            '</span>');
+    f += row('태그', inp('tags', (p.tags || []).join(', '), '쉼표로 구분 (예: React, 백엔드)'));
+    f += '<label class="tb-opt"><input type="checkbox" data-f="showName"' + (p.name ? ' checked' : '') +
+         '><span>내 이름을 카드에 표시</span></label>';
+    return '<div class="tb-edit">' + f +
+      '<div class="row">' + btn('save', p.id, '저장') + btn('cancel', p.id, '취소', 'btn-o') +
+      (done ? btn('reopen', p.id, '다시 모집하기', 'btn-o') : '') + '</div></div>';
+  }
+  /** 내 글에 붙는 버튼. 수정 중일 때는 폼 안의 저장·취소만 쓴다. */
+  function mineActs(p, editing, extra) {
+    return editing ? '' : btn('edit', p.id, '수정') + (extra || '') + btn('drop', p.id, '글 내리기', 'btn-o');
+  }
+
   function cardTeam(p, i) {
-    var acts = p.mine ? btn('finish', p.id, '모집 완료') + ' ' + btn('drop', p.id, '글 내리기', 'btn-o') : btn('apply', p.id, '지원하기');
-    return '<article class="post" style="--d:' + (i * 0.06).toFixed(2) + 's">' +
-      '<div class="hd"><span class="badge">모집 중</span><span class="lab">' + esc(p.club) + '</span></div>' +
-      '<h3>' + esc(p.title) + '</h3>' + who(p) + '<p>' + esc(p.desc) + '</p>' + tags(p.tags) +
-      '<div class="ft"><small>' + p.have + ' / ' + p.cap + '명 · ' + ago(p.createdAt) + (p.mine ? ' · 내 글' : '') + '</small><span class="row">' + acts + '</span></div>' +
-      '</article>';
+    var editing = state.editing === p.id;
+    var acts = p.mine ? mineActs(p, editing, btn('finish', p.id, '모집 완료')) : btn('apply', p.id, '지원하기');
+    var body = editing ? cardEdit(p)
+      : '<h3>' + esc(p.title) + '</h3>' + who(p) + '<p>' + esc(p.desc) + '</p>' + tags(p.tags);
+    return '<article class="post' + (editing ? ' editing' : '') + '" style="--d:' + (i * 0.06).toFixed(2) + 's">' +
+      '<div class="hd"><span class="badge">모집 중</span><span class="lab">' + esc(p.club) + '</span></div>' + body +
+      '<div class="ft"><small>' + p.have + ' / ' + p.cap + '명 · ' + ago(p.createdAt) + (p.mine ? ' · 내 글' : '') +
+      '</small><span class="row">' + acts + '</span></div></article>';
   }
   function cardPerson(p, i) {
-    var acts = p.mine ? btn('drop', p.id, '글 내리기', 'btn-o') : btn('invite', p.id, '팀에 초대');
-    return '<article class="post" style="--d:' + (i * 0.06).toFixed(2) + 's">' +
-      '<div class="hd"><span class="badge red">팀 찾는 중</span><span class="lab">' + esc(p.club) + '</span></div>' +
-      '<h3>' + esc(p.title) + '</h3>' + who(p) + '<p>' + esc(p.desc) + '</p>' + tags(p.tags) +
-      '<div class="ft"><small>' + (p.meta ? esc(p.meta) + ' · ' : '') + ago(p.createdAt) + (p.mine ? ' · 내 글' : '') + '</small><span class="row">' + acts + '</span></div>' +
-      '</article>';
+    var editing = state.editing === p.id;
+    var acts = p.mine ? mineActs(p, editing) : btn('invite', p.id, '팀에 초대');
+    var body = editing ? cardEdit(p)
+      : '<h3>' + esc(p.title) + '</h3>' + who(p) + '<p>' + esc(p.desc) + '</p>' + tags(p.tags);
+    return '<article class="post' + (editing ? ' editing' : '') + '" style="--d:' + (i * 0.06).toFixed(2) + 's">' +
+      '<div class="hd"><span class="badge red">팀 찾는 중</span><span class="lab">' + esc(p.club) + '</span></div>' + body +
+      '<div class="ft"><small>' + (p.meta ? esc(p.meta) + ' · ' : '') + ago(p.createdAt) + (p.mine ? ' · 내 글' : '') +
+      '</small><span class="row">' + acts + '</span></div></article>';
   }
   function cardDone(p, i) {
     var editing = state.editing === p.id;
     var gh = p.github
       ? '<a class="gh" href="' + esc(p.github) + '" target="_blank" rel="noopener">GitHub ↗ ' + esc(p.github.replace(/^https?:\/\/(www\.)?/, '')) + '</a>'
       : '<span class="gh none">GitHub 링크 없음</span>';
-    var body = editing
-      ? '<div class="tb-edit">' +
-          '<label><span class="lab">팀 소개</span><textarea class="tb-in" data-f="intro">' + esc(p.intro) + '</textarea></label>' +
-          '<label><span class="lab">GitHub 링크</span><input class="tb-in" type="url" data-f="github" value="' + esc(p.github) + '" placeholder="https://github.com/..."></label>' +
-          '<div class="row">' + btn('save', p.id, '저장') + ' ' + btn('cancel', p.id, '취소', 'btn-o') + '</div>' +
-        '</div>'
-      : '<p class="intro">' + esc(p.intro || '팀 소개가 아직 없습니다.') + '</p>' + gh;
-    var acts = p.mine && !editing ? btn('edit', p.id, '소개 수정') : '';
-    return '<article class="post done" style="--d:' + (i * 0.06).toFixed(2) + 's">' +
-      '<div class="hd"><span class="badge done">모집 완료</span><span class="lab">' + esc(p.club) + '</span></div>' +
-      '<h3>' + esc(p.team || '(팀명 없음)') + '</h3>' + who(p) + body +
-      '<div class="ft"><small>' + p.have + '명 · ' + ago(p.updatedAt || p.createdAt) + (p.mine ? ' · 조장' : '') + '</small><span class="row">' + acts + '</span></div>' +
-      '</article>';
+    var body = editing ? cardEdit(p)
+      : '<h3>' + esc(p.team || '(팀명 없음)') + '</h3>' + who(p) +
+        '<p class="intro">' + esc(p.intro || '팀 소개가 아직 없습니다.') + '</p>' + gh + tags(p.tags);
+    var acts = p.mine ? mineActs(p, editing) : '';
+    return '<article class="post done' + (editing ? ' editing' : '') + '" style="--d:' + (i * 0.06).toFixed(2) + 's">' +
+      '<div class="hd"><span class="badge done">모집 완료</span><span class="lab">' + esc(p.club) + '</span></div>' + body +
+      '<div class="ft"><small>' + p.have + '명 · ' + ago(p.updatedAt || p.createdAt) + (p.mine ? ' · 조장' : '') +
+      '</small><span class="row">' + acts + '</span></div></article>';
   }
 
   var NOTE = {
-    team: '팀을 못 찾아도 괜찮습니다. 10월 16일 모집 마감 후 남은 인원은 운영진이 자동으로 매칭합니다.',
+    team: '팀을 못 찾아도 괜찮습니다. 10월 16일 모집 마감 후 남은 인원은 운영진이 자동으로 매칭합니다. 내가 쓴 글은 “수정”으로 언제든 고칠 수 있습니다.',
     person: '마음에 드는 사람이 있으면 “팀에 초대”를 누르세요. 상대가 수락하면 팀에 합류합니다.',
-    done: '모집이 끝난 팀입니다. 팀 소개와 GitHub 링크는 조장만 고칠 수 있고, 11월 4일 1차 프로그램에서 그대로 발표됩니다.'
+    done: '모집이 끝난 팀입니다. 내 팀의 글은 “수정”으로 언제든 고칠 수 있고, 11월 4일 1차 프로그램에서 그대로 발표됩니다.'
   };
 
-  function renderBusy(text) { elBoard.innerHTML = '<p class="sub">' + esc(text) + '</p>'; }
+  function renderBusy(text) { elBoard.innerHTML = window.EPUI.loading(text, 'pad'); }
   function render() {
     var list = items.filter(function (p) {
       if (p.kind !== state.tab) return false;
@@ -2095,29 +2257,55 @@ window.EPSession = (function () {
     if (!p) return;
     var a = b.getAttribute('data-act');
 
-    if (/^(edit|save|cancel|finish|drop)$/.test(a) && !p.mine) { msg(ERR.FORBIDDEN, true); return; }
+    if (/^(edit|save|cancel|finish|reopen|drop)$/.test(a) && !p.mine) { msg(ERR.FORBIDDEN, true); return; }
     if (a === 'apply')  { msg('“' + (p.team || p.title) + '” 팀에 지원 요청을 보냈습니다. (지원 알림은 준비 중입니다 — 지금은 팀 조장에게 직접 연락해 주세요)'); return; }
     if (a === 'invite') { msg((p.name || '이 참가자') + '에게 초대를 보냈습니다. (초대 알림은 준비 중입니다 — 지금은 직접 연락해 주세요)'); return; }
-    if (a === 'edit')   { state.editing = p.id; render(); return; }
-    if (a === 'cancel') { state.editing = null; render(); return; }
+    if (a === 'edit')   { state.editing = p.id; msg(''); render(); return; }
+    if (a === 'cancel') { state.editing = null; msg(''); render(); return; }
     if (a === 'save') {
       var card = b.closest('.post');
-      var intro = (card.querySelector('[data-f="intro"]').value || '').trim();
-      var gh = (card.querySelector('[data-f="github"]').value || '').trim();
-      if (gh && !/^https:\/\/(www\.)?github\.com\/[\w.-]+(\/[\w.-]+)*\/?$/i.test(gh)) { msg(ERR.BAD_GITHUB, true); return; }
-      act('board.update', { id: p.id, data: { intro: intro, github: gh } }, '팀 소개를 저장했습니다.')
-        .then(function (d) { if (d) state.editing = null; render(); });
+      // 이 카드의 폼에 실제로 있는 칸만 모은다. 보내지 않은 항목은 서버가 건드리지 않는다.
+      var g = function (f) {
+        var n = card.querySelector('[data-f="' + f + '"]');
+        if (!n) return undefined;
+        return n.type === 'checkbox' ? n.checked : String(n.value).trim();
+      };
+      var data = {};
+      ['team', 'club', 'title', 'desc', 'intro', 'github', 'meta', 'tags', 'showName'].forEach(function (f) {
+        var val = g(f);
+        if (val !== undefined) data[f] = val;
+      });
+      var hv = g('have'), cp = g('cap');
+      // 완료된 글에는 정원 칸이 없다. 그때는 최종 인원을 정원으로도 쓴다.
+      if (hv !== undefined) { data.have = Number(hv); data.cap = Number(cp === undefined ? hv : cp); }
+
+      // 서버까지 갔다 올 것 없는 것은 여기서 먼저 걸러 준다
+      if (data.team !== undefined && !data.team) { msg(ERR.BAD_TEAM, true); return; }
+      if (data.title !== undefined && !data.title) { msg(ERR.BAD_TITLE, true); return; }
+      if (!data.club) { msg(ERR.BAD_CLUB, true); return; }
+      if (data.github && !/^https:\/\/(www\.)?github\.com\/[\w.-]+(\/[\w.-]+)*\/?$/i.test(data.github)) { msg(ERR.BAD_GITHUB, true); return; }
+      if (data.have !== undefined &&
+          !(data.have >= 1 && data.cap >= 2 && data.have <= data.cap && data.cap <= 6)) { msg(ERR.BAD_COUNT, true); return; }
+
+      act('board.update', { id: p.id, data: data }, '수정했습니다.', b)
+        .then(function (d) { if (d) { state.editing = null; render(); } });
       return;
     }
     if (a === 'finish') {
-      if (!window.confirm('모집을 마감할까요? 마감하면 "모집 완료된 팀"으로 옮겨지고, 팀 소개와 GitHub 링크를 채울 수 있습니다.')) return;
-      act('board.update', { id: p.id, data: { kind: 'done' } }, '모집을 마감했습니다. 팀 소개와 GitHub 링크를 채워주세요.')
+      if (!window.confirm('모집을 마감할까요? 마감하면 "모집 완료된 팀"으로 옮겨지고, 팀 소개와 GitHub 링크를 채울 수 있습니다. 나중에 다시 모집 중으로 되돌릴 수 있습니다.')) return;
+      act('board.update', { id: p.id, data: { kind: 'done' } }, '모집을 마감했습니다. 팀 소개와 GitHub 링크를 채워주세요.', b)
         .then(function (d) { if (d) { state.tab = 'done'; syncTabs(); state.editing = p.id; render(); } });
+      return;
+    }
+    if (a === 'reopen') {
+      if (!window.confirm('다시 모집 중으로 되돌릴까요? “모집 중인 팀” 탭으로 옮겨집니다.')) return;
+      act('board.update', { id: p.id, data: { kind: 'team' } }, '다시 모집 중으로 바꿨습니다.', b)
+        .then(function (d) { if (d) { state.editing = null; state.tab = 'team'; syncTabs(); render(); } });
       return;
     }
     if (a === 'drop') {
       if (!window.confirm('이 글을 내릴까요? 내린 뒤에 다시 쓸 수 있습니다.')) return;
-      act('board.delete', { id: p.id }, '글을 내렸습니다.');
+      act('board.delete', { id: p.id }, '글을 내렸습니다.', b);
       return;
     }
   });
@@ -2175,7 +2363,7 @@ window.EPSession = (function () {
     if (!data.club || !data.title || (kind === 'team' && !data.team)) {
       msg(kind === 'team' ? '팀명, 동아리, 모집 제목은 필수입니다.' : '동아리와 한 줄 소개는 필수입니다.', true); return;
     }
-    act('board.create', { data: data }, kind === 'team' ? '모집글을 올렸습니다.' : '팀 찾는 글을 올렸습니다.')
+    act('board.create', { data: data }, kind === 'team' ? '모집글을 올렸습니다.' : '팀 찾는 글을 올렸습니다.', $('tb-post'))
       .then(function (d) { if (d) { closeForm(); state.tab = kind; syncTabs(); render(); } });
   }
 
@@ -2245,10 +2433,18 @@ window.EPSession = (function () {
     if (!u) { renderGate(); return; }
     if (S.demo) { elGate.hidden = true; elBody.hidden = false; load(); return; }
     // 옛 서버에 글쓰기 요청이 닿으면 신청 행이 비워질 수 있으므로, 버전을 확인한 뒤에만 연다
-    elAct.innerHTML = '<p class="qhint">서버 확인 중...</p>';
+    elAct.innerHTML = window.EPUI.loading('서버를 확인하는 중');
     S.probe().then(function (api) {
       if (S.get() !== u) return;                 // 그 사이 로그아웃했으면 무시
-      if (api >= 3) { elGate.hidden = true; elBody.hidden = false; load(); }
+      // 게이트를 닫을 때 안에 있던 로딩 표시도 같이 걷어낸다.
+      // 안 그러면 보이지도 않는 채로 계속 돌면서 배터리만 먹는다.
+      if (api >= 3) {
+        elAct.innerHTML = ''; elGate.hidden = true; elBody.hidden = false;
+        // 게시판을 보고 있지 않다면 목록은 미리 받아 두기만 한다.
+        // 지금 보고 있는 화면(예: 신청서)의 요청이 이것 뒤로 밀리지 않도록 한 박자 늦춘다.
+        if (location.hash.indexOf('/teams') !== -1) load();
+        else setTimeout(function () { if (S.get() === u) load(); }, 700);
+      }
       else serverTooOld();
     });
   });

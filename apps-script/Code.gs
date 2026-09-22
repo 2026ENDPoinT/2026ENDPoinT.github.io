@@ -77,7 +77,7 @@ function setup() {
  * (옛 버전이 조회 요청을 '빈 제출'로 잘못 처리해 기존 답변을 지우는 것을 막는다)
  */
 function doGet() {
-  return json_({ ok: true, service: 'ENDPoinT apply endpoint', api: 3 });
+  return json_({ ok: true, service: 'ENDPoinT apply endpoint', api: 4 });
 }
 
 /** 사이트에서 오는 신청서 수신 */
@@ -145,6 +145,18 @@ function doPost(e) {
 function verifyIdToken_(idToken) {
   if (!idToken) return null;
 
+  // 같은 토큰을 다시 받으면 구글에 또 묻지 않는다.
+  // 요청마다 붙던 0.3~0.6초의 왕복이 사라진다. 검증을 통과한 토큰만 담고,
+  // 열쇠는 토큰 자체의 해시라 그 토큰을 가진 쪽만 꺼낼 수 있다.
+  var cache = null, key = null;
+  try {
+    cache = CacheService.getScriptCache();
+    key = 'tok:' + Utilities.base64Encode(
+      Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken));
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (e) { cache = null; }
+
   var res = UrlFetchApp.fetch(
     'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
     { muteHttpExceptions: true }
@@ -163,6 +175,12 @@ function verifyIdToken_(idToken) {
   if (CONFIG.ALLOWED_DOMAIN) {
     var suffix = '@' + CONFIG.ALLOWED_DOMAIN.toLowerCase();
     if (String(p.email).toLowerCase().slice(-suffix.length) !== suffix) return null;
+  }
+
+  // 검증을 다 통과한 뒤에만 담는다. 토큰의 남은 수명과 5분 중 짧은 쪽까지만 산다.
+  if (cache) {
+    var left = Math.floor(Number(p.exp) - Date.now() / 1000) - 30;
+    if (left > 0) { try { cache.put(key, JSON.stringify(p), Math.min(left, 300)); } catch (e2) {} }
   }
   return p;
 }
@@ -210,11 +228,17 @@ function findRowByAccount_(sh, headers, claims) {
  * 수정할 수 있게 하는 데 쓴다.
  * 계정 식별자는 화면에 쓸 일이 없으므로 돌려주지 않는다.
  */
+var mineMemo_ = {};
 function findMine_(claims) {
+  // 한 번의 실행 안에서 같은 사람을 두 번 찾지 않는다.
+  // (게시판 글쓰기는 이름을 얻을 때와 목록을 만들 때 두 번 부른다)
+  var memoKey = String(claims.sub || claims.email || '');
+  if (mineMemo_[memoKey]) return mineMemo_[memoKey];
+
   var sh = getSheet_();
   var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   var row = findRowByAccount_(sh, headers, claims);
-  if (!row) return { ok: true, found: false };
+  if (!row) return (mineMemo_[memoKey] = { ok: true, found: false });
 
   var values = sh.getRange(row, 1, 1, headers.length).getValues()[0];
   var answers = {};
@@ -223,7 +247,7 @@ function findMine_(claims) {
     var v = values[i];
     answers[h] = (v instanceof Date) ? v.toISOString() : v;
   });
-  return { ok: true, found: true, row: row, answers: answers };
+  return (mineMemo_[memoKey] = { ok: true, found: true, row: row, answers: answers });
 }
 
 /**

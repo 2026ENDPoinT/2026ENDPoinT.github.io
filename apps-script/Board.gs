@@ -9,7 +9,8 @@
  * 규칙
  *  - 한 계정은 '팀 모집' 글(team, 완료되면 done) 하나와
  *    '팀 찾는' 글(person) 하나까지만 가진다.
- *  - 수정·삭제·모집 완료는 글쓴이만 할 수 있다. 완료된 글은 소개·GitHub 만 바뀐다.
+ *  - 수정·삭제·모집 완료는 글쓴이만 할 수 있다. 어느 탭의 글이든 글쓴이는 모든 항목을 고칠 수 있다.
+ *  - 모집 완료는 되돌릴 수 있다 (done -> team). 잘못 눌렀을 때를 위한 것이다.
  *  - 카드에 보일 이름은 클라이언트가 보내는 값이 아니라 신청서의 성함(없으면 구글 계정 이름)이다.
  *  - 응답에 이메일·계정 식별자를 담지 않는다. 대신 mine(내 글인지)을 준다.
  *  - 셀에 쓰는 모든 값은 텍스트 서식(@)으로 고정한다. '=' 로 시작하는 입력이 수식으로
@@ -37,10 +38,20 @@ function board_(op, claims, body) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    if (op === 'create') return boardCreate_(claims, body.data || {});
-    if (op === 'update') return boardUpdate_(claims, String(body.id || ''), body.data || {});
-    if (op === 'delete') return boardDelete_(claims, String(body.id || ''));
-    return { ok: false, error: 'UNKNOWN_ACTION' };
+    var res;
+    if (op === 'create')      res = boardCreate_(claims, body.data || {});
+    else if (op === 'update') res = boardUpdate_(claims, String(body.id || ''), body.data || {});
+    else if (op === 'delete') res = boardDelete_(claims, String(body.id || ''));
+    else return { ok: false, error: 'UNKNOWN_ACTION' };
+
+    // 바뀐 목록을 응답에 같이 담는다. 화면이 board.list 를 다시 부르지 않아도 되므로
+    // 글 하나 올릴 때마다 들던 왕복 한 번(1~2초)이 통째로 사라진다.
+    if (res && res.ok) {
+      var full = boardList_(claims);
+      res.items = full.items;
+      res.me = full.me;
+    }
+    return res;
   } finally {
     lock.releaseLock();
   }
@@ -216,7 +227,13 @@ function boardCreate_(claims, d) {
   return { ok: true, item: boardPublic_(rec, claims) };
 }
 
-/** 내 글 수정. kind:'done' 을 보내면 모집 중 -> 모집 완료로 바뀐다. 완료된 글은 소개·GitHub 만 바뀐다. */
+/**
+ * 내 글 수정. 내가 쓴 글이면 어느 탭에 있든 모든 항목을 고칠 수 있다.
+ *  - kind:'done' → 모집 중에서 모집 완료로
+ *  - kind:'team' → 모집 완료에서 모집 중으로 (잘못 눌렀을 때 되돌리기)
+ *  - person 글은 상태가 바뀌지 않는다
+ * 보내지 않은 항목은 건드리지 않는다(부분 수정).
+ */
 function boardUpdate_(claims, id, d) {
   var sh = boardSheet_();
   var headers = boardHeaders_(sh);
@@ -224,40 +241,58 @@ function boardUpdate_(claims, id, d) {
   if (!hit) return { ok: false, error: 'NOT_FOUND' };
   if (!boardIsMine_(hit.rec, claims)) return { ok: false, error: 'FORBIDDEN' };
   var rec = hit.rec;
+  var was = String(rec.kind);
 
-  if (d.kind === 'done') {
-    if (String(rec.kind) !== 'team') return { ok: false, error: 'BAD_STATE' };
-    rec.kind = 'done';
-    rec['현재 인원'] = rec['정원'];
-    if (!String(rec['팀 소개'] || '')) rec['팀 소개'] = String(rec['설명'] || '');
-  } else if (d.kind !== undefined) {
-    return { ok: false, error: 'BAD_KIND' };
+  /* 상태 전환 */
+  if (d.kind !== undefined) {
+    var to = String(d.kind);
+    if (was === 'team' && to === 'done') {
+      rec.kind = 'done';
+      rec['현재 인원'] = rec['정원'];
+      if (!String(rec['팀 소개'] || '')) rec['팀 소개'] = String(rec['설명'] || '');
+    } else if (was === 'done' && to === 'team') {
+      rec.kind = 'team';
+    } else if (to !== was) {
+      return { ok: false, error: 'BAD_STATE' };
+    }
   }
+  var kind = String(rec.kind);
+
+  /* 내용 — 보낸 항목만 바꾼다 */
+  if (d.club !== undefined) {
+    var club = cut_(d.club, 30);
+    if (!clubOk_(club)) return { ok: false, error: 'BAD_CLUB' };
+    rec['동아리'] = club;
+  }
+  if (d.title !== undefined) {
+    var t = cut_(d.title, BOARD_LIMIT.title);
+    if (!t) return { ok: false, error: 'BAD_TITLE' };
+    rec['제목'] = t;
+  }
+  if (d.team !== undefined && kind !== 'person') {
+    var tm = cut_(d.team, BOARD_LIMIT.team);
+    if (!tm) return { ok: false, error: 'BAD_TEAM' };
+    rec['팀명'] = tm;
+  }
+  if (d.desc !== undefined) rec['설명'] = cut_(d.desc, BOARD_LIMIT.desc);
+  if (d.tags !== undefined) rec['태그'] = tagsOk_(d.tags);
+  if (d.meta !== undefined && kind === 'person') rec['참석'] = cut_(d.meta, BOARD_LIMIT.meta);
   if (d.intro !== undefined) rec['팀 소개'] = cut_(d.intro, BOARD_LIMIT.intro);
   if (d.github !== undefined) {
     var gh = githubOk_(d.github);
     if (gh === null) return { ok: false, error: 'BAD_GITHUB' };
     rec['GitHub'] = gh;
   }
-  if (String(rec.kind) !== 'done') {
-    if (d.title !== undefined) {
-      var t = cut_(d.title, BOARD_LIMIT.title);
-      if (!t) return { ok: false, error: 'BAD_TITLE' };
-      rec['제목'] = t;
-    }
-    if (d.desc !== undefined) rec['설명'] = cut_(d.desc, BOARD_LIMIT.desc);
-    if (d.tags !== undefined) rec['태그'] = tagsOk_(d.tags);
-    if (d.have !== undefined || d.cap !== undefined) {
-      var have = intOk_(d.have !== undefined ? d.have : rec['현재 인원'], 1, 6);
-      var cap = intOk_(d.cap !== undefined ? d.cap : rec['정원'], 2, 6);
-      if (have === null || cap === null || have > cap) return { ok: false, error: 'BAD_COUNT' };
-      rec['현재 인원'] = have; rec['정원'] = cap;
-    }
-    if (d.meta !== undefined && String(rec.kind) === 'person') rec['참석'] = cut_(d.meta, BOARD_LIMIT.meta);
-    if (d.showName !== undefined) rec['이름'] = d.showName ? boardName_(claims) : '';
+  if (kind !== 'person' && (d.have !== undefined || d.cap !== undefined)) {
+    var have = intOk_(d.have !== undefined ? d.have : rec['현재 인원'], 1, 6);
+    var cap  = intOk_(d.cap  !== undefined ? d.cap  : rec['정원'], 2, 6);
+    if (have === null || cap === null || have > cap) return { ok: false, error: 'BAD_COUNT' };
+    rec['현재 인원'] = have; rec['정원'] = cap;
   }
-  rec['수정시각'] = new Date().toISOString();
+  // 이름은 클라이언트가 보낸 값이 아니라 신청서의 성함에서 가져온다
+  if (d.showName !== undefined) rec['이름'] = d.showName ? boardName_(claims) : '';
 
+  rec['수정시각'] = new Date().toISOString();
   boardWrite_(sh, headers, rec, hit.row);
   return { ok: true, item: boardPublic_(rec, claims) };
 }
