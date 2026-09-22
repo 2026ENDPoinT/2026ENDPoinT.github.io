@@ -13,7 +13,7 @@
   --maxw:1340px;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;background:linear-gradient(180deg,#171717 0%,#1C1C1C 25%,#222222 55%,#282828 80%,#2C2C2C 100%);background-repeat:no-repeat;min-height:100vh;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html{scroll-behavior:smooth;background:linear-gradient(180deg,#171717 0%,#1A1A1A 30%,#1D1D1D 60%,#212121 85%,#242424 100%);background-repeat:no-repeat;min-height:100vh;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{margin:0;color:var(--fg);font-family:var(--font);font-weight:300;font-size:16px;line-height:1.85;
   letter-spacing:-.005em;-webkit-font-smoothing:antialiased;overflow-x:clip}
 img{max-width:100%;display:block}
@@ -175,3 +175,16 @@ footer a:hover{color:#fff}
   .dept-name,.dept-sub{font-size:14.5px}
   .dept-bar{height:15px}
 }
+
+/* design pass · 0922 — 한글 라벨은 넓은 자간을 풀어 준다 (legal.js 가 .ko 를 붙임) */
+.lab.ko{letter-spacing:.05em;text-transform:none;font-size:11.5px}
+.art>.lab.ko{letter-spacing:.05em}
+p,li{text-wrap:pretty}
+[hidden]{display:none!important}
+
+/* 주최 링크 (새 창) */
+.dept-link{display:inline-flex;align-items:center;gap:15px;color:#fff}
+.dept-link .dept-name,.dept-link .dept-sub{text-decoration:underline;text-decoration-color:transparent;text-underline-offset:5px;text-decoration-thickness:1px;transition:text-decoration-color .3s var(--ease)}
+.dept-link:hover .dept-name,.dept-link:hover .dept-sub,.dept-link:focus-visible .dept-name,.dept-link:focus-visible .dept-sub{text-decoration-color:rgba(255,255,255,.55)}
+.dept-link:hover .dept-mark{opacity:1}
+@media (max-width:560px){.dept-link{gap:11px}}

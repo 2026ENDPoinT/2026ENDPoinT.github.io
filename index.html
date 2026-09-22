@@ -24,7 +24,7 @@
   --maxw:1340px;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;background:linear-gradient(180deg,#171717 0%,#1C1C1C 25%,#222222 55%,#282828 80%,#2C2C2C 100%);background-repeat:no-repeat;min-height:100vh;-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
+html{scroll-behavior:smooth;background:linear-gradient(180deg,#171717 0%,#1A1A1A 30%,#1D1D1D 60%,#212121 85%,#242424 100%);background-repeat:no-repeat;min-height:100vh;-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
 body{margin:0;color:var(--fg);font-family:var(--font);font-weight:300;font-size:16px;line-height:1.85;
   letter-spacing:-.005em;-webkit-font-smoothing:antialiased;overflow-x:clip}
   
@@ -589,12 +589,84 @@ select.tin option{background:var(--ink-2);color:#fff}
   .fld-mark{margin-left:auto;order:2}
   .af-send .btn{flex:1 1 100%}
 }
+
+/* ================= design pass · 0922 ================= */
+/* display:flex 등이 hidden 속성을 이겨서 빈 띠가 보이던 문제 (신청서 상태 띠 등) */
+[hidden]{display:none!important}
+p{text-wrap:pretty}
+/* 한글 라벨은 넓은 자간을 풀어 준다 (영문 대문자용 자간이 한글에선 글자가 흩어져 보임) */
+.lab.ko{letter-spacing:.05em;text-transform:none;font-size:11.5px}
+/* 헤더: 로그인 위젯을 가운데에서 오른쪽 끝으로 */
+.top-in{display:flex;justify-content:flex-start}
+.top-in>nav{margin-left:auto}
+.top-auth{order:3;margin-left:18px;justify-content:flex-end}
+.top-auth .qhint{display:none}
+@media (max-width:720px){ .top-auth{display:none} }
+/* 탭: 좁은 화면에서 두 줄로 깨지지 않게 가로 스크롤 */
+.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.tabs::-webkit-scrollbar{display:none}
+.tab{white-space:nowrap;flex-shrink:0}
+.tab::after{bottom:0}
+@media (max-width:720px){ .tab{font-size:14px;margin-right:24px} }
+/* 심사 카드: 오른쪽 기둥 높이에 맞춰 늘어난 아래 여백을 각주로 채운다 */
+#prize .card .foot{margin-top:auto;padding-top:16px;border-top:1px solid var(--line-k)}
+/* 로그인 위젯이 비어 있으면(구글 스크립트 차단 등) 자리도 차지하지 않게 */
+.top-auth:not(:has(.who,iframe,button)){display:none}
+/* 배지는 전부 한글이라 넓은 자간을 푼다 */
+.badge{letter-spacing:.06em}
+/* 심사·시상: 흰 카드 + 트랙 두 칸을 한 줄 세 칸으로 (흰 카드에 생기던 큰 빈 공간 제거) */
+#prize .cards2{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr)}
+#prize .cards2>.trk{display:contents!important}
+@media (max-width:1060px){ #prize .cards2{grid-template-columns:repeat(2,minmax(0,1fr))} #prize .cards2>.card{grid-column:1/-1} }
+@media (max-width:720px){ #prize .cards2{grid-template-columns:1fr} }
+/* 인앱 브라우저(카카오톡 등) 안내 띠 */
+.inapp{border-bottom:1px solid var(--line);background:#1F2328}
+.inapp .wrap{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;padding-block:12px}
+.inapp p{font-size:13px;line-height:1.6;color:var(--fg);flex:1 1 280px}
+.inapp p b{color:#fff;font-weight:500}
+.inapp .btn{min-height:38px;padding:0 16px;font-size:12.5px}
+.inapp .x{background:none;border:0;color:var(--dim);font-size:18px;line-height:1;cursor:pointer;padding:6px}
+
+/* 심사 비중 · 원형 그래프 (0922b) */
+.pie{display:flex;align-items:center;gap:clamp(20px,2.6vw,30px);flex-wrap:wrap;margin:6px 0 4px}
+.pie-fig{position:relative;width:clamp(148px,11vw,160px);aspect-ratio:1;flex-shrink:0}
+.donut{display:block;width:100%;height:100%;overflow:visible}
+.donut .seg{transition:opacity .3s var(--ease);cursor:default}
+.js .donut .seg{stroke-dasharray:0 390}
+.js .card.in .donut .seg{stroke-dasharray:var(--len) 390;transition:stroke-dasharray 1.3s var(--ease) calc(var(--d,.2s) + .1s),opacity .3s var(--ease)}
+.pie-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+.pie-c b{font-size:clamp(21px,2vw,25px);font-weight:200;letter-spacing:-.03em;color:var(--paper-ink);line-height:1.1}
+.pie-c span{font-size:11px;color:#8A8A8A;margin-top:4px;letter-spacing:.02em}
+.pie-lg{list-style:none;margin:0;padding:0;flex:1 1 150px;min-width:0;max-width:340px;display:flex;flex-direction:column}
+.pie-lg li{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line-k);transition:opacity .3s var(--ease)}
+.pie-lg li:first-child{border-top:0}
+.pie-lg i{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.pie-lg .n{font-size:14.5px;color:#3F3F3F;font-weight:300}
+.pie-lg b{margin-left:auto;font-size:19px;font-weight:300;color:var(--paper-ink);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.pie[data-h="j"] [data-k="v"],.pie[data-h="v"] [data-k="j"]{opacity:.25}
+#prize .card .foot.crit{font-size:14px;color:#3F3F3F}
+.prize-note{margin-top:clamp(12px,1.6vw,20px);border:1px solid var(--line);padding:18px clamp(20px,3vw,32px);display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.prize-note .lab{margin:0}
+.prize-note p{font-size:15px;color:var(--fg);font-weight:300;margin:0}
+/* footer 아이콘 링크 · 주최 링크 */
+.f-links a.ilink{display:inline-flex;align-items:center;gap:8px}
+.f-links .ico{flex-shrink:0;opacity:.9}
+.dept-link{display:inline-flex!important;align-items:center;gap:15px;color:#fff!important}
+.dept-link .dept-name,.dept-link .dept-sub{text-decoration:underline;text-decoration-color:transparent;text-underline-offset:5px;text-decoration-thickness:1px;transition:text-decoration-color .3s var(--ease)}
+.dept-link:hover .dept-name,.dept-link:hover .dept-sub,.dept-link:focus-visible .dept-name,.dept-link:focus-visible .dept-sub{text-decoration-color:rgba(255,255,255,.55)}
+.dept-link:hover .dept-mark{opacity:1}
+@media (max-width:560px){.dept-link{gap:11px}}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,12px);background:#fff;color:#151515;font-size:13.5px;padding:11px 18px;
+  box-shadow:0 8px 30px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .3s var(--ease),transform .3s var(--ease);z-index:90;white-space:nowrap}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+@media (max-width:560px){.pie{flex-direction:column;align-items:stretch;gap:14px}.pie-fig{align-self:center;width:156px}.pie-lg{flex:0 0 auto}}
+@media (prefers-reduced-motion:reduce){.js .donut .seg,.js .card.in .donut .seg{stroke-dasharray:var(--len) 390!important;transition:none!important}}
 </style>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
-<noscript><style>[data-anim],[data-anim="plate"],.wm span,.post{opacity:1!important;transform:none!important}[data-anim="mask"]>span{transform:none!important}.bar .f{transform:scaleX(1)!important}</style></noscript>
+<noscript><style>[data-anim],[data-anim="plate"],.wm span,.post{opacity:1!important;transform:none!important}[data-anim="mask"]>span{transform:none!important}.bar .f{transform:scaleX(1)!important}.donut .seg{stroke-dasharray:var(--len) 390!important}</style></noscript>
 <div class="progress" id="progress"></div>
 
 <header class="top" id="top-bar">
@@ -611,6 +683,14 @@ select.tin option{background:var(--ink-2);color:#fff}
     </nav>
   </div>
 </header>
+
+<div class="inapp" id="inapp" hidden>
+  <div class="wrap">
+    <p><b>앱 안의 브라우저에서는 구글 로그인이 막혀 있어요.</b> 참가 신청과 팀 모집은 Chrome이나 Safari에서 열어 주세요.</p>
+    <a class="btn" id="inapp-open" href="#"><span>외부 브라우저로 열기</span></a>
+    <button class="x" type="button" id="inapp-x" aria-label="안내 닫기">×</button>
+  </div>
+</div>
 
 <!-- ===================== HOME ===================== -->
 <main id="v-home" class="view on">
@@ -641,18 +721,6 @@ select.tin option{background:var(--ink-2);color:#fff}
     <div data-anim style="--d:.25s"><span class="lab">1차 모집</span><b>10.05 – 10.16 (예정)</b></div>
   </div>
 
-  <section style="padding-block:clamp(38px,5vw,64px)">
-    <div class="wrap" style="display: flex; justify-content: center; align-items: center; width: 100%;">
-  <div class="emrow" data-stagger style="display: flex; justify-content: center; align-items: center; gap: 16px; flex-wrap: wrap;">
-    <span class="lab" data-anim style="margin-right: 6px; font-weight: 600;">Hosted by</span>
-        <img data-anim src="assets/img/mark-ec.png" width="300" height="300" loading="lazy" decoding="async" alt="EC">
-        <img data-anim src="assets/img/mark-nl.png" width="227" height="224" loading="lazy" decoding="async" alt="NL">
-        <img data-anim src="assets/img/mark-darakbang.png" width="340" height="309" loading="lazy" decoding="async" alt="다락방">
-        <img data-anim src="assets/img/mark-plum.png" width="250" height="250" loading="lazy" decoding="async" alt="Plum">
-        <img data-anim src="assets/img/mark-tcp.png" width="340" height="333" loading="lazy" decoding="async" alt="TCP">
-      </div>
-    </div>
-  </section>
 
   <section id="about">
     <div class="wrap">
@@ -661,7 +729,7 @@ select.tin option{background:var(--ink-2);color:#fff}
           <span class="lab blue" data-anim>01. About</span>
           <h2><span data-anim="mask"><span>To</span></span><span data-anim="mask" style="--d:.1s"><span>ENDPoinT</span></span></h2>
         </div>
-        <p data-anim style="--d:.2s">서로 다른 스택과 성격을 갖은 학술 동아리의 <br> 첫 해커톤 입니다.</p>
+        <p data-anim style="--d:.2s">서로 다른 스택과 성격을 가진 다섯 학술 동아리가 처음으로 함께 여는 해커톤입니다.</p>
       </div>
 
       <div class="initials" data-stagger>
@@ -675,11 +743,11 @@ select.tin option{background:var(--ink-2);color:#fff}
       <div class="cards3" style="margin-top:clamp(20px,3vw,32px)" data-stagger>
         <div class="card blue-top" data-anim>
           <h3>누가 참가하나요</h3>
-          <p>5개의 동아리 회원들을 중심으로 모집합니다.<br> 최대 120명까지 받습니다.<br> 개발 경험이 적어도 참여할 수 있도록 사전 교육 세션을 함께 운영합니다.</p>
+          <p>다섯 동아리 회원을 중심으로 최대 120명까지 모집합니다. 개발 경험이 적어도 참여할 수 있도록 사전 교육 세션을 함께 운영합니다.</p>
         </div>
         <div class="card blue-top" data-anim>
           <h3>어떻게 팀을 짜나요</h3>
-          <p>팀당 2~6명. 팀을 만들어 함께 신청해도 되고, 혼자 신청하시면 운영진이 자동으로 매칭해 드립니다. <br> 추가로 동아리 혼합팀 여부는 자율입니다.</p>
+          <p>팀당 2~6명. 팀을 만들어 함께 신청해도 되고, 혼자 신청하시면 운영진이 자동으로 매칭해 드립니다. 동아리를 섞어 팀을 짜는 것도 자유입니다.</p>
         </div>
         <div class="card red-top" data-anim>
           <h3>두 개의 트랙</h3>
@@ -689,7 +757,7 @@ select.tin option{background:var(--ink-2);color:#fff}
 
       <div style="margin-top:clamp(24px,3.4vw,38px);display:flex;gap:20px;align-items:flex-start">
         <span style="width:2px;align-self:stretch;background:var(--blue);flex-shrink:0" data-anim="line"></span>
-        <p class="sub" data-anim style="--d:.1s;max-width:56ch">주제는 <strong style="color:#fff">아직 공개 전</strong>입니다. 트랙별 세부 주제는<br> 11월 4일 1차 프로그램에서 안내합니다.</p>
+        <p class="sub" data-anim style="--d:.1s;max-width:56ch">주제는 <strong style="color:#fff">아직 공개 전</strong>입니다. 트랙별 세부 주제는 11월 4일 1차 프로그램에서 안내합니다.</p>
       </div>
     </div>
   </section>
@@ -701,7 +769,7 @@ select.tin option{background:var(--ink-2);color:#fff}
           <span class="lab blue" data-anim>02. Clubs</span>
           <h2><span data-anim="mask"><span>주최 동아리</span></span></h2>
         </div>
-        <p data-anim style="--d:.15s">각 동아리 한 줄 소개는 동아리장 확인 후 채워주세요.</p>
+        
       </div>
       <div class="clubs" data-stagger>
         <div class="club" data-anim><span class="em"><img src="assets/img/club-ec.png" width="300" height="300" loading="lazy" decoding="async" alt=""></span><b>EC</b><span class="lab">참가 규모 20명</span><span class="ph">[EC 한 줄 소개]</span></div>
@@ -759,19 +827,25 @@ select.tin option{background:var(--ink-2);color:#fff}
       <div class="cards2" data-stagger>
         <div class="card" data-anim>
           <span class="lab">심사 비중</span>
-          <div class="bar">
-            <div class="r">심사위원 점수 <span>60%</span></div>
-            <div class="t"><div class="f" style="width:60%;--d:.25s"></div></div>
+          <div class="pie" id="pie">
+            <div class="pie-fig">
+              <svg class="donut" viewBox="0 0 160 160" role="img" aria-label="심사 비중 원형 그래프: 심사위원 점수 60%, 참가자 투표 40%">
+                <g transform="rotate(-90 80 80)">
+                  <circle class="seg" data-k="j" cx="80" cy="80" r="62" fill="none" stroke="#1655AD" stroke-width="20" stroke-dasharray="231.13 389.56" stroke-dashoffset="-1.30" style="--len:231.13px"/>
+                  <circle class="seg" data-k="v" cx="80" cy="80" r="62" fill="none" stroke="#BA000C" stroke-width="20" stroke-dasharray="153.22 389.56" stroke-dashoffset="-235.03" style="--len:153.22px;--d:.55s"/>
+                </g>
+              </svg>
+              <div class="pie-c" aria-hidden="true"><b>60 : 40</b><span>심사위원 : 투표</span></div>
+            </div>
+            <ul class="pie-lg">
+              <li data-k="j"><i style="background:#1655AD"></i><span class="n">심사위원 점수</span><b>60%</b></li>
+              <li data-k="v"><i style="background:#BA000C"></i><span class="n">참가자 투표</span><b>40%</b></li>
+            </ul>
           </div>
-          <div class="bar">
-            <div class="r">참가자 투표 <span style="color:var(--red-k)">40%</span></div>
-            <div class="t"><div class="f red" style="width:40%;--d:.4s"></div></div>
-          </div>
-          <p style="margin-top:10px"><strong>해커톤</strong> — 서비스 완성도, AI 활용의 창의성<br><strong>구현과제</strong> — 기능 구현, 코드 이해도, 추가 기능</p>
-          <p style="color:#7E7E7E;font-size:13px">운영진이 참가하는 경우 공정성을 위해 첫날과 둘째 날 심사를 3 : 2로 나누어 진행합니다.</p>
+          <p class="foot crit"><strong>해커톤</strong> — 서비스 완성도, AI 활용의 창의성<br><strong>구현과제</strong> — 기능 구현, 코드 이해도, 추가 기능</p>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:clamp(12px,1.6vw,20px)" data-anim>
+        <div class="trk" style="display:flex;flex-direction:column;gap:clamp(12px,1.6vw,20px)" data-anim>
           <div style="border:1px solid var(--line);padding:clamp(24px,3vw,32px)">
             <span class="lab red" style="margin-bottom:16px">Hackathon track</span>
             <div class="rows">
@@ -781,14 +855,17 @@ select.tin option{background:var(--ink-2);color:#fff}
             </div>
           </div>
           <div style="border:1px solid var(--line);padding:clamp(24px,3vw,32px)">
-            <span class="lab blue" style="margin-bottom:16px">구현과제 track</span>
+            <span class="lab blue" style="margin-bottom:16px">구현과제 트랙</span>
             <div class="rows">
               <div class="r"><b>1 · 2 · 3 · 4등</b><span>각 1팀</span></div>
               <div class="r"><b>상금 · 상품</b><span>[확정 후 공지]</span></div>
-              <div class="r"><b>경품 추첨</b><span>둘째 날 새벽</span></div>
             </div>
           </div>
         </div>
+      </div>
+      <div class="prize-note" data-anim>
+        <span class="lab red">Lucky draw</span>
+        <p>경품 추첨은 둘째 날 새벽에 진행됩니다.</p>
       </div>
     </div>
   </section>
@@ -798,13 +875,13 @@ select.tin option{background:var(--ink-2);color:#fff}
       <div class="head">
         <div>
           <span class="lab blue" data-anim>05. FAQ</span>
-          <h2><span data-anim="mask"><span>자주 묻는 질문</span></span></h2>
+          <h2><span data-anim="mask"><span>질문</span></span></h2>
         </div>
-        <p data-anim style="--d:.15s">더 궁금한 점은 소속 동아리 운영진이나 [문의 채널]로 알려주세요.</p>
+        <p data-anim style="--d:.15s">더 궁금한 점은 자신이 소속한 동아리 운영진에게 알려주세요.</p>
       </div>
       <div data-stagger>
         <details class="faq" data-anim open><summary>팀원이 없는데 혼자 신청해도 되나요?</summary><p>네. 팀 없이 신청하면 운영진이 희망 역할과 기술 스택을 보고 자동으로 매칭해 드립니다. 팀원 모집 게시판에서 직접 팀을 찾아도 됩니다.</p></details>
-        <details class="faq" data-anim><summary>이미 팀이 있는데 한 명만 더 구하고 싶어요.</summary><p>신청서 05 팀 보유 여부 및 팀원에 현재 팀원과 더 필요한 인원을 적어주세요. 팀 모집 게시판에 모집 중인 팀으로 올려드립니다.</p></details>
+        <details class="faq" data-anim><summary>이미 팀이 있는데 한 명만 더 구하고 싶어요.</summary><p>팀 모집 게시판을 참고해주시기 바랍니다.</p></details>
         <details class="faq" data-anim><summary>주제는 언제 공개되나요?</summary><p>트랙별 세부 주제는 11월 4일 1차 프로그램에서 공개합니다. 그전까지는 트랙 구분만 안내됩니다.</p></details>
         <details class="faq" data-anim><summary>1차나 2차 프로그램에 못 가면 참가할 수 없나요?</summary><p>신청서에서 참석이 어려운 날짜를 미리 체크해 주세요. 팀 배정과 진행에 반영합니다.</p></details>
         <details class="faq" data-anim><summary>참가비가 있나요?</summary><p>[참가비 정책 — 예산 확정 후 기재]</p></details>
@@ -816,8 +893,8 @@ select.tin option{background:var(--ink-2);color:#fff}
     <div class="wrap">
       <div class="cta" data-anim="plate">
         <div>
-          <h2>먼저 신청하고,<br>팀은 나중에 정해도 됩니다</h2>
-          <p>1차 모집 10.05 – 10.16 (예정) · 최대 120명 · 팀당 2~6명</p>
+          <h2>준비되셨나요?</h2>
+          <p>1차 모집 10.05 – 10.16 (예정)</p>
         </div>
         <a class="btn btn-k" href="#/apply"><span>참가 신청하기</span></a>
       </div>
@@ -882,7 +959,7 @@ select.tin option{background:var(--ink-2);color:#fff}
     <div class="wrap">
       <div class="pagehead">
         <div>
-          <span class="lab blue" data-anim>Team board · 미리보기 데이터</span>
+          <span class="lab blue" data-anim>Team board</span>
           <h1 class="ptitle" style="margin-top:16px"><span data-anim="mask"><span>팀 모집 · 팀 찾기</span></span></h1>
           <p class="sub" data-anim style="--d:.15s;margin-top:20px">자리가 남은 팀과, 팀 없이 신청한 사람이 이 보드에 모입니다. 11월 4일 팀 확정 전까지 직접 구하거나, 그대로 두면 자동 매칭됩니다.</p>
         </div>
@@ -938,18 +1015,19 @@ select.tin option{background:var(--ink-2);color:#fff}
         <div>서울과학기술대학교 연합 해커톤<br>EC · NL · 다락방 · Plum · TCP</div>
       </div>
       <div class="f-links">
-        <a href="#/">[인스타그램]</a>
-        <a href="#/">[GitHub]</a>
-        <a href="#/">[문의 메일]</a>
+        <a class="ilink" href="https://github.com/2026ENDPoinT/2026ENDPoinT.github.io" target="_blank" rel="noopener noreferrer" aria-label="GitHub 저장소 (새 창)"><svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+        <a class="ilink" id="mail-link" href="mailto:recognize@seoultech.ac.kr" target="_blank" rel="noopener noreferrer" title="recognize@seoultech.ac.kr" aria-label="문의 메일 recognize@seoultech.ac.kr"><svg class="ico" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><rect x="3" y="5.5" width="18" height="13" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.8 6.6l8.2 6.3 8.2-6.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span>문의 메일</span></a>
       </div>
     </div>
     <div class="host">
       <span class="lab">주최</span>
       <span class="dept">
-        <img class="dept-mark" src="assets/seoultech-cse.png" width="326" height="292" loading="lazy" decoding="async" alt="SEOULTECH">
-        <span class="dept-name">서울과학기술대학교</span>
+        <a class="dept-link" href="https://www.seoultech.ac.kr/" target="_blank" rel="noopener noreferrer" title="서울과학기술대학교 (새 창)">
+          <img class="dept-mark" src="assets/seoultech-cse.png" width="326" height="292" loading="lazy" decoding="async" alt="SEOULTECH">
+          <span class="dept-name">서울과학기술대학교</span>
+        </a>
         <span class="dept-bar" aria-hidden="true"></span>
-        <span class="dept-sub">컴퓨터공학과</span>
+        <a class="dept-link" href="https://computer.seoultech.ac.kr/" target="_blank" rel="noopener noreferrer" title="컴퓨터공학과 (새 창)"><span class="dept-sub">컴퓨터공학과</span></a>
       </span>
     </div>
     <div class="f-legal">
@@ -1033,11 +1111,11 @@ select.tin option{background:var(--ink-2);color:#fff}
   /* ---------- header + progress + parallax ---------- */
   var bar = document.getElementById('top-bar');
   var prog = document.getElementById('progress');
-  // 헤더 색을 배경 그라데이션의 현재 밝기에 맞춘다 (23 -> 44)
+  // 헤더 색을 배경 그라데이션의 현재 밝기에 맞춘다 (23 -> 36)
   var root = document.documentElement;
   var lastTint = -1;
   function tintHeader(t) {
-    var v = Math.round(23 + (44 - 23) * t);
+    var v = Math.round(23 + (36 - 23) * t);
     if (v === lastTint) return;          // 값이 같으면 건드리지 않는다 (배경 전환이 매 프레임 재시작되지 않게)
     lastTint = v;
     root.style.setProperty('--hdr-rgb', v + ',' + v + ',' + v);
@@ -2493,6 +2571,89 @@ window.EPUI = {
     } else res = { ok: false, error: 'UNKNOWN_ACTION' };
     return new Promise(function (r) { setTimeout(function () { r(res); }, 120); });
   }
+})();
+</script>
+
+<script>
+/* ============ design pass · 0922 ============ */
+(function () {
+  /* 한글이 들어간 .lab 에는 .ko 를 붙여 자간을 풀어 준다 — 나중에 그려지는 라벨까지 */
+  var HAN = /[ㄱ-ㆎ가-힣]/;
+  function tag(n) {
+    if (!n || n.nodeType !== 1) return;
+    if (n.classList.contains('lab') && HAN.test(n.textContent)) n.classList.add('ko');
+    var l = n.querySelectorAll('.lab');
+    for (var i = 0; i < l.length; i++) if (HAN.test(l[i].textContent)) l[i].classList.add('ko');
+  }
+  tag(document.body);
+  if ('MutationObserver' in window) {
+    new MutationObserver(function (ms) {
+      for (var i = 0; i < ms.length; i++) {
+        var a = ms[i].addedNodes;
+        for (var j = 0; j < a.length; j++) tag(a[j]);
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+
+  /* 카카오톡·인스타그램 등 앱 안 브라우저 → 구글 로그인이 거부되므로 미리 안내 */
+  var ua = navigator.userAgent || '';
+  var inapp = /KAKAOTALK|Instagram|FBAN|FBAV|NAVER\(inapp|Line\/|everytimeApp|DaumApps|; wv\)/i.test(ua);
+  var bar = document.getElementById('inapp');
+  var KEY = 'endpoint.inapp.dismissed';
+  var dismissed = false;
+  try { dismissed = sessionStorage.getItem(KEY) === '1'; } catch (e) {}
+  if (inapp && bar && !dismissed) {
+    bar.hidden = false;
+    var open = document.getElementById('inapp-open');
+    var here = location.href;
+    if (/KAKAOTALK/i.test(ua)) {
+      open.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(here);
+    } else if (/Android/i.test(ua)) {
+      open.href = 'intent://' + here.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+    } else {
+      open.addEventListener('click', function (e) {
+        e.preventDefault();
+        try { navigator.clipboard.writeText(here); } catch (err) {}
+        open.querySelector('span').textContent = '주소 복사됨 · Safari에 붙여넣기';
+      });
+    }
+    document.getElementById('inapp-x').addEventListener('click', function () {
+      bar.hidden = true;
+      try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
+    });
+  }
+})();
+</script>
+
+<script>
+/* 심사 비중 원형 그래프: 조각·범례에 올리면 가운데 수치가 바뀜 (터치는 탭으로 전환) */
+(function () {
+  var pie = document.getElementById('pie'); if (!pie) return;
+  var c = pie.querySelector('.pie-c'), b = c.querySelector('b'), t = c.querySelector('span');
+  var D = { j: ['60%', '심사위원 점수'], v: ['40%', '참가자 투표'] };
+  function set(k) {
+    if (k && D[k]) { pie.setAttribute('data-h', k); b.textContent = D[k][0]; t.textContent = D[k][1]; }
+    else { pie.removeAttribute('data-h'); b.textContent = '60 : 40'; t.textContent = '심사위원 : 투표'; }
+  }
+  pie.querySelectorAll('[data-k]').forEach(function (el) {
+    el.addEventListener('pointerenter', function (e) { if (e.pointerType !== 'touch') set(el.getAttribute('data-k')); });
+    el.addEventListener('pointerleave', function (e) { if (e.pointerType !== 'touch') set(null); });
+    el.addEventListener('click', function () { var k = el.getAttribute('data-k'); set(pie.getAttribute('data-h') === k ? null : k); });
+  });
+})();
+/* 문의 메일: 메일 앱은 새 창으로 열고, 메일 앱이 없는 환경을 위해 주소도 복사 */
+(function () {
+  var a = document.getElementById('mail-link'); if (!a) return;
+  var addr = 'recognize@seoultech.ac.kr', toast;
+  a.addEventListener('click', function () {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+    navigator.clipboard.writeText(addr).then(function () {
+      if (!toast) { toast = document.createElement('div'); toast.className = 'toast'; toast.setAttribute('role', 'status'); document.body.appendChild(toast); }
+      toast.textContent = addr + ' 주소를 복사했어요';
+      toast.classList.add('on'); clearTimeout(toast._t);
+      toast._t = setTimeout(function () { toast.classList.remove('on'); }, 2400);
+    }).catch(function () {});
+  });
 })();
 </script>
 </body>
