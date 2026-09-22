@@ -4,7 +4,7 @@
  * Apps Script 는 프로젝트 안의 .gs 파일을 모두 한 스코프로 합치므로,
  * 이 파일을 Code.gs 옆에 "Board.gs" 로 추가하면 Code.gs 의 doPost 가
  * board_() 를 바로 부를 수 있다. CONFIG, verifyIdToken_, findMine_,
- * safeText_ 는 Code.gs 의 것을 그대로 쓴다.
+ * safeText_, ss_, once_ 는 Code.gs 의 것을 그대로 쓴다.
  *
  * 규칙
  *  - 한 계정은 '팀 모집' 글(team, 완료되면 done) 하나와
@@ -16,11 +16,15 @@
  *  - 셀에 쓰는 모든 값은 텍스트 서식(@)으로 고정한다. '=' 로 시작하는 입력이 수식으로
  *    해석되어 다른 탭(신청서)을 읽어 가는 것을 막기 위해서다.
  *
+ * [속도] 게시판 탭도 한 번의 요청 안에서 한 번만 읽는다(BMEMO). 글을 쓴 뒤에도
+ *        시트를 다시 읽지 않고 메모를 직접 고쳐 목록을 만든다. 예전에는 글 하나
+ *        올릴 때 스프레드시트를 세 번 열고 시트를 다섯 번 읽었다.
+ *
  * 요청 (모두 POST, idToken 필수)
  *  { action:'board.list' }
- *  { action:'board.create', data:{ kind:'team'|'person', ... } }
- *  { action:'board.update', id, data:{ ... } }      kind:'done' 을 보내면 모집 완료
- *  { action:'board.delete', id }
+ *  { action:'board.create', nonce, data:{ kind:'team'|'person', ... } }
+ *  { action:'board.update', nonce, id, data:{ ... } }   kind:'done' 을 보내면 모집 완료
+ *  { action:'board.delete', nonce, id }
  */
 
 var BOARD_HEADERS = [
@@ -31,6 +35,9 @@ var BOARD_HEADERS = [
 var BOARD_CLUBS = ['다락방', 'PLUM', 'EC', 'NL', 'TCP'];
 var BOARD_LIMIT = { title: 80, desc: 600, team: 40, name: 30, meta: 60, intro: 800, github: 200 };
 
+/** 한 번의 요청이 끝날 때까지만 사는 메모 (Code.gs 의 MEMO 와 같은 역할) */
+var BMEMO = { sh: null, headers: null, rows: null, lastRow: 0 };
+
 function board_(op, claims, body) {
   if (op === 'list') return boardList_(claims);
 
@@ -38,14 +45,19 @@ function board_(op, claims, body) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    var res;
-    if (op === 'create')      res = boardCreate_(claims, body.data || {});
-    else if (op === 'update') res = boardUpdate_(claims, String(body.id || ''), body.data || {});
-    else if (op === 'delete') res = boardDelete_(claims, String(body.id || ''));
-    else return { ok: false, error: 'UNKNOWN_ACTION' };
+    // 응답이 끊겨 화면이 같은 요청을 다시 보내면, 처리하지 않고 먼젓번 결과를 돌려준다.
+    // (Apps Script 는 처리를 끝내고도 응답만 흘려보내는 일이 있다. 그때 화면이 다시
+    //  보내면 예전에는 "이미 글이 있습니다" 라는 엉뚱한 오류가 떴다)
+    var res = once_(claims, body.nonce, function () {
+      if (op === 'create') return boardCreate_(claims, body.data || {});
+      if (op === 'update') return boardUpdate_(claims, String(body.id || ''), body.data || {});
+      if (op === 'delete') return boardDelete_(claims, String(body.id || ''));
+      return { ok: false, error: 'UNKNOWN_ACTION' };
+    });
 
     // 바뀐 목록을 응답에 같이 담는다. 화면이 board.list 를 다시 부르지 않아도 되므로
     // 글 하나 올릴 때마다 들던 왕복 한 번(1~2초)이 통째로 사라진다.
+    // 목록은 메모에서 만들어지므로 시트를 다시 읽지 않는다.
     if (res && res.ok) {
       var full = boardList_(claims);
       res.items = full.items;
@@ -61,14 +73,15 @@ function board_(op, claims, body) {
 
 /** 게시판 탭. 없으면 만든다 (동시에 두 요청이 만들려 하면 한쪽은 이미 생긴 탭을 쓴다). */
 function boardSheet_() {
-  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  if (BMEMO.sh) return BMEMO.sh;
+  var ss = ss_();                       // 스프레드시트는 요청당 한 번만 연다
   var sh = ss.getSheetByName(CONFIG.BOARD_SHEET);
   if (!sh) {
     try { sh = ss.insertSheet(CONFIG.BOARD_SHEET); }
     catch (e) { sh = ss.getSheetByName(CONFIG.BOARD_SHEET); }
     if (!sh) throw new Error('게시판 탭을 만들지 못했습니다');
   }
-  return sh;
+  return (BMEMO.sh = sh);
 }
 
 /**
@@ -76,6 +89,7 @@ function boardSheet_() {
  * 열 위치가 아니라 이름으로 읽고 쓰므로, 운영진이 시트에 열을 끼워 넣어도 어긋나지 않는다.
  */
 function boardHeaders_(sh) {
+  if (BMEMO.headers) return BMEMO.headers;
   var last = sh.getLastColumn();
   var row = last > 0 ? sh.getRange(1, 1, 1, last).getValues()[0].map(function (h) { return String(h); }) : [];
   var fresh = row.every(function (h) { return !h; });
@@ -89,13 +103,17 @@ function boardHeaders_(sh) {
     sh.setFrozenRows(1);
     sh.getRange(1, 1, 1, row.length).setFontWeight('bold');
   }
-  return row;
+  return (BMEMO.headers = row);
 }
 
 /** 시트 전체를 {row, rec} 목록으로 읽는다. rec 는 헤더 이름 → 값. */
 function boardRows_(sh, headers) {
-  var n = sh.getLastRow() - 1;
-  if (n < 1) return [];
+  if (BMEMO.rows) return BMEMO.rows;
+  var last = sh.getLastRow();
+  BMEMO.lastRow = last;
+  var n = last - 1;
+  if (n < 1) return (BMEMO.rows = []);
+
   var values = sh.getRange(2, 1, n, headers.length).getValues();
   var out = [];
   for (var i = 0; i < values.length; i++) {
@@ -103,16 +121,25 @@ function boardRows_(sh, headers) {
     for (var j = 0; j < headers.length; j++) rec[headers[j]] = values[i][j];
     if (String(rec.id || '')) out.push({ row: i + 2, rec: rec });
   }
-  return out;
+  return (BMEMO.rows = out);
 }
 
-/** 한 행을 텍스트 서식으로 고정한 뒤 쓴다. row 가 없으면 맨 아래에 추가한다. */
+/**
+ * 한 행을 텍스트 서식으로 고정한 뒤 쓴다. row 가 없으면 맨 아래에 추가한다.
+ * 쓰고 나서 메모도 같이 고쳐 두므로, 이 뒤에 목록을 만들 때 시트를 다시 읽지 않는다.
+ */
 function boardWrite_(sh, headers, rec, row) {
-  var target = row || sh.getLastRow() + 1;
+  var target = row || (BMEMO.lastRow || sh.getLastRow()) + 1;
   var range = sh.getRange(target, 1, 1, headers.length);
   range.setNumberFormat('@');
   range.setValues([headers.map(function (h) { return rec[h] === undefined || rec[h] === null ? '' : rec[h]; })]);
   SpreadsheetApp.flush();
+
+  if (!row) {
+    BMEMO.lastRow = target;
+    if (BMEMO.rows) BMEMO.rows.push({ row: target, rec: rec });
+  }
+  // 수정일 때는 rec 이 메모 안의 그 객체라 따로 손댈 것이 없다
   return target;
 }
 
@@ -301,10 +328,19 @@ function boardUpdate_(claims, id, d) {
 function boardDelete_(claims, id) {
   var sh = boardSheet_();
   var headers = boardHeaders_(sh);
-  var hit = boardRows_(sh, headers).filter(function (r) { return String(r.rec.id) === id; })[0];
+  var rows = boardRows_(sh, headers);
+  var hit = rows.filter(function (r) { return String(r.rec.id) === id; })[0];
   if (!hit) return { ok: false, error: 'NOT_FOUND' };
   if (!boardIsMine_(hit.rec, claims)) return { ok: false, error: 'FORBIDDEN' };
+
   sh.deleteRow(hit.row);
   SpreadsheetApp.flush();
+
+  // 메모에서도 지우고, 아래에 있던 글들의 행 번호를 하나씩 당긴다.
+  // 그래야 이 뒤에 이어지는 수정·목록이 시트를 다시 읽지 않고도 맞는다.
+  BMEMO.rows = rows.filter(function (r) { return r !== hit; });
+  BMEMO.rows.forEach(function (r) { if (r.row > hit.row) r.row -= 1; });
+  if (BMEMO.lastRow) BMEMO.lastRow -= 1;
+
   return { ok: true };
 }

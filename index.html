@@ -10,6 +10,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@100;200;300;400;500;600;700&display=swap">
+<!-- 로그인·신청서·게시판이 쓰는 구글 서버와 미리 손을 잡아 둔다. 첫 요청에서 DNS 조회와
+     TLS 악수에 드는 0.2~0.4초를 페이지가 그려지는 동안 미리 치러 두는 것이다.
+     script.googleusercontent.com 은 /exec 가 결과를 넘겨주는 곳이라 같이 걸어 둔다. -->
+<link rel="preconnect" href="https://accounts.google.com">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
 <style>
 :root{
   --ink:#191919; --ink-2:#1F1F1F; --ink-3:#252525;
@@ -1220,6 +1226,33 @@ window.EPSession = (function () {
   };
   var user = null, subs = [], inited = false, initWait = [];
   var probeWait = null;           // 같은 질문을 동시에 여러 번 보내지 않으려고
+  var bootFor = '', bootWait = null;   // 로그인 직후 첫 요청을 화면들이 나눠 쓰도록
+
+  /**
+   * POST 한 번. 평범한 fetch 에 두 가지를 덧댔다.
+   *  - 너무 오래 걸리면 끊는다. 안 그러면 탭이 닫힐 때까지 매달려 있다.
+   *  - Apps Script 는 일시적으로 막히면 JSON 대신 HTML 안내 페이지를 돌려준다.
+   *    그대로 r.json() 을 부르면 예외가 나서 "네트워크 오류"로 보이는데,
+   *    사실은 서버가 일을 다 끝낸 뒤인 경우가 많다. 여기서 BAD_RESPONSE 로 가려내
+   *    위쪽에서 다시 보내거나 결과를 확인할 수 있게 한다.
+   */
+  function send(text, ms) {
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, ms || 30000) : 0;
+    var done = function () { if (timer) clearTimeout(timer); };
+    return fetch(CFG.ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: text,
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        done();
+        if (!r.ok) throw new Error('HTTP_' + r.status);
+        try { return JSON.parse(t); } catch (e) { throw new Error('BAD_RESPONSE'); }
+      });
+    }, function (err) { done(); throw err; });
+  }
 
   function decodeJWT(t) {
     try {
@@ -1326,21 +1359,78 @@ window.EPSession = (function () {
 
     signOut: function () {
       try { if (window.google && window.google.accounts) window.google.accounts.id.disableAutoSelect(); } catch (e) {}
-      user = null; persist(); emit();
+      user = null; bootFor = ''; bootWait = null; persist(); emit();
+    },
+
+    /** 쓰기 요청에 붙일 표. 같은 표를 단 요청을 서버가 두 번 처리하지 않는다. */
+    nonce: function () {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
     },
 
     /**
      * 서버 호출. 항상 현재 토큰을 실어 보낸다.
      * Content-Type 을 text/plain 으로 두는 이유는 BACKEND.md 5절 참고 (바꾸면 CORS 에 막힌다).
+     *
+     * opts
+     *   nonce   : 쓰기 요청에 붙이는 표. 이게 있으면 다시 보내도 안전하다 —
+     *             서버가 먼젓번 결과를 그대로 돌려주지, 같은 일을 또 하지 않는다.
+     *   retry   : false 면 한 번만 보낸다 (기본은 실패 시 한 번 더)
+     *   timeout : 밀리초. 기본 30초.
      */
-    api: function (action, extra) {
+    api: function (action, extra, opts) {
       var u = this.get();
+      var o = opts || {};
       var body = Object.assign({ action: action, idToken: u ? u.token : '' }, extra || {});
-      return fetch(CFG.ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(body)
-      }).then(function (r) { return r.json(); });
+      if (o.nonce) body.nonce = o.nonce;
+      var text = JSON.stringify(body);
+      var tries = o.retry === false ? 1 : 2;
+
+      function attempt(n) {
+        return send(text, o.timeout)['catch'](function (err) {
+          if (n >= tries) throw err;
+          // 잠깐 쉬었다 한 번 더. Apps Script 가 순간적으로 막히는 일이 드물지 않다.
+          return new Promise(function (r) { setTimeout(r, 700); }).then(function () { return attempt(n + 1); });
+        });
+      }
+      return attempt(1);
+    },
+
+    /**
+     * 로그인 직후 딱 한 번 보내는 요청. 신청 내역과 게시판 목록을 한꺼번에 받아 온다.
+     *
+     * 예전에는 신청서 화면과 게시판이 각자 물었다. Apps Script 는 같은 사용자의 요청을
+     * 줄 세워 처리하므로, 뒤의 것이 앞의 것을 통째로 기다렸다 — 로그인하고 화면이
+     * 준비되기까지 3~5초가 걸린 주된 까닭이다. 이제 두 화면이 이 함수를 불러
+     * 같은 응답을 나눠 쓴다. 왕복이 하나로 줄고, 서버에서도 시트를 한 번만 연다.
+     *
+     * 돌려주는 값
+     *   { ok:true,  api, me:{...}, board:{...} }  새 서버 (api 5 이상)
+     *   { ok:false, api, legacy:true }            옛 서버 — 화면이 예전처럼 따로 묻는다
+     *   { ok:false, authFailed:true }             토큰 만료
+     */
+    boot: function () {
+      var u = this.get();
+      if (!u || DEMO) return Promise.resolve(null);
+      if (bootFor === u.token && bootWait) return bootWait;
+      bootFor = u.token;
+      var self = this;
+
+      bootWait = this.probe().then(function (api) {
+        // 옛 서버(api 4 이하)는 init 을 모른다. 더 옛 서버는 모르는 action 을
+        // '빈 제출'로 잘못 처리해 신청 행을 지워버리므로, 확인 전에는 보내지 않는다.
+        if (!(api >= 5)) return { ok: false, api: api, legacy: true };
+        return self.api('init').then(function (d) {
+          if (d && d.ok) { d.api = api; return d; }
+          if (d && d.error === 'AUTH_FAILED') return { ok: false, api: api, authFailed: true };
+          return { ok: false, api: api, legacy: true };
+        });
+      })['catch'](function () { return { ok: false, api: 0, legacy: true }; })
+        .then(function (r) {
+          // 실패는 기억하지 않는다. 잠깐 끊겼다고 '옛 서버' 취급이 굳어지면 안 된다.
+          if (!r || (!r.ok && !r.authFailed)) bootFor = '';
+          return r;
+        });
+      return bootWait;
     },
 
     /**
@@ -1350,7 +1440,7 @@ window.EPSession = (function () {
      * 실패(0)는 기억하지 않는다 — 잠깐의 장애로 기능이 계속 잠기면 안 되니까.
      */
     probe: function () {
-      var PKEY = 'endpoint.api.v1';
+      var PKEY = 'endpoint.api.v2';   // 재배포로 세대가 바뀌었으니 옛 탭의 값을 물려받지 않는다
       try {
         var c = Number(sessionStorage.getItem(PKEY));
         if (c > 0) return Promise.resolve(c);
@@ -1393,8 +1483,10 @@ window.EPUI = {
 (function () {
   if (!window.EPCONFIG.ENDPOINT) return;
   var warm = function () { window.EPSession.probe(); };
-  if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 2500 });
-  else setTimeout(warm, 1200);
+  // 사람이 로그인 버튼을 누르기 전에 컨테이너가 깨어 있도록 일찍 깨운다.
+  // 이 한 번이 로그인 직후 첫 요청에서 1~2초를 덜어 준다.
+  if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 1200 });
+  else setTimeout(warm, 800);
 })();
 
 /* ==============================================================
@@ -1869,53 +1961,54 @@ window.EPUI = {
   }
 
   /* ====================== 기존 신청 내역 불러오기 ====================== */
+  /**
+   * 로그인하면 이 계정이 이미 냈는지 확인한다.
+   * 새 서버(api 5 이상)에서는 사이트 공통 boot() 가 게시판 목록까지 한 번에 받아 오므로
+   * 이 화면은 그 결과를 나눠 쓰기만 한다 — 요청이 따로 나가지 않는다.
+   */
   function lookUp() {
     setMode('loading');
-    // 먼저 서버가 조회를 아는 버전인지 확인한다.
-    // 옛 버전은 조회 요청을 빈 제출로 처리해 기존 답변을 지워버리므로, 그럴 땐 아예 묻지 않는다.
-    fetch(CFG.ENDPOINT + (CFG.ENDPOINT.indexOf('?') === -1 ? '?' : '&') + 'probe=1')
-      .then(function (r) { return r.json(); })
-      .then(function (h) {
-        if (!h || !(h.api >= 2)) {
-          loadDraft();
-          setMode('new');
-          return null;
-        }
-        return askMine();
-      })
-      ['catch'](function () { loadDraft(); setMode('new'); });
+    S.boot().then(function (b) {
+      if (!auth.on) return null;                       // 그 사이 로그아웃했으면 그만둔다
+      if (b && b.authFailed) { signOutExpired(); return null; }
+      if (b && b.ok && b.me) { useMine(b.me); return null; }
+      // 옛 서버: 조회를 아는 버전(api 2 이상)이면 예전처럼 따로 묻는다.
+      // 그보다 옛 버전은 조회 요청을 빈 제출로 처리해 기존 답변을 지워버리므로 아예 묻지 않는다.
+      if (b && b.api >= 2) return askMine();
+      loadDraft(); setMode('new');
+      return null;
+    })['catch'](function () { loadDraft(); setMode('new'); });
   }
 
   function askMine() {
-    return fetch(CFG.ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'me', idToken: auth.token })
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d && d.ok && d.found) {
-          mine = d;
-          fillForm(d.answers);
-          if (hasDraft()) {       // 토큰 만료 등으로 저장 못 한 수정본이 있으면 이어서 고치게 한다
-            loadDraft();
-            setMode('edit');
-            msg('저장하지 못한 수정 내용을 복원했습니다. 확인 후 저장을 눌러 주세요.', 'ok');
-          } else {
-            dropDraft();          // 시트 내용이 기준이므로 임시 저장본은 버린다
-            setMode('view');
-          }
-          return;
-        }
-        if (d && d.error === 'AUTH_FAILED') { signOutExpired(); return; }
-        loadDraft();
-        setMode('new');
-      })
+    return S.api('me')
+      .then(useMine)
       ['catch'](function () {
         loadDraft();
         setMode('new');
         msg('기존 신청 내역을 불러오지 못했습니다. 그대로 제출하면 기존 신청서가 갱신되므로 중복 접수되지는 않습니다.', 'err');
       });
+  }
+
+  /** 조회 결과를 화면에 반영한다 (boot 로 받았든 따로 물었든 같은 처리) */
+  function useMine(d) {
+    if (!auth.on) return;
+    if (d && d.ok && d.found) {
+      mine = d;
+      fillForm(d.answers);
+      if (hasDraft()) {         // 토큰 만료 등으로 저장 못 한 수정본이 있으면 이어서 고치게 한다
+        loadDraft();
+        setMode('edit');
+        msg('저장하지 못한 수정 내용을 복원했습니다. 확인 후 저장을 눌러 주세요.', 'ok');
+      } else {
+        dropDraft();            // 시트 내용이 기준이므로 임시 저장본은 버린다
+        setMode('view');
+      }
+      return;
+    }
+    if (d && d.error === 'AUTH_FAILED') { signOutExpired(); return; }
+    loadDraft();
+    setMode('new');
   }
 
   elEdit.addEventListener('click', function () {
@@ -2021,28 +2114,11 @@ window.EPUI = {
       return;
     }
 
-    fetch(CFG.ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ idToken: auth.token, answers: v })
-    })
-      .then(function (r) { return r.json(); })
+    // nonce 를 달아 두면 같은 제출이 두 번 처리되지 않는다.
+    // 그래서 응답이 끊겼을 때 안심하고 다시 보낼 수 있다 (S.api 가 알아서 한 번 더 보낸다).
+    S.api('submit', { answers: v }, { nonce: S.nonce() })
       .then(function (d) {
-        if (d && d.ok) {
-          if (editing) {
-            // 수정은 완료 화면까지 갈 필요 없이 제자리에서 마무리한다
-            v['제출시각'] = new Date().toISOString();
-            v['이메일'] = auth.email;
-            mine = { found: true, answers: v };
-            dropDraft();
-            setMode('view');
-            msg('수정 내용을 저장했습니다.', 'ok');
-            scrollTo(elState, 'center');
-            return;
-          }
-          finish(v, false);
-          return;
-        }
+        if (d && d.ok) { succeed(); return; }
         if (d && d.error === 'AUTH_FAILED') {
           signOutExpired();
         } else {
@@ -2050,8 +2126,53 @@ window.EPUI = {
         }
       })
       ['catch'](function () {
-        fail('네트워크 오류로 제출하지 못했습니다. 잠시 후 다시 눌러주세요. 같은 계정으로 여러 번 눌러도 중복 접수되지 않습니다.');
+        // 두 번 보내고도 응답을 못 받았다. 그래도 시트에는 들어갔을 수 있으므로
+        // (Apps Script 는 일을 끝내고 응답만 흘려보내는 일이 있다) 직접 확인한다.
+        var lost = '네트워크 오류로 제출하지 못했습니다. 잠시 후 다시 눌러주세요. 같은 계정으로 여러 번 눌러도 중복 접수되지 않습니다.';
+        msg('응답이 늦어 접수 여부를 확인하는 중입니다...', '');
+        S.api('me', null, { retry: false })
+          .then(function (d) {
+            if (d && d.ok && d.found && landed(d.answers)) { succeed(); return; }
+            fail(lost);
+          })
+          ['catch'](function () { fail(lost); });
       });
+
+    /**
+     * 시트에 있는 내용이 방금 보낸 것과 같은가.
+     * "행이 있다"만으로는 모자란다 — 수정 제출이면 행은 원래부터 있었으니
+     * 저장이 안 됐는데도 접수된 것처럼 보일 수 있다. 그래서 값을 맞춰 본다.
+     * 서버가 값을 다듬는 방식(배열은 쉼표로 잇고, 앞의 '=' 는 걷어낸다)에 맞춰
+     * 양쪽을 같은 모양으로 만든 뒤 비교한다.
+     */
+    function landed(answers) {
+      if (!answers) return false;
+      var norm = function (x) {
+        return [].concat(x == null ? '' : x).join(', ').replace(/^[=\s]+/, '').trim();
+      };
+      for (var i = 0; i < SCHEMA.length; i++) {
+        for (var j = 0; j < SCHEMA[i].q.length; j++) {
+          var k = SCHEMA[i].q[j].k;
+          if (norm(answers[k]) !== norm(v[k])) return false;
+        }
+      }
+      return true;
+    }
+
+    function succeed() {
+      if (editing) {
+        // 수정은 완료 화면까지 갈 필요 없이 제자리에서 마무리한다
+        v['제출시각'] = new Date().toISOString();
+        v['이메일'] = auth.email;
+        mine = { found: true, answers: v };
+        dropDraft();
+        setMode('view');
+        msg('수정 내용을 저장했습니다.', 'ok');
+        scrollTo(elState, 'center');
+        return;
+      }
+      finish(v, false);
+    }
   });
 
   function fail(text) {
@@ -2178,39 +2299,72 @@ window.EPUI = {
   };
 
   /* ============================== 서버 ============================== */
-  function call(action, extra) {
+  function call(action, extra, opts) {
     if (S.demo) return demoCall(action, extra || {});
-    return S.api(action, extra).then(function (d) {
+    return S.api(action, extra, opts).then(function (d) {
       if (d && d.error === 'AUTH_FAILED') { gateNote = ERR.AUTH_FAILED; S.signOut(); }
       return d;
     });
+  }
+  /** 서버가 준 목록을 화면 상태에 앉힌다 */
+  function fill(d) {
+    items = d.items || [];
+    // me 가 안 왔으면 갖고 있던 것을 지키지 않고 비우면, 글쓰기 폼을 미리 채우는
+    // 신청 정보(이름·동아리·희망역할)가 사라진다. 있는 것만 갈아끼운다.
+    me = d.me || me || {};
+    state.ready = true;
+    render();
   }
   function load() {
     state.busy = true; renderBusy('게시판을 불러오는 중');
     return call('board.list').then(function (d) {
       state.busy = false;
       if (!d || !d.ok) { msg((d && ERR[d.error]) || '게시판을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.', true); return; }
-      items = d.items || []; me = d.me || {};
-      state.ready = true;
-      render();
+      fill(d);
     })['catch'](function () { state.busy = false; msg('네트워크 오류로 게시판을 불러오지 못했습니다.', true); });
   }
-  function act(action, extra, okText, btnEl) {
+
+  /**
+   * 글을 쓰거나 고치거나 내린다.
+   *
+   * 여기서 가장 조심하는 것은 "서버는 다 했는데 응답만 못 받은" 경우다. Apps Script 는
+   * 일이 끝난 뒤에도 응답을 흘려보내거나 JSON 대신 안내 페이지를 돌려줄 때가 있다.
+   * 예전에는 그때마다 "네트워크 오류"라고만 띄워서, 실제로는 올라간 글을 두고
+   * 사람이 다시 누르거나 다른 화면에 갔다 와야 결과를 알 수 있었다. 그래서 두 겹을 뒀다.
+   *   1) 모든 쓰기에 nonce 를 단다 → 다시 보내도 서버가 두 번 처리하지 않는다 (S.api 가 재시도)
+   *   2) 그래도 응답을 못 받으면 목록을 다시 읽어, verify 로 실제로 반영됐는지 눈으로 확인한다
+   * verify(items, me) 가 true 면 성공으로 마무리한다.
+   */
+  function act(action, extra, okText, btnEl, verify) {
     if (state.busy) return Promise.resolve(null);
     state.busy = true; msg('');
     var restore = btnBusy(btnEl);
     elBoard.classList.add('wait');
     var settle = function () { state.busy = false; elBoard.classList.remove('wait'); restore(); };
 
-    return call(action, extra).then(function (d) {
+    return call(action, extra, { nonce: S.nonce() }).then(function (d) {
       settle();
       if (!d || !d.ok) { msg((d && ERR[d.error]) || '처리하지 못했습니다. (' + ((d && d.error) || '오류') + ')', true); return null; }
       if (okText) msg(okText);
-      // 새 서버(api 4)는 바뀐 목록을 응답에 함께 준다. 그러면 다시 물을 필요가 없어
+      // 새 서버는 바뀐 목록을 응답에 함께 준다. 그러면 다시 물을 필요가 없어
       // 글 하나 올릴 때마다 들던 왕복 한 번이 사라진다. 옛 서버면 예전처럼 다시 읽는다.
-      if (d.items) { items = d.items; me = d.me || me; state.ready = true; render(); return d; }
+      if (d.items) { fill(d); return d; }
       return load().then(function () { return d; });
-    })['catch'](function () { settle(); msg('네트워크 오류로 처리하지 못했습니다.', true); return null; });
+    })['catch'](function () {
+      msg('응답이 늦어 결과를 확인하는 중입니다...');
+      return call('board.list').then(function (d) {
+        settle();
+        if (!d || !d.ok) { msg('네트워크 오류로 처리하지 못했습니다. 잠시 후 다시 눌러주세요.', true); return null; }
+        fill(d);
+        if (verify && verify(items, me)) { msg(okText || '처리했습니다.'); return { ok: true, recovered: true }; }
+        msg('네트워크 오류로 처리하지 못했습니다. 잠시 후 다시 눌러주세요.', true);
+        return null;
+      })['catch'](function () {
+        settle();
+        msg('네트워크 오류로 처리하지 못했습니다. 잠시 후 다시 눌러주세요.', true);
+        return null;
+      });
+    });
   }
 
   /* ============================== 카드 ============================== */
@@ -2365,25 +2519,33 @@ window.EPUI = {
       if (data.have !== undefined &&
           !(data.have >= 1 && data.cap >= 2 && data.have <= data.cap && data.cap <= 6)) { msg(ERR.BAD_COUNT, true); return; }
 
-      act('board.update', { id: p.id, data: data }, '수정했습니다.', b)
-        .then(function (d) { if (d) { state.editing = null; render(); } });
+      // 응답을 못 받았을 때, 다시 읽은 목록에서 이 글이 실제로 바뀌었는지 보는 기준
+      var was = p.updatedAt;
+      act('board.update', { id: p.id, data: data }, '수정했습니다.', b, function (its) {
+        var now = its.filter(function (x) { return x.id === p.id; })[0];
+        return !!now && now.updatedAt !== was;
+      }).then(function (d) { if (d) { state.editing = null; render(); } });
       return;
     }
     if (a === 'finish') {
       if (!window.confirm('모집을 마감할까요? 마감하면 "모집 완료된 팀"으로 옮겨지고, 팀 소개와 GitHub 링크를 채울 수 있습니다. 나중에 다시 모집 중으로 되돌릴 수 있습니다.')) return;
-      act('board.update', { id: p.id, data: { kind: 'done' } }, '모집을 마감했습니다. 팀 소개와 GitHub 링크를 채워주세요.', b)
-        .then(function (d) { if (d) { state.tab = 'done'; syncTabs(); state.editing = p.id; render(); } });
+      act('board.update', { id: p.id, data: { kind: 'done' } }, '모집을 마감했습니다. 팀 소개와 GitHub 링크를 채워주세요.', b, function (its) {
+        return its.some(function (x) { return x.id === p.id && x.kind === 'done'; });
+      }).then(function (d) { if (d) { state.tab = 'done'; syncTabs(); state.editing = p.id; render(); } });
       return;
     }
     if (a === 'reopen') {
       if (!window.confirm('다시 모집 중으로 되돌릴까요? “모집 중인 팀” 탭으로 옮겨집니다.')) return;
-      act('board.update', { id: p.id, data: { kind: 'team' } }, '다시 모집 중으로 바꿨습니다.', b)
-        .then(function (d) { if (d) { state.editing = null; state.tab = 'team'; syncTabs(); render(); } });
+      act('board.update', { id: p.id, data: { kind: 'team' } }, '다시 모집 중으로 바꿨습니다.', b, function (its) {
+        return its.some(function (x) { return x.id === p.id && x.kind === 'team'; });
+      }).then(function (d) { if (d) { state.editing = null; state.tab = 'team'; syncTabs(); render(); } });
       return;
     }
     if (a === 'drop') {
       if (!window.confirm('이 글을 내릴까요? 내린 뒤에 다시 쓸 수 있습니다.')) return;
-      act('board.delete', { id: p.id }, '글을 내렸습니다.', b);
+      act('board.delete', { id: p.id }, '글을 내렸습니다.', b, function (its) {
+        return !its.some(function (x) { return x.id === p.id; });
+      });
       return;
     }
   });
@@ -2441,7 +2603,9 @@ window.EPUI = {
     if (!data.club || !data.title || (kind === 'team' && !data.team)) {
       msg(kind === 'team' ? '팀명, 동아리, 모집 제목은 필수입니다.' : '동아리와 한 줄 소개는 필수입니다.', true); return;
     }
-    act('board.create', { data: data }, kind === 'team' ? '모집글을 올렸습니다.' : '팀 찾는 글을 올렸습니다.', $('tb-post'))
+    // 응답을 못 받았을 때, 다시 읽은 목록에 내 글이 실제로 올라갔는지 보는 기준
+    act('board.create', { data: data }, kind === 'team' ? '모집글을 올렸습니다.' : '팀 찾는 글을 올렸습니다.', $('tb-post'),
+      function (its, m) { return kind === 'team' ? !!(m && m.hasTeam) : !!(m && m.hasPerson); })
       .then(function (d) { if (d) { closeForm(); state.tab = kind; syncTabs(); render(); } });
   }
 
@@ -2510,20 +2674,23 @@ window.EPUI = {
     renderMe(u);
     if (!u) { renderGate(); return; }
     if (S.demo) { elGate.hidden = true; elBody.hidden = false; load(); return; }
-    // 옛 서버에 글쓰기 요청이 닿으면 신청 행이 비워질 수 있으므로, 버전을 확인한 뒤에만 연다
+    // 옛 서버에 글쓰기 요청이 닿으면 신청 행이 비워질 수 있으므로, 버전을 확인한 뒤에만 연다.
+    // 새 서버에서는 boot() 가 버전 확인과 목록 받기를 한 번에 끝낸다. 신청서 화면과
+    // 같은 응답을 나눠 쓰므로, 예전처럼 신청서 요청 뒤로 밀려 기다릴 일도 없다.
     elAct.innerHTML = window.EPUI.loading('서버를 확인하는 중');
-    S.probe().then(function (api) {
-      if (S.get() !== u) return;                 // 그 사이 로그아웃했으면 무시
+    var open = function () {
       // 게이트를 닫을 때 안에 있던 로딩 표시도 같이 걷어낸다.
       // 안 그러면 보이지도 않는 채로 계속 돌면서 배터리만 먹는다.
-      if (api >= 3) {
-        elAct.innerHTML = ''; elGate.hidden = true; elBody.hidden = false;
-        // 게시판을 보고 있지 않다면 목록은 미리 받아 두기만 한다.
-        // 지금 보고 있는 화면(예: 신청서)의 요청이 이것 뒤로 밀리지 않도록 한 박자 늦춘다.
-        if (location.hash.indexOf('/teams') !== -1) load();
-        else setTimeout(function () { if (S.get() === u) load(); }, 700);
-      }
-      else serverTooOld();
+      elAct.innerHTML = ''; elGate.hidden = true; elBody.hidden = false;
+    };
+    S.boot().then(function (b) {
+      if (S.get() !== u) return;                 // 그 사이 로그아웃했으면 무시
+      if (b && b.ok && b.board && b.board.ok) { open(); fill(b.board); return; }
+      if (b && b.api >= 3) { open(); load(); return; }   // 옛 서버: 예전처럼 따로 받아 온다
+      // 신청서 화면이 먼저 처리했다면 위 S.get() 검사에서 이미 빠져나갔다.
+      // 여기까지 왔다는 건 아무도 처리하지 않았다는 뜻이므로 직접 내보낸다.
+      if (b && b.authFailed) { gateNote = ERR.AUTH_FAILED; S.signOut(); return; }
+      serverTooOld();
     });
   });
 

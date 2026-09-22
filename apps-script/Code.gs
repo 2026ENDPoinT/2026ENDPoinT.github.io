@@ -17,6 +17,12 @@
  *
  * [주의] 코드를 고칠 때마다 "배포 관리 → 편집 → 버전: 새 버전"으로
  *        다시 배포해야 반영된다. URL 은 그대로 유지된다.
+ *
+ * [속도] Apps Script 에서 느린 것은 자바스크립트가 아니라 시트를 오가는 횟수다.
+ *        openById 한 번, getValues 한 번이 각각 수백 ms 다. 그래서 이 파일은
+ *        한 번의 요청 안에서 스프레드시트를 한 번만 열고, 각 탭을 한 번만 읽어
+ *        MEMO 에 담아 두고 돌려 쓴다. 쓰기 뒤에도 시트를 다시 읽지 않고
+ *        MEMO 를 직접 고친다. (그 전에는 글 하나 올릴 때 시트를 5번 읽었다)
  */
 
 var CONFIG = {
@@ -64,6 +70,15 @@ var HEADERS = [
   '계정 식별자'
 ];
 
+/** 이 스크립트가 아는 기능의 세대. 사이트가 doGet 으로 먼저 확인한다. */
+var API_VERSION = 5;
+
+/**
+ * 한 번의 요청이 끝날 때까지만 사는 메모.
+ * 실행마다 새로 만들어지므로 사용자 사이에 값이 섞이지 않는다.
+ */
+var MEMO = { ss: null, sheet: null, apply: null, mine: {} };
+
 /** 최초 1회 실행: 탭과 헤더 행을 만들고 권한을 승인한다. */
 function setup() {
   var sh = getSheet_();
@@ -73,11 +88,12 @@ function setup() {
 /**
  * 배포 상태 확인용. 브라우저로 /exec 주소를 열면 이게 보인다.
  * api 는 이 스크립트가 어떤 기능까지 아는지 알리는 표시다.
- * 신청서 화면은 2 이상일 때 기존 신청 조회를, 게시판은 3 이상일 때 게시판 API 를 쓴다.
+ * 신청서 화면은 2 이상일 때 기존 신청 조회를, 게시판은 3 이상일 때 게시판 API 를,
+ * 5 이상일 때 한 번에 다 받아오는 init 을 쓴다.
  * (옛 버전이 조회 요청을 '빈 제출'로 잘못 처리해 기존 답변을 지우는 것을 막는다)
  */
 function doGet() {
-  return json_({ ok: true, service: 'ENDPoinT apply endpoint', api: 4 });
+  return json_({ ok: true, service: 'ENDPoinT apply endpoint', api: API_VERSION });
 }
 
 /** 사이트에서 오는 신청서 수신 */
@@ -89,6 +105,19 @@ function doPost(e) {
     var claims = verifyIdToken_(body.idToken);
     if (!claims) {
       return json_({ ok: false, error: 'AUTH_FAILED' });
+    }
+
+    // 1-1) 로그인 직후 첫 요청. 신청 내역과 게시판 목록을 한 번에 돌려준다.
+    //      화면마다 따로 묻던 것을 합친 것이다. Apps Script 는 같은 사용자의 요청을
+    //      줄 세워 처리하므로, 요청 두 개가 하나가 되면 기다리는 시간도 통째로 사라진다.
+    //      두 탭 모두 이 실행 안에서 한 번씩만 읽히므로 실제 비용은 조회 하나와 비슷하다.
+    if (body.action === 'init') {
+      return json_({
+        ok: true,
+        api: API_VERSION,
+        me: findMine_(claims),
+        board: board_('list', claims, body)
+      });
     }
 
     // 1-2) 조회 요청이면 기존 신청 내용을 돌려주고 끝낸다
@@ -106,31 +135,14 @@ function doPost(e) {
       return json_({ ok: false, error: 'UNKNOWN_ACTION' });
     }
 
-    // 2) 신청 값 정리 (이메일은 폼 입력이 아니라 토큰에서 가져온다)
-    var answers = body.answers || {};
-    answers['제출시각'] = new Date();
-    answers['이메일'] = claims.email;
-    answers['계정 식별자'] = claims.sub;
-
-    // 3) 동시 제출로 행이 겹치지 않도록 잠금
+    // 2) 동시 제출로 행이 겹치지 않도록 잠금
     var lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
-      var sh = getSheet_();
-      var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-      var row = headers.map(function (h) { return toCell_(answers[h]); });
-
-      var target = CONFIG.UPDATE_IF_EXISTS ? findRowByAccount_(sh, headers, claims) : 0;
-      if (!(target > 0)) target = sh.getLastRow() + 1;
-      // 셀을 텍스트 서식(@)으로 고정해서 '=' 로 시작하는 입력이 수식으로 해석되지 않게 한다.
-      // 계정 식별자(21자리 숫자)가 숫자로 바뀌어 정밀도를 잃는 것도 함께 막는다.
-      var range = sh.getRange(target, 1, 1, row.length);
-      range.setNumberFormat('@');
-      var tsCol = headers.indexOf('제출시각') + 1;
-      if (tsCol > 0) sh.getRange(target, tsCol).setNumberFormat('yyyy-mm-dd hh:mm:ss');
-      range.setValues([row]);
-      SpreadsheetApp.flush();
-      return json_({ ok: true, row: target, updated: CONFIG.UPDATE_IF_EXISTS && target > 0 });
+      // 화면이 응답을 못 받아 같은 내용을 다시 보내도 한 번만 처리한다
+      return json_(once_(claims, body.nonce, function () {
+        return submit_(claims, body.answers || {});
+      }));
     } finally {
       lock.releaseLock();
     }
@@ -139,7 +151,70 @@ function doPost(e) {
   }
 }
 
+/* ------------------------------ 신청서 ------------------------------ */
+
+/** 신청 값을 시트 한 행에 쓴다. 이메일은 폼 입력이 아니라 토큰에서 가져온다. */
+function submit_(claims, answers) {
+  answers['제출시각'] = new Date();
+  answers['이메일'] = claims.email;
+  answers['계정 식별자'] = claims.sub;
+
+  var d = applyData_();
+  var row = d.headers.map(function (h) { return toCell_(answers[h]); });
+
+  var target = CONFIG.UPDATE_IF_EXISTS ? findRowByAccount_(d, claims) : 0;
+  var isNew = !(target > 0);
+  if (isNew) target = d.lastRow + 1;
+
+  var range = d.sheet.getRange(target, 1, 1, row.length);
+  // 셀 서식을 한 번에 건다. '=' 로 시작하는 입력이 수식으로 해석되지 않도록 전부
+  // 텍스트(@)로 고정하고, 제출시각 칸만 날짜로 둔다. 계정 식별자(21자리 숫자)가
+  // 숫자로 바뀌어 정밀도를 잃는 것도 이걸로 막는다.
+  // (예전에는 서식을 두 번 나눠 걸어서 시트를 한 번 더 오갔다)
+  range.setNumberFormats([d.headers.map(function (h) {
+    return h === '제출시각' ? 'yyyy-mm-dd hh:mm:ss' : '@';
+  })]);
+  range.setValues([row]);
+  SpreadsheetApp.flush();
+
+  // 이 실행 안에서 뒤이어 신청 내역을 읽는 곳(게시판의 이름 조회 등)이
+  // 방금 쓴 값을 보도록 메모도 같이 고친다. 시트를 다시 읽지 않기 위해서다.
+  if (isNew) { d.values.push(row); d.lastRow = target; }
+  else { d.values[target - 2] = row; }
+  MEMO.mine = {};
+
+  return { ok: true, row: target, updated: !isNew };
+}
+
 /* ------------------------------ 내부 함수 ------------------------------ */
+
+/**
+ * 같은 요청이 두 번 와도 한 번만 처리한다.
+ * 화면은 응답이 끊기면 같은 nonce 로 한 번 더 보낸다. 그때 이미 처리한 결과를
+ * 그대로 돌려주어, 글이 두 개 생기거나 "이미 있습니다" 라는 엉뚱한 오류가 뜨는 것을 막는다.
+ */
+function once_(claims, nonce, fn) {
+  if (!nonce) return fn();
+
+  var cache = null, key = null;
+  try {
+    cache = CacheService.getScriptCache();
+    key = 'once:' + String(claims.sub) + ':' + String(nonce).slice(0, 64);
+    var hit = cache.get(key);
+    if (hit) {
+      var prev = JSON.parse(hit);
+      prev.replay = true;          // 화면이 "다시 보낸 것이 먹혔다"고 알 수 있게
+      return prev;
+    }
+  } catch (e) { cache = null; }
+
+  var res = fn();
+  // 성공만 담는다. 실패는 다시 눌렀을 때 진짜로 다시 시도되어야 한다.
+  if (cache && res && res.ok) {
+    try { cache.put(key, JSON.stringify(res), 600); } catch (e2) {}
+  }
+  return res;
+}
 
 /** 구글이 발급한 ID 토큰을 구글 서버에 직접 물어서 검증한다. */
 function verifyIdToken_(idToken) {
@@ -185,10 +260,17 @@ function verifyIdToken_(idToken) {
   return p;
 }
 
+/** 스프레드시트는 한 번만 연다. openById 는 한 번에 수백 ms 가 든다. */
+function ss_() {
+  if (!CONFIG.SHEET_ID) throw new Error('CONFIG.SHEET_ID 가 비어 있습니다');
+  if (!MEMO.ss) MEMO.ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  return MEMO.ss;
+}
+
 /** 대상 탭을 가져오고, 없으면 헤더까지 만들어 준다. */
 function getSheet_() {
-  if (!CONFIG.SHEET_ID) throw new Error('CONFIG.SHEET_ID 가 비어 있습니다');
-  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  if (MEMO.sheet) return MEMO.sheet;
+  var ss = ss_();
   var sh = ss.getSheetByName(CONFIG.SHEET_NAME);
   if (!sh) {
     sh = ss.insertSheet(CONFIG.SHEET_NAME);
@@ -198,7 +280,22 @@ function getSheet_() {
     sh.setFrozenRows(1);
     sh.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
   }
-  return sh;
+  return (MEMO.sheet = sh);
+}
+
+/**
+ * 신청 탭을 통째로 한 번만 읽어 둔다.
+ * 예전에는 사람을 찾을 때 열 하나, 못 찾으면 또 한 열, 내용을 읽을 때 또 한 행 —
+ * 이렇게 세 번 오갔다. 지금은 한 번 읽어 놓고 자바스크립트로 뒤진다.
+ */
+function applyData_() {
+  if (MEMO.apply) return MEMO.apply;
+  var sh = getSheet_();
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  var values = lastRow > 1 ? sh.getRange(2, 1, lastRow - 1, lastCol).getValues() : [];
+  return (MEMO.apply = { sheet: sh, headers: headers, values: values, lastRow: lastRow });
 }
 
 /**
@@ -206,21 +303,18 @@ function getSheet_() {
  * 계정 식별자를 먼저 보고, 없으면 이메일로 찾는다.
  * (식별자는 구글 계정마다 고정이라, 이메일 주소가 바뀌어도 같은 사람으로 인식한다)
  */
-function findRowByAccount_(sh, headers, claims) {
-  if (sh.getLastRow() < 2) return 0;
-  var n = sh.getLastRow() - 1;
+function findRowByAccount_(d, claims) {
+  var subCol = d.headers.indexOf('계정 식별자');
+  var mailCol = d.headers.indexOf('이메일');
+  var sub = String(claims.sub || '').toLowerCase();
+  var mail = String(claims.email || '').toLowerCase();
+  var byMail = 0;
 
-  function findIn(name, want) {
-    var col = headers.indexOf(name) + 1;
-    if (col < 1 || !want) return 0;
-    var values = sh.getRange(2, col, n, 1).getValues();
-    for (var i = 0; i < values.length; i++) {
-      if (String(values[i][0]).toLowerCase() === String(want).toLowerCase()) return i + 2;
-    }
-    return 0;
+  for (var i = 0; i < d.values.length; i++) {
+    if (subCol > -1 && sub && String(d.values[i][subCol]).toLowerCase() === sub) return i + 2;
+    if (!byMail && mailCol > -1 && mail && String(d.values[i][mailCol]).toLowerCase() === mail) byMail = i + 2;
   }
-
-  return findIn('계정 식별자', claims.sub) || findIn('이메일', claims.email);
+  return byMail;
 }
 
 /**
@@ -228,26 +322,24 @@ function findRowByAccount_(sh, headers, claims) {
  * 수정할 수 있게 하는 데 쓴다.
  * 계정 식별자는 화면에 쓸 일이 없으므로 돌려주지 않는다.
  */
-var mineMemo_ = {};
 function findMine_(claims) {
   // 한 번의 실행 안에서 같은 사람을 두 번 찾지 않는다.
-  // (게시판 글쓰기는 이름을 얻을 때와 목록을 만들 때 두 번 부른다)
+  // (init 은 신청 내역과 게시판 요약에서 각각 한 번씩 부른다)
   var memoKey = String(claims.sub || claims.email || '');
-  if (mineMemo_[memoKey]) return mineMemo_[memoKey];
+  if (MEMO.mine[memoKey]) return MEMO.mine[memoKey];
 
-  var sh = getSheet_();
-  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  var row = findRowByAccount_(sh, headers, claims);
-  if (!row) return (mineMemo_[memoKey] = { ok: true, found: false });
+  var d = applyData_();
+  var row = findRowByAccount_(d, claims);
+  if (!row) return (MEMO.mine[memoKey] = { ok: true, found: false });
 
-  var values = sh.getRange(row, 1, 1, headers.length).getValues()[0];
+  var values = d.values[row - 2] || [];
   var answers = {};
-  headers.forEach(function (h, i) {
+  d.headers.forEach(function (h, i) {
     if (h === '계정 식별자') return;
     var v = values[i];
     answers[h] = (v instanceof Date) ? v.toISOString() : v;
   });
-  return (mineMemo_[memoKey] = { ok: true, found: true, row: row, answers: answers });
+  return (MEMO.mine[memoKey] = { ok: true, found: true, row: row, answers: answers });
 }
 
 /**
