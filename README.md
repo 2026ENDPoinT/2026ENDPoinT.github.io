@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/img/hero.jpg" width="820" alt="ENDPoinT — 참가 동아리 로고 배너">
+<img src="assets/img/hero.png" width="820" alt="ENDPoinT — 참가 동아리 로고 배너">
 
 # ENDPoinT
 
