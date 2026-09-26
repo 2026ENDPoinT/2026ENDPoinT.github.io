@@ -115,6 +115,17 @@ python -m http.server 8000
 # → http://localhost:8000
 ```
 
+참가 신청과 팀 모집 게시판은 **1차 모집이 시작되는 10.05 까지 배포된 사이트에서 잠겨 있습니다.**
+로컬(`localhost` · `127.0.0.1` · `file://` · 사설 IP)에서는 날짜와 무관하게 열려 있어 그대로 작업할 수 있습니다.
+닫힌 모습을 확인하려면 주소 끝에 `?gate=closed` 를 붙이세요.
+
+```
+http://localhost:8000/?gate=closed#/apply
+```
+
+기간은 [index.html](index.html) 의 `EPGATE` 에 있는 `OPEN_AT` · `CLOSE_AT` 두 줄로 정합니다
+(자세한 내용은 [BACKEND.md 4절](BACKEND.md)).
+
 백엔드 연동 설정(OAuth 클라이언트 발급, Apps Script 배포, `EPCONFIG` 값 입력)은
 [BACKEND.md](BACKEND.md) 에 단계별로 정리되어 있습니다.
 

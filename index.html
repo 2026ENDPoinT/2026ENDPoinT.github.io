@@ -104,6 +104,7 @@ header.top.scrolled{border-bottom-color:var(--line);background:rgba(var(--hdr-rg
 
 /* 헤더 가운데 로그인 위젯 — 사이트 전체의 로그인/로그아웃은 여기서 */
 .top-auth{display:flex;align-items:center;justify-content:center;min-height:36px}
+.top-auth[hidden]{display:none}   /* 모집 기간이 아닐 때. display:flex 가 기본 [hidden] 을 이기므로 */
 .top-auth .g-wide{display:block}
 .top-auth .g-icon{display:none}
 .top-auth .who{display:flex;align-items:center;gap:10px}
@@ -127,6 +128,11 @@ header.top.scrolled{border-bottom-color:var(--line);background:rgba(var(--hdr-rg
 .top nav a.apply{margin-left:14px;background:#fff;color:#151515;font-weight:500;padding:11px 20px}
 .top nav a.apply::after{display:none}
 .top nav a.apply:hover{background:var(--dim)}
+/* 모집 기간 밖 — 흰 알약을 조용한 안내 라벨로 (자물쇠 아이콘이 들어가므로 inline-flex) */
+.top nav a.apply.gated{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--dim-2);
+  border:1px solid var(--line);font-weight:400;cursor:default}
+.top nav a.apply.gated:hover{background:transparent;color:var(--dim-2)}
+.top nav a.apply.gated svg{opacity:.75}
 .progress{position:fixed;top:0;left:0;height:2px;width:100%;transform:scaleX(0);transform-origin:left;
   background:linear-gradient(90deg,var(--blue),#fff);z-index:70;pointer-events:none}
 
@@ -157,6 +163,13 @@ h1.title .o{color:var(--dim-2)}
   font-family:var(--font);font-size:14.5px;font-weight:500;letter-spacing:-.005em;text-decoration:none;cursor:pointer;
   background:#fff;color:#151515;border:1px solid #fff;overflow:hidden;transition:color .4s var(--ease)}
 .btn span{position:relative;z-index:1}
+/* 모집 기간 밖 — 버튼을 눌리지 않는 안내 라벨로 바꾼다 (href 를 떼므로 포커스도 가지 않는다) */
+.btn.gated{background:transparent;color:var(--dim);border-color:var(--line);cursor:default;font-weight:300}
+.btn.gated::before{display:none}
+.btn.gated:hover{color:var(--dim)}
+.btn.gated svg{flex:0 0 auto;opacity:.75}
+.btn-k.gated{border-color:rgba(0,0,0,.2);color:rgba(21,21,21,.55)}
+.btn-k.gated:hover{color:rgba(21,21,21,.55)}
 .btn::before{content:"";position:absolute;inset:0;background:#151515;transform:translateY(101%);transition:transform .45s var(--ease)}
 .btn:hover{color:#fff}
 .btn:hover::before{transform:none}
@@ -342,6 +355,18 @@ br.opt{display:inline}
 .tb-demo{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .tb-demo .lab{margin-right:2px}
 
+/* 모집 기간 안내 — 신청서 자리에 대신 뜬다 */
+.gatebox[hidden]{display:none}
+.gatebox{border:1px solid var(--line);padding:clamp(30px,4vw,52px);margin-top:clamp(20px,2.6vw,30px);
+  display:flex;flex-direction:column;gap:11px;align-items:flex-start}
+.gatebox b{font-size:clamp(20px,2.6vw,27px);font-weight:200;color:#fff;letter-spacing:-.02em;line-height:1.24}
+.gatebox p{font-size:14px;color:var(--dim);font-weight:300;max-width:58ch}
+.gatebox .when{font-size:12.5px;color:var(--dim-2);letter-spacing:.04em}
+.gatebox .row{margin-top:10px}
+/* 로컬에서만 보이는 미리보기 안내 (배포된 사이트에는 뜨지 않는다) */
+.gatedev{margin-top:14px;padding:12px 14px;border:1px dashed rgba(106,163,240,.45);font-size:12.5px;color:var(--dim);line-height:1.8}
+.gatedev code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--blue)}
+
 /* 내 상태 패널 */
 .mine .who{display:flex;align-items:center;gap:10px}
 .mine .who img{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.05)}
@@ -422,6 +447,7 @@ select.tb-in{appearance:none;-webkit-appearance:none;border-radius:0;
 .post .ft{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:15px;border-top:1px solid var(--line-k)}
 .post .ft small{font-size:12px;color:#7E7E7E}
 .mine{border:1px solid var(--line);padding:26px;display:flex;flex-direction:column;gap:11px}
+.mine[hidden]{display:none}   /* display:flex 가 브라우저 기본 [hidden] 을 이기므로 */
 .mine b{font-size:20px;font-weight:200;color:#fff}
 .pagehead{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:clamp(24px,4vw,60px);align-items:start}
 h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
@@ -726,7 +752,7 @@ p{text-wrap:pretty}
       <a href="#schedule" class="sm-hide">일정</a>
       <a href="#/teams" data-nav="/teams">팀 모집</a>
       <a href="#/apply" data-nav="/apply">신청 안내</a>
-      <a class="apply" href="#/apply">참가 신청</a>
+      <a class="apply" href="#/apply" data-gate="apply" data-gate-label="10.05 오픈">참가 신청</a>
     </nav>
   </div>
 </header>
@@ -749,7 +775,7 @@ p{text-wrap:pretty}
         <h1 class="title wm" id="wordmark" data-hero>ENDPoinT</h1>
         <p class="sub" data-anim data-hero>서울과학기술대학교 학술 동아리 EC · NL · 다락방 · Plum · TCP가<br class="opt"> 함께 여는 연합 해커톤입니다.</p>
         <div class="hero-cta" data-anim data-hero>
-          <a class="btn" href="#/apply"><span>1차 참가 신청</span></a>
+          <a class="btn" href="#/apply" data-gate="apply"><span>1차 참가 신청</span></a>
           <a class="btn btn-o" href="#/teams"><span>팀 모집 게시판</span></a>
           <a class="arrow" href="#about" aria-label="아래로 이동">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M8 2v12M3 9.5l5 4.5 5-4.5"></path></svg>
@@ -949,7 +975,7 @@ p{text-wrap:pretty}
           <h2>준비되셨나요?</h2>
           <p>1차 모집 10.05 – 10.16 (예정)</p>
         </div>
-        <a class="btn btn-k" href="#/apply"><span>참가 신청하기</span></a>
+        <a class="btn btn-k" href="#/apply" data-gate="apply"><span>참가 신청하기</span></a>
       </div>
     </div>
   </section>
@@ -965,7 +991,7 @@ p{text-wrap:pretty}
           <h1 class="ptitle" style="margin-top:16px"><span data-anim="mask"><span>참가 신청</span></span></h1>
           <p class="sub" data-anim style="--d:.15s;margin-top:20px;max-width:64ch">구글 로그인 한 번이면 끝납니다. 신청서에 적어주신 내용은 팀 매칭과 팀원 모집 게시판에 그대로 이어집니다.</p>
           <div class="hero-cta" data-anim style="--d:.25s;margin-top:28px">
-            <a class="btn" href="#af"><span>신청서 작성하기</span></a>
+            <a class="btn" href="#af" data-gate="apply"><span>신청서 작성하기</span></a>
             <a class="btn btn-o" href="#/teams"><span>팀 모집 게시판</span></a>
           </div>
         </div>
@@ -994,6 +1020,9 @@ p{text-wrap:pretty}
         <div><span class="lab blue" data-anim>Form</span><h2><span data-anim="mask"><span>신청서 작성</span></span></h2></div>
         <p data-anim style="--d:.15s">항목 위에 마우스를 올리면 펼쳐지고, 클릭하면 그 자리에 고정됩니다. 한 번 더 클릭하면 다시 닫힙니다.</p>
       </div>
+
+      <!-- 모집 기간이 아니면 신청서 대신 이 안내가 뜬다 (EPGATE 가 채운다) -->
+      <div class="gatebox" id="af-gate" data-anim hidden></div>
 
       <div class="af locked" id="af" data-anim></div>
       <div class="af-done" id="af-done"></div>
@@ -1254,6 +1283,109 @@ window.EPCONFIG = {
   // Apps Script > 배포 > 웹 앱 URL
   ENDPOINT: 'https://script.google.com/macros/s/AKfycbwLCUGPLUdwJx-uFbahvdl6K3i7zkarEPfGlUgXX47iO6HfgyZJjjQf6cgg9Ah8d1xl/exec'
 };
+
+/* ==============================================================
+   EPGATE — 모집 기간 문지기
+   ---------------------------------------------------------------
+   모집 기간이 아니면 참가 신청과 팀 모집 게시판을 닫는다.
+   닫혀 있는 동안에는 구글 로그인 버튼도 나오지 않는다 (로그인해도 할 일이 없으니까).
+   안내 페이지(#/apply 의 신청 흐름·일정)는 그대로 보인다 — 신청서 자리에만
+   "1차 모집 기간에 열립니다" 안내가 대신 뜬다.
+
+   [고칠 곳은 바로 아래 세 줄뿐입니다]
+     OPEN_AT  모집이 열리는 시각. 이 시각이 되면 자동으로 열린다.
+     CLOSE_AT 다시 닫을 시각. **비워 두면 열린 뒤로 계속 열려 있다.**
+              1차 모집을 마감하고 잠그려면 그때 이 줄을 채우세요.
+     PERIOD   안내 문구에 보일 기간 표기.
+   시각은 '+09:00'(한국 시간)을 붙여 둡니다. 보는 사람이 어느 시간대에 있어도
+   같은 순간에 열립니다.
+
+   [로컬에서는 항상 열려 있습니다]
+   localhost · 127.0.0.1 · file:// · 사설 IP 에서는 날짜를 보지 않고 열어 둡니다.
+   VS Code 로 작업하는 동안 신청서와 게시판을 그대로 만지고 고칠 수 있게 하려는 것입니다.
+   닫힌 모습을 확인하려면 주소 끝에 ?gate=closed 를 붙이세요.
+     ?gate=closed  모집 전 화면        ?gate=after  마감 후 화면
+     ?gate=open    강제로 열기          ?gate=real   실제 날짜대로 판정
+   이 덮어쓰기는 **로컬에서만** 통합니다. 배포된 사이트에서는 무시되므로
+   주소를 공유해 게이트를 여는 일은 생기지 않습니다.
+   ============================================================== */
+window.EPGATE = (function () {
+  var OPEN_AT  = '2026-10-05T00:00:00+09:00';   // 1차 모집 시작
+  var CLOSE_AT = '';                            // 비우면 계속 열려 있음
+  var PERIOD   = '10.05 – 10.16 (예정)';
+
+  var loc = window.location;
+  var host = String(loc.hostname || '').toLowerCase();
+  var local =
+    loc.protocol === 'file:' ||
+    host === '' || host === 'localhost' || host === '127.0.0.1' ||
+    host === '::1' || host === '[::1]' || host === '0.0.0.0' ||
+    /\.local$/.test(host) ||
+    /^192\.168\./.test(host) || /^10\./.test(host) ||
+    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host);
+
+  // 날짜만 보고 판단한다
+  var now = Date.now();
+  var openAt = OPEN_AT ? Date.parse(OPEN_AT) : NaN;
+  var closeAt = CLOSE_AT ? Date.parse(CLOSE_AT) : NaN;
+  var state = 'open';
+  if (!isNaN(openAt) && now < openAt) state = 'before';
+  else if (!isNaN(closeAt) && now >= closeAt) state = 'after';
+
+  // 로컬에서는 기본이 '열림'. ?gate= 로 다른 모습을 볼 수 있다.
+  var forced = '';
+  if (local) {
+    var m = /[?&]gate=([a-z]+)/i.exec(loc.search || '');
+    forced = m ? m[1].toLowerCase() : '';
+    if (forced === 'closed' || forced === 'before') state = 'before';
+    else if (forced === 'after') state = 'after';
+    else if (forced === 'real') { /* 날짜대로 둔다 */ }
+    else state = 'open';
+  }
+
+  /** 'YYYY-MM-DDT...' 에서 '10.05' 만 뽑는다 */
+  function md(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    return m ? m[2] + '.' + m[3] : '';
+  }
+
+  var TEXT = {
+    before: {
+      tag: 'Opens ' + (md(OPEN_AT) || PERIOD),
+      apply: '1차 모집 기간에 열립니다',
+      board: '1차 모집 기간에 작성하실 수 있습니다',
+      why: '아직 1차 모집이 시작되지 않았습니다. 모집이 열리면 이 자리에서 바로 신청하실 수 있습니다.',
+      boardWhy: '팀 모집과 팀 찾기는 참가 신청을 받는 동안 열립니다. 모집이 시작되면 신청에 쓰신 구글 계정으로 로그인해 글을 올릴 수 있습니다.'
+    },
+    after: {
+      tag: 'Closed',
+      apply: '1차 모집이 마감되었습니다',
+      board: '1차 모집이 마감되어 글을 쓸 수 없습니다',
+      why: '1차 모집이 끝났습니다. 추가 모집이 열리면 이 자리에 다시 안내하겠습니다.',
+      boardWhy: '1차 모집이 끝나 게시판이 닫혔습니다. 팀 확정 결과는 11월 4일 1차 프로그램에서 발표합니다.'
+    }
+  };
+  var t = TEXT[state] || null;
+
+  return {
+    /** true 면 평소대로 동작한다 */
+    open: state === 'open',
+    /** 'before' | 'open' | 'after' */
+    state: state,
+    local: local,
+    forced: forced,
+    period: PERIOD,
+    openAt: OPEN_AT,
+    /** 닫혀 있을 때 쓸 문구 묶음. 열려 있으면 null */
+    text: t,
+    /** 자물쇠 아이콘 */
+    lock: function () {
+      return '<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.2" aria-hidden="true"><rect x="2.5" y="6" width="9" height="6.5"></rect>' +
+        '<path d="M4.6 6V4.2a2.4 2.4 0 0 1 4.8 0V6"></path></svg>';
+    }
+  };
+})();
 
 /* ==============================================================
    EPSession — 사이트 전체가 공유하는 로그인 상태
@@ -1529,11 +1661,83 @@ window.EPUI = {
 };
 (function () {
   if (!window.EPCONFIG.ENDPOINT) return;
+  if (!window.EPGATE.open) return;      // 닫혀 있으면 아무 요청도 나가지 않는다
   var warm = function () { window.EPSession.probe(); };
   // 사람이 로그인 버튼을 누르기 전에 컨테이너가 깨어 있도록 일찍 깨운다.
   // 이 한 번이 로그인 직후 첫 요청에서 1~2초를 덜어 준다.
   if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 1200 });
   else setTimeout(warm, 800);
+})();
+
+/* ==============================================================
+   모집 기간이 아닐 때 화면을 바꾸는 곳 (EPGATE 가 닫혀 있다고 할 때만 돈다)
+   - 참가 신청 버튼들은 눌리지 않는 안내 라벨이 된다
+   - 신청서 자리에는 안내 패널이 대신 뜬다 (안내 페이지의 나머지는 그대로)
+   - 게시판은 로그인 버튼 없이 안내만 보인다
+   신청서·게시판 스크립트는 각자 맨 위에서 한 번 더 확인하고 아예 시작하지 않는다.
+   ============================================================== */
+(function () {
+  var G = window.EPGATE;
+  if (G.open) return;
+  var t = G.text;
+  var esc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
+  /* 로컬에서 작업할 때만 보이는 안내. 배포된 사이트에는 뜨지 않는다. */
+  function devNote() {
+    if (!G.local) return '';
+    return '<div class="gatedev"><b>로컬 미리보기</b> — 지금 <code>?gate=' +
+      esc(G.forced || 'closed') + '</code> 로 닫힌 모습을 보고 있습니다. ' +
+      '주소에서 <code>?gate=…</code> 를 떼면 로컬에서는 다시 열립니다. ' +
+      '배포된 사이트는 <code>OPEN_AT</code>(' + esc(G.openAt) + ') 이 지나야 열립니다.</div>';
+  }
+
+  /* 1) 참가 신청 버튼 → 눌리지 않는 안내 라벨 */
+  var label = t.apply;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-gate="apply"]'), function (a) {
+    var short = a.getAttribute('data-gate-label');
+    a.removeAttribute('href');           // href 가 없으면 클릭도 포커스도 가지 않는다
+    a.classList.add('gated');
+    a.setAttribute('aria-disabled', 'true');
+    a.setAttribute('title', label + ' (' + G.period + ')');
+    var text = esc(short || label);
+    // 원래 <span> 으로 감싼 버튼은 그 구조를 지켜야 호버 효과 CSS 가 어긋나지 않는다
+    a.innerHTML = a.querySelector('span') ? G.lock() + '<span>' + text + '</span>' : G.lock() + text;
+  });
+
+  /* 2) 신청서 자리 → 안내 패널 */
+  var af = document.getElementById('af'), box = document.getElementById('af-gate');
+  if (af) af.hidden = true;
+  if (box) {
+    box.innerHTML =
+      '<span class="lab blue">' + esc(t.tag) + '</span>' +
+      '<b>' + esc(t.apply) + '</b>' +
+      '<p>' + esc(t.why) + '</p>' +
+      '<span class="when">1차 모집 ' + esc(G.period) + '</span>' +
+      '<div class="hero-cta row"><a class="btn btn-o" href="#/teams"><span>팀 모집 게시판 보기</span></a></div>' +
+      devNote();
+    box.hidden = false;
+    // 스크롤 등장 효과는 opacity:0 에서 시작한다. 이 패널은 감춰져 있다가 뒤늦게
+    // 보이게 되므로 관찰이 어긋나면 영영 안 보일 수 있다. 안내가 안 보이는 것이
+    // 가장 나쁜 결과라서, 등장을 기다리지 않고 바로 보이게 둔다.
+    box.classList.add('in');
+  }
+
+  /* 3) 게시판 → 로그인 버튼 없이 안내만 */
+  var gate = document.getElementById('tb-gate');
+  var body = document.getElementById('tb-body');
+  var mine = document.getElementById('tb-me');
+  if (mine) mine.hidden = true;
+  if (body) body.hidden = true;
+  if (gate) {
+    gate.innerHTML =
+      '<div class="t"><span class="lab blue">' + esc(t.tag) + '</span>' +
+      '<b>' + esc(t.board) + '</b><span>' + esc(t.boardWhy) + '</span>' + devNote() + '</div>';
+    gate.hidden = false;
+  }
 })();
 
 /* ==============================================================
@@ -1544,6 +1748,9 @@ window.EPUI = {
   var S = window.EPSession;
   var el = document.getElementById('top-auth');
   if (!el) return;
+  // 모집 기간이 아니면 로그인 버튼을 내놓지 않는다. 로그인해도 할 수 있는 일이 없고,
+  // 버튼만 보이면 눌러 보고 아무 일도 안 일어나는 것처럼 느껴진다.
+  if (!window.EPGATE.open) { el.hidden = true; return; }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -1572,6 +1779,9 @@ window.EPUI = {
   var af = document.getElementById('af');
   var afDone = document.getElementById('af-done');
   if (!af) return;
+  // 모집 기간이 아니면 신청서를 만들지 않는다. 구글 로그인 버튼도 붙지 않고,
+  // 임시 저장본도 건드리지 않는다. 안내 패널(#af-gate)이 이 자리를 대신한다.
+  if (!window.EPGATE.open) return;
 
   /* ==============================================================
      [설정] 아래 두 줄만 채우면 구글 시트 연동이 끝납니다.
@@ -2293,6 +2503,9 @@ window.EPUI = {
   var elMe = $('tb-me'), elGate = $('tb-gate'), elAct = $('tb-act'), elBody = $('tb-body');
   var elForm = $('tb-form'), elBoard = $('board'), elCount = $('count'), elMsg = $('tb-msg'), elNote = $('tb-note');
   if (!elBoard) return;
+  // 모집 기간이 아니면 게시판을 열지 않는다. 로그인 상태가 남아 있어도 마찬가지다 —
+  // 게이트 패널에 안내만 띄운 채로 둔다 (위쪽 EPGATE 적용부가 이미 채워 놨다).
+  if (!window.EPGATE.open) return;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -2816,7 +3029,7 @@ window.EPUI = {
   var KEY = 'endpoint.inapp.dismissed';
   var dismissed = false;
   try { dismissed = sessionStorage.getItem(KEY) === '1'; } catch (e) {}
-  if (inapp && bar && !dismissed) {
+  if (inapp && bar && !dismissed && window.EPGATE.open) {
     bar.hidden = false;
     var open = document.getElementById('inapp-open');
     var here = location.href;
