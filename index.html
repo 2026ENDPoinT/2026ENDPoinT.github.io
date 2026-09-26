@@ -220,14 +220,15 @@ section{padding:clamp(60px,8.5vw,120px) 0;border-bottom:1px solid var(--line);sc
 .initials span{font-size:13px;color:var(--dim);font-weight:300}
 
 .clubs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:clamp(12px,1.6vw,20px)}
-.club{background:var(--paper);color:var(--paper-ink);padding:28px 24px;display:flex;flex-direction:column;gap:16px;min-height:228px;
+/* 엠블럼 하나만 놓는 정사각 칸. 이름·참가 규모·소개를 빼서 로고로만 읽히게 했다. */
+/* max-height 가 없으면 3열로 접히는 폭(900~1060px)에서 한 칸이 300px 가까운 정사각형이
+   되어 흰 면만 넓어진다. 그 구간에서만 살짝 납작해지고 나머지는 정사각형 그대로다. */
+.club{background:var(--paper);aspect-ratio:1;max-height:230px;display:grid;place-items:center;
   transition:transform .5s var(--ease)}
 .club:hover{transform:translateY(-4px)}
-.club .em{height:56px;display:flex;align-items:center}
-.club .em img{height:100%;width:auto;max-width:74px;object-fit:contain}
-.club b{font-size:17px;font-weight:500}
-.club .lab{color:#8A8A8A}
-.club .ph{margin-top:auto;font-size:13px;line-height:1.75;color:#707070;border-top:1px solid var(--line-k);padding-top:13px;font-weight:300}
+/* 로고마다 가로세로 비가 다르다. 같은 크기의 네모를 주고 그 안에서 비율을 지키게 한다.
+   %로 잡아 두면 칸이 커지고 작아져도 로고와 여백의 비가 그대로다. */
+.club img{width:58%;height:58%;object-fit:contain}
 
 .emrow{display:flex;align-items:center;gap:clamp(22px,3.6vw,52px);flex-wrap:wrap}
 .emrow img{height:clamp(30px,3.6vw,42px);width:auto;opacity:.85;transition:opacity .4s var(--ease)}
@@ -471,7 +472,7 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
   .facts>div:first-child{border-top:0}
   .initials{grid-template-columns:repeat(2,minmax(0,1fr))}
   .initials>div{border-left:1px solid var(--line);border-top:1px solid var(--line)}
-  .clubs,.fields,.posts,.cards3,.cards2,.tb-form .grid{grid-template-columns:1fr}
+  .fields,.posts,.cards3,.cards2,.tb-form .grid{grid-template-columns:1fr}
   .slot{grid-template-columns:1fr;gap:10px}
   .slot p{grid-column:1}
   .top nav a{padding:7px 8px;font-size:12.5px}
@@ -851,11 +852,13 @@ p{text-wrap:pretty}
         
       </div>
       <div class="clubs" data-stagger>
-        <div class="club" data-anim><span class="em"><img src="assets/img/club-ec.png" width="300" height="300" loading="lazy" decoding="async" alt=""></span><b>EC</b><span class="lab">참가 규모 20명</span><span class="ph">[EC 한 줄 소개]</span></div>
-        <div class="club" data-anim><span class="em"><img src="assets/img/club-nl.png" width="227" height="224" loading="lazy" decoding="async" alt=""></span><b>NL</b><span class="lab">참가 규모 15~20명</span><span class="ph">[NL 한 줄 소개]</span></div>
-        <div class="club" data-anim><span class="em"><img src="assets/img/club-darakbang.png" width="340" height="309" loading="lazy" decoding="async" alt=""></span><b>다락방</b><span class="lab">참가 규모 15명</span><span class="ph">[다락방 한 줄 소개]</span></div>
-        <div class="club" data-anim><span class="em"><img src="assets/img/club-plum.png" width="250" height="250" loading="lazy" decoding="async" alt=""></span><b>Plum</b><span class="lab">참가 규모 20명</span><span class="ph">[Plum 한 줄 소개]</span></div>
-        <div class="club" data-anim><span class="em"><img src="assets/img/club-tcp.png" width="340" height="333" loading="lazy" decoding="async" alt=""></span><b>TCP</b><span class="lab">참가 규모 [00]명</span><span class="ph">[TCP 한 줄 소개]</span></div>
+        <!-- 엠블럼만 놓는다. 이름이 글자로 보이지 않으므로 alt 에 동아리 이름을 남긴다
+             (화면 낭독기와 이미지가 안 뜰 때 여기만 남는다) -->
+        <div class="club" data-anim><img src="assets/img/club-ec.png" width="300" height="300" loading="lazy" decoding="async" alt="EC"></div>
+        <div class="club" data-anim><img src="assets/img/club-nl.png" width="227" height="224" loading="lazy" decoding="async" alt="NL"></div>
+        <div class="club" data-anim><img src="assets/img/club-darakbang.png" width="340" height="309" loading="lazy" decoding="async" alt="다락방"></div>
+        <div class="club" data-anim><img src="assets/img/club-plum.png" width="250" height="250" loading="lazy" decoding="async" alt="Plum"></div>
+        <div class="club" data-anim><img src="assets/img/club-tcp.png" width="340" height="333" loading="lazy" decoding="async" alt="TCP"></div>
       </div>
     </div>
   </section>
@@ -900,7 +903,7 @@ p{text-wrap:pretty}
           <span class="lab blue" data-anim>04. Judging &amp; Prize</span>
           <h2><span data-anim="mask"><span>심사와 시상</span></span></h2>
         </div>
-        <p data-anim style="--d:.15s">교수님과 졸업생·현직자, 동아리장으로 심사위원단을 구성하고 참가자 투표를 함께 반영합니다. 상금·상품 규모는 학과 지원금과 선배 후원이 확정되는 대로 공지합니다.</p>
+        <p data-anim style="--d:.15s">교수님과 현직자 분들로 심사위원단을 구성하고 참가자 투표를 함께 반영합니다. 상금·상품 규모는 학과 지원금과 선배 후원이 확정되는 대로 공지합니다.</p>
       </div>
 
       <div class="cards2" data-stagger>
@@ -908,17 +911,17 @@ p{text-wrap:pretty}
           <span class="lab">심사 비중</span>
           <div class="pie" id="pie">
             <div class="pie-fig">
-              <svg class="donut" viewBox="0 0 160 160" role="img" aria-label="심사 비중 원형 그래프: 심사위원 점수 60%, 참가자 투표 40%">
+              <svg class="donut" viewBox="0 0 160 160" role="img" aria-label="심사 비중 원형 그래프: 심사위원 점수 75%, 참가자 투표 25%">
                 <g transform="rotate(-90 80 80)">
-                  <circle class="seg" data-k="j" cx="80" cy="80" r="62" fill="none" stroke="#1655AD" stroke-width="20" stroke-dasharray="231.13 389.56" stroke-dashoffset="-1.30" style="--len:231.13px"/>
-                  <circle class="seg" data-k="v" cx="80" cy="80" r="62" fill="none" stroke="#BA000C" stroke-width="20" stroke-dasharray="153.22 389.56" stroke-dashoffset="-235.03" style="--len:153.22px;--d:.55s"/>
+                  <circle class="seg" data-k="j" cx="80" cy="80" r="62" fill="none" stroke="#1655AD" stroke-width="20" stroke-dasharray="289.57 389.56" stroke-dashoffset="-1.30" style="--len:289.57px"/>
+                  <circle class="seg" data-k="v" cx="80" cy="80" r="62" fill="none" stroke="#BA000C" stroke-width="20" stroke-dasharray="94.79 389.56" stroke-dashoffset="-293.47" style="--len:94.79px;--d:.55s"/>
                 </g>
               </svg>
-              <div class="pie-c" aria-hidden="true"><b>60 : 40</b><span>심사위원 : 투표</span></div>
+              <div class="pie-c" aria-hidden="true"><b>75 : 25</b><span>심사위원 : 투표</span></div>
             </div>
             <ul class="pie-lg">
-              <li data-k="j"><i style="background:#1655AD"></i><span class="n">심사위원 점수</span><b>60%</b></li>
-              <li data-k="v"><i style="background:#BA000C"></i><span class="n">참가자 투표</span><b>40%</b></li>
+              <li data-k="j"><i style="background:#1655AD"></i><span class="n">심사위원 점수</span><b>75%</b></li>
+              <li data-k="v"><i style="background:#BA000C"></i><span class="n">참가자 투표</span><b>25%</b></li>
             </ul>
           </div>
           <p class="foot crit"><strong>해커톤</strong> — 서비스 완성도, AI 활용의 창의성<br><strong>구현과제</strong> — 기능 구현, 코드 이해도, 추가 기능</p>
@@ -3057,10 +3060,10 @@ window.EPUI = {
 (function () {
   var pie = document.getElementById('pie'); if (!pie) return;
   var c = pie.querySelector('.pie-c'), b = c.querySelector('b'), t = c.querySelector('span');
-  var D = { j: ['60%', '심사위원 점수'], v: ['40%', '참가자 투표'] };
+  var D = { j: ['75%', '심사위원 점수'], v: ['25%', '참가자 투표'] };
   function set(k) {
     if (k && D[k]) { pie.setAttribute('data-h', k); b.textContent = D[k][0]; t.textContent = D[k][1]; }
-    else { pie.removeAttribute('data-h'); b.textContent = '60 : 40'; t.textContent = '심사위원 : 투표'; }
+    else { pie.removeAttribute('data-h'); b.textContent = '75 : 25'; t.textContent = '심사위원 : 투표'; }
   }
   pie.querySelectorAll('[data-k]').forEach(function (el) {
     el.addEventListener('pointerenter', function (e) { if (e.pointerType !== 'touch') set(el.getAttribute('data-k')); });
