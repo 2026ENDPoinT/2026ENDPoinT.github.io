@@ -58,7 +58,7 @@
         <div><span class="lab">수집 항목</span><b>구글 계정 이메일, 신청서 항목</b><p>성함 · 학번 · 학년 · 연락처 · 소속 동아리 등</p></div>
         <div><span class="lab">이용 목적</span><b>참가 신청 · 팀 매칭 · 행사 운영</b><p>이 목적 밖으로는 쓰지 않습니다</p></div>
         <div><span class="lab">보유 기간</span><b>행사 종료 후 3개월 이내 파기</b><p>수상자 정보만 최대 1년</p></div>
-        <div><span class="lab">제3자 제공</span><b>원칙적으로 하지 않음</b><p>저장은 Google 스프레드시트</p></div>
+        <div><span class="lab">제3자 제공</span><b>원칙적으로 하지 않음</b><p>팀 지원을 수락하면 조장과 지원자 사이에만 연락처 공개 · 저장은 Google 스프레드시트</p></div>
       </div>
     </div>
   </section>
@@ -107,7 +107,8 @@
                 <tr><td>필수 · 로그인</td><td>이메일 주소, 구글 계정 고유 식별자</td><td>구글 로그인</td></tr>
                 <tr><td>필수 · 신청서</td><td>성함, 학번(입학년도), 학년, 연락처(휴대전화번호), 소속 동아리, 희망 역할, 기술 스택 및 개발 경험, 팀 보유 여부 및 팀원, 전체 일정 참석 가능 여부</td><td>신청서 입력</td></tr>
                 <tr><td>선택 · 신청서</td><td>기타(하고 싶은 말), 기술 스택란에 적은 CV·포트폴리오 링크</td><td>신청서 입력</td></tr>
-                <tr><td>자동 생성</td><td>신청서 제출 일시</td><td>제출 시 기록</td></tr>
+                <tr><td>선택 · 팀 지원</td><td>팀 모집 게시판에서 지원할 때 적는 기술 스택 및 개발 경험, 전체 일정 참석 가능 여부, 팀장에게 하고 싶은 말, 이름 공개 여부. 소속 동아리는 신청서에 적은 값을 그대로 씁니다.</td><td>팀 지원서 입력</td></tr>
+                <tr><td>자동 생성</td><td>신청서 제출 일시, 팀 지원·철회·수락·거절 일시와 처리 상태</td><td>제출·처리 시 기록</td></tr>
                 <tr><td>행사 현장</td><td>행사 중 촬영한 사진·영상</td><td>현장 촬영</td></tr>
               </tbody>
             </table>
@@ -146,6 +147,14 @@
           </ul>
           <h3>팀 모집 게시판</h3>
           <p>팀원 모집이나 팀 찾기를 요청한 경우에만 팀 모집 게시판에 <strong>소속 동아리, 희망 역할, 기술 스택 요약</strong>을 올립니다. 성함, 연락처, 이메일, 학번은 게시하지 않습니다.</p>
+          <h3>팀 지원</h3>
+          <p>이용자가 팀 모집 게시판에서 팀에 지원하면, 지원서에 적은 <strong>소속 동아리, 기술 스택 및 개발 경험, 전체 일정 참석 가능 여부, 하고 싶은 말</strong>이 해당 팀의 조장(글을 올린 사람)에게 보입니다. 성함과 연락처는 다음 경우에만 공개됩니다.</p>
+          <ul>
+            <li><strong>성함</strong> — 지원자가 지원서에서 ‘수락 전에도 이름 보이기’를 선택했거나, 조장이 지원을 수락한 뒤</li>
+            <li><strong>연락처(휴대전화번호)</strong> — 조장이 지원을 수락한 뒤에만. 이때 조장의 성함·연락처도 같은 방식으로 지원자에게 공개됩니다.</li>
+          </ul>
+          <p>이 공개는 이용자가 지원과 수락 절차에서 직접 선택한 것으로, 팀원 간 연락과 팀 구성 확인에만 쓰입니다. 이메일 주소와 구글 계정 고유 식별자는 다른 이용자에게 공개하지 않습니다. 수락하면 지원자가 다른 팀에 낸 대기 중 지원은 자동으로 종료됩니다.</p>
+          <p>새 지원이 도착했을 때와 지원이 수락되었을 때, 해당 이용자의 구글 계정 이메일 주소로 안내 메일을 보냅니다. 메일에는 이름·연락처 같은 개인정보를 담지 않고 사이트 주소만 적습니다.</p>
         </section>
 
         <section class="art" id="p5">
@@ -156,9 +165,9 @@
             <table class="tbl kv">
               <tbody>
                 <tr><th scope="row">받는 곳</th><td>Google LLC (<a href="https://policies.google.com/privacy" rel="noopener">개인정보처리방침 · 문의</a>)</td></tr>
-                <tr><th scope="row">맡기는 업무</th><td>구글 로그인 인증, 신청서 저장(Google 스프레드시트 · Apps Script)</td></tr>
+                <tr><th scope="row">맡기는 업무</th><td>구글 로그인 인증, 신청서·팀 지원서 저장(Google 스프레드시트 · Apps Script), 팀 지원 안내 메일 발송(Apps Script를 통한 Gmail)</td></tr>
                 <tr><th scope="row">이전 국가</th><td>미국 등 Google 데이터센터가 있는 국가</td></tr>
-                <tr><th scope="row">이전 항목</th><td>02의 항목 중 로그인·신청서·자동 생성 항목</td></tr>
+                <tr><th scope="row">이전 항목</th><td>02의 항목 중 로그인·신청서·팀 지원·자동 생성 항목, 안내 메일을 받는 이메일 주소</td></tr>
                 <tr><th scope="row">이전 시기·방법</th><td>신청서를 제출할 때 암호화된 네트워크(HTTPS)로 전송</td></tr>
                 <tr><th scope="row">보유 기간</th><td>03의 보유 기간과 같음</td></tr>
               </tbody>
@@ -176,7 +185,7 @@
             <li><strong>요청 범위</strong> — 구글 로그인 기본 범위(openid, email, profile)만 요청합니다.</li>
             <li><strong>이용</strong> — 신청자 본인 확인, 중복 신청 방지, 같은 계정으로 다시 제출할 때 기존 신청서 갱신에만 씁니다.</li>
             <li><strong>저장</strong> — 이메일 주소와 계정 고유 식별자만 신청서와 함께 저장합니다. 로그인 토큰은 제출할 때 Google 서버에 진위를 확인하는 데만 쓰고 저장하지 않습니다.</li>
-            <li><strong>공유하지 않음</strong> — 구글 계정 정보를 판매하거나 광고에 쓰거나 제3자에게 넘기지 않습니다. Gmail, Drive 등 다른 구글 데이터에는 접근하지 않습니다.</li>
+            <li><strong>공유하지 않음</strong> — 구글 계정 정보를 판매하거나 광고에 쓰거나 제3자에게 넘기지 않습니다. Gmail, Drive 등 다른 구글 데이터에는 접근하지 않습니다. (팀 지원 안내 메일은 운영진 계정으로 발송하며, 이용자의 Gmail에는 접근하지 않습니다.)</li>
           </ul>
           <p>운영위원회가 Google API로 받은 정보를 쓰는 방식은 <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Google API 서비스 사용자 데이터 정책</a>(제한적 사용 요건 포함)을 따릅니다. 이 사이트와의 연결은 <a href="https://myaccount.google.com/permissions" rel="noopener">Google 계정의 타사 앱 관리</a>에서 언제든 끊을 수 있습니다.</p>
         </section>

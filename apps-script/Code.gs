@@ -46,7 +46,17 @@ var CONFIG = {
   UPDATE_IF_EXISTS: true,
 
   // 팀 모집 게시판을 저장할 탭 (Board.gs). 없으면 자동 생성
-  BOARD_SHEET: '게시판'
+  BOARD_SHEET: '게시판',
+
+  // 팀 지원을 저장할 탭 (Apply.gs). 없으면 자동 생성
+  TEAMAPP_SHEET: '팀지원',
+
+  // 새 지원이 오면 조장에게, 수락되면 지원자에게 메일을 보낸다 (Apply.gs).
+  // 메일 권한 승인 방법은 BACKEND.md 12절. 끄면 사이트 안 표시만 쓴다.
+  NOTIFY: true,
+
+  // 메일에 적을 팀 모집 페이지 주소
+  SITE_URL: 'https://2026endpoint.github.io/#/teams'
 };
 
 /**
@@ -71,7 +81,7 @@ var HEADERS = [
 ];
 
 /** 이 스크립트가 아는 기능의 세대. 사이트가 doGet 으로 먼저 확인한다. */
-var API_VERSION = 5;
+var API_VERSION = 6;
 
 /**
  * 한 번의 요청이 끝날 때까지만 사는 메모.
@@ -89,7 +99,7 @@ function setup() {
  * 배포 상태 확인용. 브라우저로 /exec 주소를 열면 이게 보인다.
  * api 는 이 스크립트가 어떤 기능까지 아는지 알리는 표시다.
  * 신청서 화면은 2 이상일 때 기존 신청 조회를, 게시판은 3 이상일 때 게시판 API 를,
- * 5 이상일 때 한 번에 다 받아오는 init 을 쓴다.
+ * 5 이상일 때 한 번에 다 받아오는 init 을, 6 이상일 때 팀 지원(Apply.gs)을 쓴다.
  * (옛 버전이 조회 요청을 '빈 제출'로 잘못 처리해 기존 답변을 지우는 것을 막는다)
  */
 function doGet() {

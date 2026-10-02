@@ -25,6 +25,9 @@
  *  { action:'board.create', nonce, data:{ kind:'team'|'person', ... } }
  *  { action:'board.update', nonce, id, data:{ ... } }   kind:'done' 을 보내면 모집 완료
  *  { action:'board.delete', nonce, id }
+ *  { action:'board.apply' | 'board.applyEdit' | 'board.applyCancel' | 'board.applyDecide', ... }  → Apply.gs
+ *
+ * 목록 응답: items(글) · me(내 신청 요약) · myApps(내가 낸 지원) · inbox(내 글에 온 지원)
  */
 
 var BOARD_HEADERS = [
@@ -44,14 +47,20 @@ function board_(op, claims, body) {
   // 쓰기는 한 번에 하나씩 — 같은 사람이 두 번 눌러도 글이 두 개 생기지 않게
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
+  var res;
   try {
     // 응답이 끊겨 화면이 같은 요청을 다시 보내면, 처리하지 않고 먼젓번 결과를 돌려준다.
     // (Apps Script 는 처리를 끝내고도 응답만 흘려보내는 일이 있다. 그때 화면이 다시
     //  보내면 예전에는 "이미 글이 있습니다" 라는 엉뚱한 오류가 떴다)
-    var res = once_(claims, body.nonce, function () {
+    res = once_(claims, body.nonce, function () {
       if (op === 'create') return boardCreate_(claims, body.data || {});
       if (op === 'update') return boardUpdate_(claims, String(body.id || ''), body.data || {});
       if (op === 'delete') return boardDelete_(claims, String(body.id || ''));
+      // 팀 지원 (Apply.gs)
+      if (op === 'apply') return bappCreate_(claims, String(body.id || ''), body.data || {});
+      if (op === 'applyEdit') return bappEdit_(claims, String(body.id || ''), body.data || {});
+      if (op === 'applyCancel') return bappCancel_(claims, String(body.id || ''));
+      if (op === 'applyDecide') return bappDecide_(claims, String(body.id || ''), body.data || {});
       return { ok: false, error: 'UNKNOWN_ACTION' };
     });
 
@@ -62,11 +71,16 @@ function board_(op, claims, body) {
       var full = boardList_(claims);
       res.items = full.items;
       res.me = full.me;
+      res.myApps = full.myApps;
+      res.inbox = full.inbox;
     }
-    return res;
   } finally {
     lock.releaseLock();
   }
+
+  // 메일은 잠금이 풀린 뒤에 보낸다. 발송에 1초쯤 걸리는데, 그동안 다른 사람의 쓰기를 막을 이유가 없다.
+  bappMailFlush_();
+  return res;
 }
 
 /* ---- 시트 접근 ------------------------------------------------------- */
@@ -189,8 +203,15 @@ function boardList_(claims) {
     me.role = String(app.answers['희망역할'] || '');
     me.stack = String(app.answers['기술스택 및 개발 경험'] || '');
     me.sched = String(app.answers['전체 일정 참석 가능여부'] || '');
+    // 지원서는 소속동아리를 전부 보여줘야 해서 목록으로도 준다 (club 은 글쓰기 폼용 첫 번째 하나)
+    me.clubs = String(app.answers['소속동아리'] || '').split(',')
+      .map(function (c) { return c.trim(); }).filter(Boolean);
   }
-  return { ok: true, items: items, me: me };
+
+  // 팀 지원 (Apply.gs): 내가 낸 지원, 내 글에 온 지원, 지금 합류한 팀
+  var views = bappViews_(claims);
+  me.joined = views.joined;
+  return { ok: true, items: items, me: me, myApps: views.mine, inbox: views.inbox };
 }
 
 /* ---- 입력 정리 ------------------------------------------------------- */
@@ -223,6 +244,8 @@ function boardCreate_(claims, d) {
     return fam === kind;
   });
   if (dup) return { ok: false, error: 'LIMIT' };
+  // 다른 팀에 팀원으로 합류해 있는 사람이 모집글을 올려 조장이 되는 것은 막는다 (Apply.gs 의 '묶임' 규칙)
+  if (kind === 'team' && bappJoined_(claims, bappCtx_(), '')) return { ok: false, error: 'JOINED' };
 
   var club = cut_(d.club, 30);
   var title = cut_(d.title, BOARD_LIMIT.title);
