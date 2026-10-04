@@ -788,7 +788,7 @@ p{text-wrap:pretty}
       <a href="#schedule" class="sm-hide">일정</a>
       <a href="#/teams" data-nav="/teams">팀 모집</a>
       <a href="#/apply" data-nav="/apply">신청 안내</a>
-      <a class="apply" href="#/apply" data-gate="apply" data-gate-label="10.05 오픈">참가 신청</a>
+      <a class="apply" href="#/apply" data-gate="apply" data-gate-label="10.07 오픈">참가 신청</a>
     </nav>
   </div>
 </header>
@@ -833,7 +833,7 @@ p{text-wrap:pretty}
   <div class="facts">
     <div data-anim style="--d:.05s"><span class="lab">본 해커톤 · 1박 2일</span><b>11.13 (금) – 11.14 (토)</b></div>
     <div data-anim style="--d:.15s"><span class="lab">장소</span><b>미래관 109호</b></div>
-    <div data-anim style="--d:.25s"><span class="lab">1차 모집</span><b>10.05 – 10.16 (예정)</b></div>
+    <div data-anim style="--d:.25s"><span class="lab">1차 모집</span><b>10.07 – 10.16 (예정)</b></div>
   </div>
 
 
@@ -909,7 +909,7 @@ p{text-wrap:pretty}
       </div>
 
       <div class="slot" data-anim>
-        <time>10.05 – 10.16 (예정)</time>
+        <time>10.07 – 10.16 (예정)</time>
         <h3>참가 신청</h3>
         <p>사이트에서 개인 또는 팀 단위로 신청하실 수 있습니다.<br> 추석 연휴 전 가수요 조사 이후 진행 될 예정입니다.</p>
       </div>
@@ -1011,7 +1011,7 @@ p{text-wrap:pretty}
       <div class="cta" data-anim="plate">
         <div>
           <h2>준비되셨나요?</h2>
-          <p>1차 모집 10.05 – 10.16 (예정)</p>
+          <p>1차 모집 10.07 – 10.16 (예정)</p>
         </div>
         <a class="btn btn-k" href="#/apply" data-gate="apply"><span>참가 신청하기</span></a>
       </div>
@@ -1034,7 +1034,7 @@ p{text-wrap:pretty}
           </div>
         </div>
         <div class="stack" data-anim style="--d:.3s">
-          <div><span class="lab">모집 기간</span><b>10.05 – 10.16 (예정)</b></div>
+          <div><span class="lab">모집 기간</span><b>10.07 – 10.16 (예정)</b></div>
           <div><span class="lab">팀 규모</span><b>팀당 2~6명</b></div>
           <div><span class="lab">정원</span><b>최대 120명</b></div>
         </div>
@@ -1349,9 +1349,9 @@ window.EPCONFIG = {
    주소를 공유해 게이트를 여는 일은 생기지 않습니다.
    ============================================================== */
 window.EPGATE = (function () {
-  var OPEN_AT  = '2026-10-05T00:00:00+09:00';   // 1차 모집 시작
+  var OPEN_AT  = '2026-10-07T08:00:00+09:00';   // 1차 모집 시작
   var CLOSE_AT = '';                            // 비우면 계속 열려 있음
-  var PERIOD   = '10.05 – 10.16 (예정)';
+  var PERIOD   = '10.07 – 10.16 (예정)';
 
   var loc = window.location;
   var host = String(loc.hostname || '').toLowerCase();
@@ -1382,7 +1382,7 @@ window.EPGATE = (function () {
     else state = 'open';
   }
 
-  /** 'YYYY-MM-DDT...' 에서 '10.05' 만 뽑는다 */
+  /** 'YYYY-MM-DDT...' 에서 '10.07' 만 뽑는다 */
   function md(iso) {
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
     return m ? m[2] + '.' + m[3] : '';
