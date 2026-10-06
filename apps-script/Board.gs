@@ -35,7 +35,9 @@ var BOARD_HEADERS = [
   '제목', '설명', '태그', '현재 인원', '정원', '참석', '팀 소개', 'GitHub',
   '작성시각', '수정시각'
 ];
-var BOARD_CLUBS = ['다락방', 'PLUM', 'EC', 'NL', 'TCP'];
+// 동아리가 없는 학과생도 신청할 수 있다. 신청서에서 '동아리 없음' 을 고르면 그 값이 그대로 들어온다.
+var BOARD_NO_CLUB = '동아리 없음';
+var BOARD_CLUBS = ['다락방', 'PLUM', 'EC', 'NL', 'TCP', BOARD_NO_CLUB];
 var BOARD_LIMIT = { title: 80, desc: 600, team: 40, name: 30, meta: 60, intro: 800, github: 200 };
 
 /** 한 번의 요청이 끝날 때까지만 사는 메모 (Code.gs 의 MEMO 와 같은 역할) */
@@ -218,6 +220,8 @@ function boardList_(claims) {
 function cut_(v, n) { return safeText_(v).replace(/\s+/g, ' ').trim().slice(0, n); }
 function clubOk_(club) {
   var parts = String(club || '').split('·').map(function (c) { return c.trim(); }).filter(Boolean);
+  // '동아리 없음' 은 다른 동아리와 같이 쓸 수 없다
+  if (parts.length > 1 && parts.indexOf(BOARD_NO_CLUB) !== -1) return false;
   return parts.length > 0 && parts.length <= 3 && parts.every(function (c) { return BOARD_CLUBS.indexOf(c) !== -1; });
 }
 function tagsOk_(tags) {
