@@ -90,6 +90,9 @@ function bappHeaders_(sh) {
   if (fresh) row = [];
   var missing = BAPP_HEADERS.filter(function (h) { return row.indexOf(h) === -1; });
   if (missing.length) {
+    // 시트에 열이 모자라면(빈 열을 지웠을 때) 먼저 늘린다 — 범위 밖에 쓰면 요청 전체가 실패한다
+    var need = row.length + missing.length;
+    if (sh.getMaxColumns() < need) sh.insertColumnsAfter(sh.getMaxColumns(), need - sh.getMaxColumns());
     sh.getRange(1, row.length + 1, 1, missing.length).setValues([missing]);
     row = row.concat(missing);
   }
@@ -141,9 +144,17 @@ function bappCtx_() {
   var sh = bappSheet_();
   var h = bappHeaders_(sh);
   var apps = bappRows_(sh, h);
-  var byId = {};
-  posts.forEach(function (r) { byId[String(r.rec.id)] = r; });
-  return { bsh: bsh, bh: bh, posts: posts, byId: byId, sh: sh, h: h, apps: apps };
+  var byId = {}, byIdAll = {};
+  // 운영진이 숨긴 글(Board.gs 의 '숨김')은 지원 쪽에서는 '보이지 않는 글'이다 — 그 글에 낸 지원은 'hidden'
+  // (지원자에게 '운영진 확인 중'), 새 지원·수락은 NOT_FOUND. 숨김을 풀면 그대로 돌아온다 (지원 행은 건드리지 않는다).
+  // 묶임 규칙(합류한 팀원은 다른 팀에 못 감, 조장 판정, 인원 가감)은 숨긴 글도 그대로 세어야 하므로
+  // byIdAll(전부)을 따로 둔다. byId(보이는 글)는 찾기·보여 주기에만 쓴다.
+  posts.forEach(function (r) {
+    byIdAll[String(r.rec.id)] = r;
+    if (typeof boardHidden_ === 'function' && boardHidden_(r.rec)) return;
+    byId[String(r.rec.id)] = r;
+  });
+  return { bsh: bsh, bh: bh, posts: posts, byId: byId, byIdAll: byIdAll, sh: sh, h: h, apps: apps };
 }
 
 /* ---- 값 정리 --------------------------------------------------------- */
@@ -187,11 +198,11 @@ function bappLeads_(who, ctx) {
   return ctx.posts.some(function (r) { return String(r.rec.kind) !== 'person' && boardIsMine_(r.rec, who); });
 }
 
-/** 이 계정이 지금 합류해 있는 팀 (수락됐고 그 글이 아직 있다). 없으면 null. */
+/** 이 계정이 지금 합류해 있는 팀 (수락됐고 그 글이 아직 있다 — 운영진이 숨긴 글도 센다). 없으면 null. */
 function bappJoined_(who, ctx, exceptId) {
   return ctx.apps.filter(function (a) {
     return String(a.rec.id) !== exceptId && bappCode_(a.rec) === 'accepted' &&
-           ctx.byId[String(a.rec['글 id'])] && boardIsMine_(a.rec, who);
+           ctx.byIdAll[String(a.rec['글 id'])] && boardIsMine_(a.rec, who);
   })[0] || null;
 }
 
@@ -220,15 +231,18 @@ function bappPerson_(who) {
  */
 function bappPublic_(a, ctx, role) {
   var rec = a.rec;
-  var post = ctx.byId[String(rec['글 id'])] || null;
+  var pid = String(rec['글 id']);
+  var post = ctx.byId[pid] || null;                                   // 보이는 글
+  var any = ctx.byIdAll ? (ctx.byIdAll[pid] || null) : post;           // 운영진이 숨긴 글까지
   var code = bappCode_(rec);
   var state = code;
-  if (!post) state = 'gone';
+  if (!any) state = 'gone';
+  else if (!post) state = 'hidden';                                    // 숨긴 글 — 지원자에게는 '운영진 확인 중'
   else if (code === 'pending' && String(post.rec.kind) === 'done') state = 'full';
 
   var out = {
-    id: String(rec.id), postId: String(rec['글 id']),
-    team: post ? String(post.rec['팀명'] || post.rec['제목'] || '') : String(rec['팀명'] || ''),
+    id: String(rec.id), postId: pid,
+    team: any ? String(any.rec['팀명'] || any.rec['제목'] || '') : String(rec['팀명'] || ''),
     status: code, state: state,
     club: String(rec['소속동아리'] || ''), stack: String(rec['기술스택 및 개발 경험'] || ''),
     sched: String(rec['전체 일정 참석 가능여부'] || ''), note: String(rec['하고 싶은 말'] || ''),
@@ -246,8 +260,9 @@ function bappPublic_(a, ctx, role) {
       out.others = bappPendingOthers_(who, ctx, out.id).length;
       out.block = bappJoined_(who, ctx, out.id) ? 'joined' : (bappLeads_(who, ctx) ? 'leader' : '');
     }
-  } else if (code === 'accepted' && post) {
-    var lp = bappPerson_(bappWho_(post.rec));
+  } else if (code === 'accepted' && any) {
+    // 합류한 팀원은 글이 잠시 숨겨져도 조장 연락처를 그대로 본다 (합류 자체는 유지되므로)
+    var lp = bappPerson_(bappWho_(any.rec));
     out.leader = { name: lp.name, phone: lp.phone };
   }
   return out;
@@ -258,12 +273,14 @@ function bappViews_(claims) {
   var ctx = bappCtx_();
   var out = { mine: [], inbox: [], joined: '' };
   ctx.apps.forEach(function (a) {
-    var post = ctx.byId[String(a.rec['글 id'])];
+    var pid = String(a.rec['글 id']);
+    var post = ctx.byId[pid], any = ctx.byIdAll[pid];
     if (boardIsMine_(a.rec, claims)) {
       var v = bappPublic_(a, ctx, 'applicant');
       out.mine.push(v);
-      if (v.status === 'accepted' && post) out.joined = v.team;
+      if (v.status === 'accepted' && any) out.joined = v.team;   // 숨긴 팀이라도 합류는 유지된다
     }
+    // 조장의 받은 지원함은 글이 보일 때만 — 숨긴 동안에는 수락·거절도 NOT_FOUND 라 보여 줄 것이 없다
     if (post && boardIsMine_(post.rec, claims)) out.inbox.push(bappPublic_(a, ctx, 'leader'));
   });
   var newest = function (x, y) { return x.createdAt < y.createdAt ? 1 : (x.createdAt > y.createdAt ? -1 : 0); };
@@ -380,7 +397,7 @@ function bappCancel_(claims, id) {
   bappWrite_(ctx.sh, ctx.h, hit.rec, hit.row);
 
   if (code === 'accepted') {
-    var post = ctx.byId[String(hit.rec['글 id'])];
+    var post = ctx.byIdAll[String(hit.rec['글 id'])];   // 숨긴 글이어도 인원은 맞춰 둔다
     if (post) {
       post.rec['현재 인원'] = Math.max(1, (Number(post.rec['현재 인원']) || 1) - 1);
       post.rec['수정시각'] = now;

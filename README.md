@@ -91,7 +91,7 @@ EC · NL · 다락방 · Plum · TCP
 
 ```
 .
-├── index.html            메인 · 참가 신청 폼 · 팀 모집 게시판 (단일 파일 SPA)
+├── index.html            메인 · 공지 · 참가 신청 폼 · 팀 모집 게시판 · 운영진 페이지(#/admin) (단일 파일 SPA)
 ├── privacy/index.html    개인정보처리방침
 ├── terms/index.html      이용약관
 ├── assets/
@@ -100,13 +100,17 @@ EC · NL · 다락방 · Plum · TCP
 │   └── legal.js
 ├── apps-script/
 │   ├── Code.gs           신청서 수신 · 조회 · 수정 엔드포인트
-│   └── Board.gs          팀 모집 게시판 (스프레드시트 DB)
+│   ├── Board.gs          팀 모집 게시판 (스프레드시트 DB)
+│   ├── Apply.gs          팀 지원 · 수락 · 메일
+│   └── Notice.gs         공지사항 · 운영진 판정 · 운영기록
 └── BACKEND.md            구글 OAuth · Apps Script 배포 가이드
 ```
 
 **프런트엔드** 는 빌드 도구 없이 순수 HTML · CSS · JavaScript로 작성했고, GitHub Pages로 배포합니다.
 **백엔드** 는 Google Apps Script 웹 앱이며, 구글 스프레드시트를 DB로 사용합니다.
 신청서와 게시판은 구글 로그인(OAuth)으로 본인 확인을 거칩니다.
+운영진은 `#/admin` 에서 공지를 올리고 게시판 글을 숨길 수 있습니다. 주소를 안다고 권한이 생기지는 않고,
+Apps Script 의 `CONFIG.ADMINS` 에 적힌 구글 계정만 통과합니다 ([BACKEND.md 13절](BACKEND.md)).
 
 ## 로컬에서 보기
 

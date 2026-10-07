@@ -24,7 +24,8 @@
  *  { action:'board.list' }
  *  { action:'board.create', nonce, data:{ kind:'team'|'person', ... } }
  *  { action:'board.update', nonce, id, data:{ ... } }   kind:'done' 을 보내면 모집 완료
- *  { action:'board.delete', nonce, id }
+ *  { action:'board.delete', nonce, id }                 글쓴이, 또는 운영진(CONFIG.ADMINS)
+ *  { action:'board.hide' | 'board.unhide', nonce, id }  운영진만 — 글을 지우지 않고 목록에서만 뺀다 (api 7)
  *  { action:'board.apply' | 'board.applyEdit' | 'board.applyCancel' | 'board.applyDecide', ... }  → Apply.gs
  *
  * 목록 응답: items(글) · me(내 신청 요약) · myApps(내가 낸 지원) · inbox(내 글에 온 지원)
@@ -33,7 +34,10 @@
 var BOARD_HEADERS = [
   'id', 'kind', '계정 식별자', '이메일', '이름', '동아리', '팀명',
   '제목', '설명', '태그', '현재 인원', '정원', '참석', '팀 소개', 'GitHub',
-  '작성시각', '수정시각'
+  '작성시각', '수정시각',
+  // 운영진이 숨긴 글. 비어 있지 않으면 숨김 (사이트의 운영진 페이지에서 'O' 를 넣고 뺀다. 시트에서 직접 적어도 된다).
+  // 숨긴 글은 글쓴이와 운영진에게만 '숨김' 표시로 보이고, 다른 사람 목록에서는 빠진다. 행은 그대로 남는다.
+  '숨김'
 ];
 // 동아리가 없는 학과생도 신청할 수 있다. 신청서에서 '동아리 없음' 을 고르면 그 값이 그대로 들어온다.
 var BOARD_NO_CLUB = '동아리 없음';
@@ -58,6 +62,9 @@ function board_(op, claims, body) {
       if (op === 'create') return boardCreate_(claims, body.data || {});
       if (op === 'update') return boardUpdate_(claims, String(body.id || ''), body.data || {});
       if (op === 'delete') return boardDelete_(claims, String(body.id || ''));
+      // 운영진 (Notice.gs 의 isAdmin_ 이 판정한다)
+      if (op === 'hide') return boardHide_(claims, String(body.id || ''), true);
+      if (op === 'unhide') return boardHide_(claims, String(body.id || ''), false);
       // 팀 지원 (Apply.gs)
       if (op === 'apply') return bappCreate_(claims, String(body.id || ''), body.data || {});
       if (op === 'applyEdit') return bappEdit_(claims, String(body.id || ''), body.data || {});
@@ -112,6 +119,9 @@ function boardHeaders_(sh) {
   if (fresh) row = [];
   var missing = BOARD_HEADERS.filter(function (h) { return row.indexOf(h) === -1; });
   if (missing.length) {
+    // 시트에 열이 모자라면(운영진이 빈 열을 지웠을 때) 먼저 늘린다 — 범위 밖에 쓰면 요청 전체가 실패한다
+    var need = row.length + missing.length;
+    if (sh.getMaxColumns() < need) sh.insertColumnsAfter(sh.getMaxColumns(), need - sh.getMaxColumns());
     sh.getRange(1, row.length + 1, 1, missing.length).setValues([missing]);
     row = row.concat(missing);
   }
@@ -164,11 +174,22 @@ function boardIsMine_(rec, claims) {
          String(rec['이메일']).toLowerCase() === String(claims.email).toLowerCase();
 }
 
+/** 운영진이 숨긴 글인가. '숨김' 칸이 비어 있지 않으면 전부 숨김으로 본다 (잘못 적어도 숨기는 쪽으로). */
+function boardHidden_(rec) {
+  var v = rec['숨김'];
+  return !!String(v === null || v === undefined ? '' : v).trim();
+}
+
+/** 운영진인가. Notice.gs 가 판정한다. Notice.gs 를 아직 안 붙였으면 아무도 운영진이 아니다. */
+function boardAdmin_(claims) {
+  return typeof isAdmin_ === 'function' && isAdmin_(claims);
+}
+
 /** 화면에 내보낼 모양. 이메일·식별자는 빼고 mine 만 준다. */
 function boardPublic_(rec, claims) {
   var iso = function (v) { return (v instanceof Date) ? v.toISOString() : (v ? String(v) : ''); };
   return {
-    id: String(rec.id), kind: String(rec.kind), mine: boardIsMine_(rec, claims),
+    id: String(rec.id), kind: String(rec.kind), mine: boardIsMine_(rec, claims), hidden: boardHidden_(rec),
     name: String(rec['이름'] || ''), club: String(rec['동아리'] || ''), team: String(rec['팀명'] || ''),
     title: String(rec['제목'] || ''), desc: String(rec['설명'] || ''),
     tags: String(rec['태그'] || '').split(',').map(function (t) { return t.trim(); }).filter(Boolean),
@@ -189,10 +210,15 @@ function boardName_(claims) {
 function boardList_(claims) {
   var sh = boardSheet_();
   var headers = boardHeaders_(sh);
-  var items = boardRows_(sh, headers).map(function (r) { return boardPublic_(r.rec, claims); });
+  var admin = boardAdmin_(claims);
+  // 숨긴 글은 글쓴이와 운영진에게만 간다 (hidden:true 로). 계정당 글 하나 규칙(LIMIT)은 boardRows_ 를 그대로
+  // 보므로 숨긴 글도 센다 — 숨김당한 사람이 같은 글을 또 올리지는 못한다.
+  var items = boardRows_(sh, headers)
+    .filter(function (r) { return admin || !boardHidden_(r.rec) || boardIsMine_(r.rec, claims); })
+    .map(function (r) { return boardPublic_(r.rec, claims); });
   items.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : (a.createdAt > b.createdAt ? -1 : 0); });
 
-  var me = { applied: false, hasTeam: false, hasPerson: false, name: claims.name || '' };
+  var me = { applied: false, hasTeam: false, hasPerson: false, name: claims.name || '', admin: admin };
   items.forEach(function (p) {
     if (!p.mine) return;
     if (p.kind === 'person') me.hasPerson = true; else me.hasTeam = true;
@@ -358,10 +384,17 @@ function boardDelete_(claims, id) {
   var rows = boardRows_(sh, headers);
   var hit = rows.filter(function (r) { return String(r.rec.id) === id; })[0];
   if (!hit) return { ok: false, error: 'NOT_FOUND' };
-  if (!boardIsMine_(hit.rec, claims)) return { ok: false, error: 'FORBIDDEN' };
+  var adminDrop = false;
+  if (!boardIsMine_(hit.rec, claims)) {
+    // 글쓴이가 아니면 운영진만 지울 수 있다
+    if (!boardAdmin_(claims)) return { ok: false, error: 'FORBIDDEN' };
+    adminDrop = true;
+  }
 
   sh.deleteRow(hit.row);
   SpreadsheetApp.flush();
+  // 운영진이 지운 것은 운영기록에 남긴다 — 지운 뒤에 적어, 실패한 삭제가 기록되지 않게 한다
+  if (adminDrop && typeof audit_ === 'function') audit_(claims, 'board.delete', id, String(hit.rec['제목'] || hit.rec['팀명'] || ''));
 
   // 메모에서도 지우고, 아래에 있던 글들의 행 번호를 하나씩 당긴다.
   // 그래야 이 뒤에 이어지는 수정·목록이 시트를 다시 읽지 않고도 맞는다.
@@ -370,4 +403,22 @@ function boardDelete_(claims, id) {
   if (BMEMO.lastRow) BMEMO.lastRow -= 1;
 
   return { ok: true };
+}
+
+/**
+ * 운영진이 글을 숨기거나 되돌린다 (api 7). 글은 시트에 그대로 남고 다른 사람 목록에서만 빠진다.
+ * 글쓴이와 운영진에게는 '숨김' 표시로 보인다. 권한은 Notice.gs 의 isAdmin_ 이 판정한다.
+ * 남의 글 내용을 고치는 기능은 일부러 두지 않는다 — boardUpdate_ 는 글쓴이 이름을 요청한 계정의
+ * 신청서에서 가져오므로, 운영진이 고치면 이름이 바뀐다. 숨기고 글쓴이에게 연락하는 쪽이 맞다.
+ */
+function boardHide_(claims, id, on) {
+  if (!boardAdmin_(claims)) return { ok: false, error: 'NOT_ADMIN' };
+  var sh = boardSheet_();
+  var headers = boardHeaders_(sh);
+  var hit = boardRows_(sh, headers).filter(function (r) { return String(r.rec.id) === id; })[0];
+  if (!hit) return { ok: false, error: 'NOT_FOUND' };
+  hit.rec['숨김'] = on ? 'O' : '';
+  boardWrite_(sh, headers, hit.rec, hit.row);
+  if (typeof audit_ === 'function') audit_(claims, on ? 'board.hide' : 'board.unhide', id, String(hit.rec['제목'] || hit.rec['팀명'] || ''));
+  return { ok: true, item: boardPublic_(hit.rec, claims) };
 }

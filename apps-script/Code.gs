@@ -56,7 +56,26 @@ var CONFIG = {
   NOTIFY: true,
 
   // 메일에 적을 팀 모집 페이지 주소
-  SITE_URL: 'https://2026endpoint.github.io/#/teams'
+  SITE_URL: 'https://2026endpoint.github.io/#/teams',
+
+  // 운영진 — 사이트의 운영진 페이지(#/admin)에서 공지를 쓰고 게시판 글을 숨길 수 있는 구글 계정 (Notice.gs).
+  // 로그인 토큰에서 검증된 이메일과 소문자로 비교한다. 화면의 버튼이 아니라 이 목록이 권한의 기준이다.
+  // (GitHub Pages 에 올라간 것은 전부 공개 소스라 주소를 숨기는 것은 보안이 아니다)
+  //
+  // ★ 이 파일은 공개 저장소에 올라가므로 여기에 이메일을 적으면 그대로 공개된다. 그래서 권장은
+  //   Apps Script 편집기 → 프로젝트 설정 → 스크립트 속성 → 속성 ADMINS 에 쉼표로 적는 것이다 (여기와 합쳐서 본다).
+  //   그 사람이 사이트에 로그인했을 때 '내 상태' 패널에 보이는 주소를 그대로 적는다. 둘 다 비어 있으면 아무도 운영진이 아니다.
+  ADMINS: [],
+
+  // 공지를 저장할 탭 (Notice.gs). 없으면 자동 생성
+  NOTICE_SHEET: '공지',
+
+  // 공지를 별도 스프레드시트에 두려면 그 ID. 비우면 이 스프레드시트(SHEET_ID) 안의 탭을 쓴다.
+  // (운영진이 시트에서 직접 공지를 적게 하려면, 신청서가 없는 별도 파일을 만들어 그 파일만 공유하는 쪽이 안전하다)
+  NOTICE_SHEET_ID: '',
+
+  // 운영진이 한 일(공지 등록·수정·삭제, 글 숨김·삭제)을 남길 탭 (Notice.gs). 없으면 자동 생성
+  AUDIT_SHEET: '운영기록'
 };
 
 /**
@@ -81,7 +100,7 @@ var HEADERS = [
 ];
 
 /** 이 스크립트가 아는 기능의 세대. 사이트가 doGet 으로 먼저 확인한다. */
-var API_VERSION = 6;
+var API_VERSION = 7;
 
 /**
  * 한 번의 요청이 끝날 때까지만 사는 메모.
@@ -99,10 +118,21 @@ function setup() {
  * 배포 상태 확인용. 브라우저로 /exec 주소를 열면 이게 보인다.
  * api 는 이 스크립트가 어떤 기능까지 아는지 알리는 표시다.
  * 신청서 화면은 2 이상일 때 기존 신청 조회를, 게시판은 3 이상일 때 게시판 API 를,
- * 5 이상일 때 한 번에 다 받아오는 init 을, 6 이상일 때 팀 지원(Apply.gs)을 쓴다.
+ * 5 이상일 때 한 번에 다 받아오는 init 을, 6 이상일 때 팀 지원(Apply.gs)을,
+ * 7 이상일 때 공지와 운영진 기능(Notice.gs)을 쓴다.
  * (옛 버전이 조회 요청을 '빈 제출'로 잘못 처리해 기존 답변을 지우는 것을 막는다)
+ *
+ * ?notices=1 — 공지 목록. 로그인 없이 누구나 읽는다 (Notice.gs 의 noticesPublic_).
+ * probe 응답(아래 마지막 줄)은 그대로 둔다. 화면의 버전 확인이 여기에 걸려 있어서, 공지 쪽에서
+ * 무슨 일이 나도 probe 는 영향을 받지 않아야 한다 (noticesPublic_ 는 안에서 다 잡고 절대 던지지 않는다).
  */
-function doGet() {
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  if (p.notices) {
+    return json_(typeof noticesPublic_ === 'function'
+      ? noticesPublic_()
+      : { ok: true, api: API_VERSION, items: [] });   // Notice.gs 를 아직 안 붙였을 때
+  }
   return json_({ ok: true, service: 'ENDPoinT apply endpoint', api: API_VERSION });
 }
 
@@ -138,6 +168,12 @@ function doPost(e) {
     // 1-3) 팀 모집 게시판 (Board.gs)
     if (body.action && String(body.action).indexOf('board.') === 0) {
       return json_(board_(String(body.action).slice(6), claims, body));
+    }
+
+    // 1-3-1) 공지 · 운영진 (Notice.gs). CONFIG.ADMINS 에 없는 계정은 NOT_ADMIN
+    if (body.action && String(body.action).indexOf('notice.') === 0) {
+      if (typeof notice_ !== 'function') return json_({ ok: false, error: 'UNKNOWN_ACTION' });   // Notice.gs 를 아직 안 붙였을 때
+      return json_(notice_(String(body.action).slice(7), claims, body));
     }
 
     // 1-4) 그 밖의 action 은 거부한다. (신청서 제출은 action 없이 오거나 'submit')
