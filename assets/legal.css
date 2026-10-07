@@ -62,7 +62,7 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .stack{border:1px solid var(--line)}
 .stack>div{padding:20px 24px;border-bottom:1px solid var(--line)}
 .stack>div:last-child{border-bottom:0}
-.stack b{display:block;font-size:16px;font-weight:200;color:#fff;margin-top:6px;word-break:break-all}
+.stack b{display:block;font-size:16px;font-weight:200;color:#fff;margin-top:6px}
 
 /* 문서 전환 탭 — index 의 .tabs 와 같은 모양 */
 .ltabs{display:flex;border-bottom:1px solid var(--line);margin-top:clamp(40px,5vw,68px)}
@@ -100,10 +100,10 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .art>.lab{display:block;margin-bottom:12px;letter-spacing:.16em}
 .art h2{font-size:clamp(21px,2.4vw,27px);font-weight:200;letter-spacing:-.025em;margin-bottom:18px}
 .art h3{font-size:15px;font-weight:400;color:#fff;letter-spacing:-.01em;margin:24px 0 8px}
-.art p,.art li{font-size:15px;line-height:1.95;color:var(--dim)}
+.art p,.art li{font-size:15px;line-height:1.85;color:var(--dim)}
 .art p+p,.art p+ul,.art p+ol,.art ul+p,.art ol+p{margin-top:12px}
 .art strong{color:#fff;font-weight:400}
-.art a{color:var(--blue);text-decoration:underline;text-underline-offset:3px;word-break:break-all}
+.art a{color:var(--blue);text-decoration:underline;text-underline-offset:3px}
 .art ul,.art ol{margin:12px 0 0;padding:0;list-style:none}
 .art li{position:relative;padding-left:20px}
 .art li+li{margin-top:6px}
@@ -185,7 +185,19 @@ footer a:hover{color:#fff}
 .lab.ko{letter-spacing:.05em;text-transform:none;font-size:11.5px}
 .art>.lab.ko{letter-spacing:.05em}
 p,li{text-wrap:pretty}
+h1,h2,h3{text-wrap:balance}
 [hidden]{display:none!important}
+/* 한글은 어절 단위로 줄을 바꾼다. 긴 주소·메일은 anywhere 가 칸 안에서 끊어 준다
+   (예전에는 링크와 값에 break-all 을 줘서 한글 단어 중간에서도 끊겼다) */
+body{word-break:keep-all;overflow-wrap:anywhere}
+.lab{font-size:11.5px}
+.tbl thead th{font-size:11px}
+@media (max-width:720px){
+  /* 작은 화면에서는 얇은 본문 글자가 끊겨 보이므로 한 단계 두껍게 */
+  .sub,.art p,.art li,.note,.lsum p,.tbl td,.toc a{font-weight:400}
+  h1.ptitle,.art h2{font-weight:200}
+  .stack b{font-weight:300}
+}
 
 /* 주최 링크 (새 창) */
 .dept-link{display:inline-flex;align-items:center;gap:15px;color:#fff}
