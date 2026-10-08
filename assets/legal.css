@@ -187,9 +187,10 @@ footer a:hover{color:#fff}
 p,li{text-wrap:pretty}
 h1,h2,h3{text-wrap:balance}
 [hidden]{display:none!important}
-/* 한글은 어절 단위로 줄을 바꾼다. 긴 주소·메일은 anywhere 가 칸 안에서 끊어 준다
-   (예전에는 링크와 값에 break-all 을 줘서 한글 단어 중간에서도 끊겼다) */
-body{word-break:keep-all;overflow-wrap:anywhere}
+/* 한글은 어절 단위로 줄을 바꾼다. 한 줄에 다 안 들어가는 긴 주소·메일만 break-word 가 끊어 준다
+   (예전에는 링크와 값에 break-all 을 줘서 한글 단어 중간에서도 끊겼다. anywhere 는 좁은 칸에서
+   멀쩡한 영어 단어와 로고까지 'ENDPoin / T' 처럼 잘라서 쓰지 않는다) */
+body{word-break:keep-all;overflow-wrap:break-word}
 .lab{font-size:11.5px}
 .tbl thead th{font-size:11px}
 @media (max-width:720px){
@@ -205,3 +206,123 @@ body{word-break:keep-all;overflow-wrap:anywhere}
 .dept-link:hover .dept-name,.dept-link:hover .dept-sub,.dept-link:focus-visible .dept-name,.dept-link:focus-visible .dept-sub{text-decoration-color:rgba(255,255,255,.55)}
 .dept-link:hover .dept-mark{opacity:1}
 @media (max-width:560px){.dept-link{gap:11px}}
+
+/* ================= 화면 크기별 정리 (1008) =================
+   휴대폰 ~ 4K 를 화면 폭마다 렌더링해 보고 어긋나던 곳을 고친다 (index.html 의 1008 블록과 짝) */
+
+/* --- 헤더 ------------------------------------------------------------------ */
+/* 메뉴가 두 줄로 넘어가면서 로고가 'ENDPoin / T' 로 잘리던 것 — 로고는 줄지 않게, 글자는 꺾이지 않게 */
+.mark{flex-shrink:0}
+.top nav a,.mark b,.mark span{white-space:nowrap}
+.mark span{font-size:10px}
+@media (max-width:1060px){.top .mark span{display:none}}
+@media (min-width:721px) and (max-width:1060px){
+  .top nav{flex-wrap:nowrap}
+  .top nav a{padding:8px 10px}
+  .top nav a::after{left:10px;right:10px}
+  .top nav a.apply{padding:11px 18px;margin-left:10px}
+}
+@media (max-width:720px){
+  .top nav{flex-wrap:nowrap}
+  .top nav a{padding-block:10px}          /* 누르기 쉽게 40px 이상 */
+  .top nav a.lang{padding:9px 10px}
+}
+@media (pointer:coarse){.top nav a.lang{padding:9px 10px}}
+/* 가로로 든 휴대폰: 본문 페이지(index)와 같은 60px 헤더 */
+@media (max-width:1060px) and (max-height:540px) and (orientation:landscape){.top-in{min-height:60px}}
+/* '신청 안내' 글자 링크는 바로 옆 '참가 신청' 버튼과 같은 곳으로 간다 — 아주 좁은 화면에서는 뺀다 */
+@media (max-width:400px){.top nav a[href$="#/apply"]:not(.apply){display:none}}
+@media (max-width:410px){html[lang=en] .top nav a[href$="#/apply"]:not(.apply){display:none}}
+
+/* --- 페이지 머리 · 요약 --------------------------------------------------- */
+@media (min-width:721px) and (max-width:1060px){
+  /* 셋째 칸(문의 메일)은 제 폭대로 — 768px 등에서 메일 주소가 '…ac / .kr' 처럼 끊기지 않게 */
+  .pagehead>.stack{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}
+  .pagehead>.stack>div{border-bottom:0;border-left:1px solid var(--line)}
+  .pagehead>.stack>div:first-child{border-left:0}
+}
+.lsum b{text-wrap:pretty}   /* balance 는 영어에서 'team / matching', '3 / months' 처럼 끊었다 */
+/* 한 단으로 쌓일 때 상자 테두리(box-shadow)가 겹쳐 안쪽 선만 두껍게 보이던 것 */
+@media (max-width:720px){
+  .lsum,.lnext{border:1px solid var(--line)}
+  .lsum>div,.lnext a{box-shadow:none}
+  .lsum>div+div,.lnext a+a{border-top:1px solid var(--line)}
+}
+
+/* --- 본문 ------------------------------------------------------------------ */
+.toc a i{font-size:11px}
+/* 한 줄이 너무 길지 않게 — 한국어 50자, 영어 70자 남짓 (태블릿에서는 본문 폭 제한이 풀려 영어가 140자까지 갔다) */
+.art p,.art li{max-width:50em}
+html[lang=en] .art p,html[lang=en] .art li,html[lang=en] .note{max-width:70ch}
+/* 영어 문서 맨 위 안내(.note)가 제1조의 윗선에 바로 붙던 것 */
+.prose>.note:first-child{margin:0 0 clamp(28px,3.4vw,40px)}
+/* 번호 목록의 숫자가 글줄보다 위로 떠 위첨자처럼 보이던 것 — 줄 높이를 본문과 같게 */
+.art ol>li::before{font-size:.87em;line-height:calc(1.85em / .87)}
+/* 문서 끝 선과 푸터 선이 두 줄로 겹쳐 보이던 것 (푸터의 hr.rule 하나만 남긴다) */
+.ldoc{border-bottom:0}
+
+/* --- 표 -------------------------------------------------------------------- */
+/* 영어 표: 첫째·셋째 칸이 줄바꿈 금지라 가운데 '항목' 칸이 80px 로 눌려 단어가 한 줄에 하나씩 쌓였다 */
+/* (960px 이상에서는 원래대로 한 줄이 들어가므로 721~959px 에만. 두 줄이 되면 고르게 나눈다) */
+@media (min-width:721px) and (max-width:959px){
+  html[lang=en] .tbl:not(.kv) td:first-child,html[lang=en] .tbl:not(.kv) td:last-child,
+  html[lang=en] .tbl:not(.kv) thead th:last-child{white-space:normal}
+  html[lang=en] .tbl:not(.kv) td:first-child{width:24%}
+  html[lang=en] .tbl:not(.kv) td:last-child{width:22%}
+  html[lang=en] .tbl:not(.kv) td:first-child,html[lang=en] .tbl:not(.kv) td:last-child{text-wrap:balance}
+}
+/* 키·값 표의 이름 칸은 위아래로 쌓는 휴대폰에서만 줄바꿈을 허용한다 */
+@media (max-width:720px){html[lang=en] .tbl.kv tbody th{white-space:normal}}
+.tbl td{text-wrap:pretty}
+/* 휴대폰: 520px 짜리 표가 옆으로 숨은 스크롤이 되어 오른쪽 칸이 잘려 보였다 — 줄마다 작은 묶음으로 쌓는다
+   (구분 → 항목 → 수집 방법 순서. 칸 이름은 내용만 봐도 알 수 있어 머리줄은 숨긴다) */
+@media (max-width:720px){
+  .tbl:not(.kv){min-width:0}
+  .tbl:not(.kv),.tbl:not(.kv) tbody{display:block}
+  .tbl:not(.kv) thead{display:none}
+  .tbl:not(.kv) tr{display:flex;flex-direction:column;gap:4px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .tbl:not(.kv) td,.tbl:not(.kv) td:first-child,.tbl:not(.kv) td:last-child{display:block;padding:0;border:0;white-space:normal}
+  .tbl:not(.kv) td:last-child{font-size:13px;color:var(--dim-2)}
+  /* 머리줄을 숨겼으니 셋째 줄(수집 방법)에만 이름을 붙인다 — 항목 목록의 한 줄로 읽히지 않게 */
+  html[lang=ko] .tbl:not(.kv) td:last-child::before{content:"수집 방법 · "}
+  html[lang=en] .tbl:not(.kv) td:last-child::before{content:"How collected: "}
+  /* 영어 키·값 표는 이름이 길어 위아래로 */
+  html[lang=en] .tbl.kv,html[lang=en] .tbl.kv tbody,html[lang=en] .tbl.kv tr{display:block}
+  html[lang=en] .tbl.kv tr{padding:14px 0;border-bottom:1px solid var(--line)}
+  html[lang=en] .tbl.kv th,html[lang=en] .tbl.kv td{display:block;width:auto;padding:0;border:0}
+  html[lang=en] .tbl.kv td{margin-top:4px}
+  .toc a i,.tbl thead th{font-size:11.5px}
+}
+
+/* --- 푸터 ------------------------------------------------------------------ */
+.dept-name,.dept-sub{text-wrap:balance}
+@media (max-width:720px),(pointer:coarse){
+  .f-links a{display:inline-block;padding-block:8px}
+}
+@media (pointer:coarse){.dept-link{min-height:40px}}
+/* 영어 주최 줄: 구분선 '|' 이 줄 끝이나 처음에 혼자 남던 것 — 구분선을 빼고 학과를 대학 이름 밑으로.
+   로고 폭 = 높이 × 326/292, 그 뒤 간격 15px (560px 이하 11px) */
+@media (max-width:1060px){
+  html[lang=en] .dept{row-gap:3px}
+  /* 막대는 높이 0 의 줄바꿈으로만 쓴다 (학과 링크가 줄 전체를 덮어 빈 곳을 눌러도 열리지 않게) */
+  html[lang=en] .dept-bar{display:block;flex-basis:100%;width:auto;height:0;background:none}
+  html[lang=en] .dept-bar+.dept-link{padding-left:calc(48px * 326 / 292 + 15px)}
+}
+@media (max-width:720px){html[lang=en] .dept-bar+.dept-link{padding-left:calc(38px * 326 / 292 + 15px)}}
+@media (max-width:560px){html[lang=en] .dept-bar+.dept-link{padding-left:calc(38px * 326 / 292 + 11px)}}
+
+/* --- 큰 모니터 (FHD · QHD · 4K) — index.html 과 같은 단계 ------------------- */
+/* legal.js 는 documentElement.scrollHeight 와 % rootMargin 만 쓰므로 body 의 자식에 zoom 을 걸어도 그대로 돈다 */
+@supports (zoom:1){
+  @media (min-width:1800px) and (min-height:860px){:root{--z:1.1}}
+  @media (min-width:2200px) and (min-height:1100px){:root{--z:1.2}}
+  @media (min-width:2600px) and (min-height:1300px){:root{--z:1.3}}
+  @media (min-width:3000px) and (min-height:1500px){:root{--z:1.4}}
+  @media (min-width:3400px) and (min-height:1700px){:root{--z:1.47}}
+  @media (min-width:3800px) and (min-height:1900px){:root{--z:1.59}}
+  @media (min-width:4800px) and (min-height:2600px){:root{--z:1.74}}
+  @media (min-width:1800px) and (min-height:860px){
+    body>header.top,body>main,body>footer{zoom:var(--z)}
+    .progress{height:calc(2px * var(--z))}
+  }
+}

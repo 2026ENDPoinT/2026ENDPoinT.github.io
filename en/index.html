@@ -90,7 +90,9 @@ hr.rule{height:1px;background:var(--line);border:0;margin:0;transform-origin:lef
 .view{display:none}
 .view.on{display:block}
 .js .view.on{animation:viewIn .6s var(--ease) both}
-@keyframes viewIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+/* 떠오르는 움직임(translateY)은 뺐다 — 다른 화면에서 '일정' 등을 누르면 그 움직임 도중에 위치를 재서
+   제목이 헤더 밑으로 12px 숨었다 (1008) */
+@keyframes viewIn{from{opacity:0}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   [data-anim],[data-anim].in,.wm span,[data-anim="mask"]>span,.post{opacity:1!important;transform:none!important;transition:none!important;animation:none!important}
@@ -888,8 +890,9 @@ p{text-wrap:pretty}
 /* ================= 가독성 정리 (1007b) =================
    색은 그대로 두고 줄바꿈·글자 굵기·크기·어색하게 남는 칸만 손본다 */
 /* 한글은 어절 단위로 줄을 바꾼다 ("최/대 120명" 처럼 단어 중간에서 끊기지 않게).
-   anywhere 는 긴 주소·영문이 칸을 밀어내지 않게 하는 안전장치 */
-body{word-break:keep-all;overflow-wrap:anywhere}
+   break-word 는 한 줄에 다 안 들어가는 긴 주소·영단어만 끊는다 (anywhere 는 좁은 칸에서
+   멀쩡한 영어 단어까지 "HACKATHO/N" 처럼 잘라서 쓰지 않는다) */
+body{word-break:keep-all;overflow-wrap:break-word}
 h1,h2,h3{text-wrap:balance}
 /* 아주 작던 글자를 조금 키운다 */
 .lab{font-size:11.5px}
@@ -902,13 +905,15 @@ h1,h2,h3{text-wrap:balance}
 .sub{line-height:1.85}
 .lab.ko{font-size:12px}
 
-/* 첫 화면과 정보 띠의 왼쪽 선을 헤더·아래 절(.wrap)과 맞춘다.
-   넓은 모니터에서 이 둘만 화면 왼쪽 끝으로 쏠려 있었다. % 는 각 칸의 폭 기준이라
-   (칸 폭 ÷ 화면 폭)으로 풀어 쓴 값이고, 스크롤바가 있어도 어긋나지 않는다 */
+/* 첫 화면 글자 쪽 왼쪽 여백을 헤더·아래 절(.wrap)과 맞춘다. 1008 에서 .hero-grid 를 --maxw 로 묶은 뒤로는
+   이 값이 늘 var(--gut) 가 된다 (calc 는 첫 화면이 화면 폭 전체를 쓰던 때의 셈) */
 @media (min-width:1061px){
   .hero-txt{max-width:none;margin:0;padding-left:max(var(--gut),calc(98.039% - var(--maxw) / 2 + var(--gut)))}
-  .facts>div:first-child{padding-left:max(var(--gut),calc(150% - var(--maxw) / 2 + var(--gut)))}
 }
+
+/* 정보 띠(일정·장소·모집)는 화면 끝까지 선을 긋되, 칸들은 .wrap 과 같은 폭 안에 놓는다.
+   % 는 화면(main) 폭 기준이라 넓은 모니터에서도 첫 칸이 쪼그라들지 않는다 */
+.facts{padding-inline:max(0px,calc((100% - var(--maxw)) / 2))}
 
 /* 카드가 위로 튀어 오르는 효과는 마우스에서만. 터치에서는 누른 뒤에도 들려 있어 어색했다 */
 .card:hover,.post:hover{transform:translateY(-3px)}
@@ -950,6 +955,299 @@ h1,h2,h3{text-wrap:balance}
   .card p,.post p,.post .txt,.post .intro,.initials span,.chip,.chipbtn,.opt span,.tin,.tar{font-weight:400}
   h1.title,.head h2,h1.ptitle,.af-done h3,.club-body h3,.cta h2{font-weight:200}
   .slot h3,.facts b,.tb-gate .t b,.af-gate .t b,.gatebox b,.mine b,.stack b,.adm-row b{font-weight:300}
+}
+
+/* ================= 화면 크기별 정리 (1008) =================
+   휴대폰 ~ 4K 를 화면 폭마다 렌더링해 보고 어긋나던 곳을 고친다. 로직(JS)·마크업은 그대로, CSS 만 바꾼다.
+   en/index.html 과 똑같이 둔다. 영어에만 필요한 것은 html[lang=en] 으로 묶었다 */
+
+/* --- 공통 ------------------------------------------------------------------ */
+/* 메뉴 글자와 로고는 한 덩어리 — 폭이 모자라도 'Team / board', 'ENDPoin / T' 처럼 안쪽에서 꺾이지 않게 */
+.top nav a,.mark b,.mark span{white-space:nowrap}
+/* FAQ 질문: 두 줄이 되면 줄 사이를 좁히고, 마지막 줄에 한 단어만 남지 않게 */
+details.faq summary{line-height:1.5}
+html[lang=en] details.faq summary{text-wrap:balance}
+/* 한국어는 balance 가 '한 / 명만', '못 / 가면' 처럼 끊는다 — pretty 를 모르는 브라우저는 보통 줄바꿈 그대로 */
+html[lang=ko] details.faq summary{text-wrap:pretty}
+/* 열린 FAQ 의 기호가 '−' 가 아니라 세로 막대 '|' 로 보였다 (남은 가로 획을 90° 돌리고 있었다) */
+details.faq[open] summary::after{transform:rotate(180deg)}
+html[lang=en] details.faq p{max-width:64ch}   /* 영어는 76ch 면 한 줄 95자 남짓 */
+/* 신청서 로그인 안내가 폼 폭 전체(한 줄 100자 이상)로 늘어나던 것 — 팀 게시판 안내와 비슷한 폭에서 끊고,
+   구글 버튼이 그 오른쪽에 오게 한다 */
+.af-gate .t{max-width:60ch}
+.af-gate .t span{text-wrap:balance}   /* 마지막 줄에 '바랍니다.' 만 남지 않게 */
+.qhint{max-width:72ch}
+/* 팀 모집 페이지 머리: ':has(.mine)' 규칙의 우선순위가 높아 휴대폰에서도 2단으로 남아
+   제목·안내·내 상태가 한 단어씩 꺾여 있었다. 태블릿·가로 휴대폰은 2단이 잘 맞으므로 600px 이하만 한 단으로.
+   minmax(0,…) — 긴 메일 주소가 칸을 화면 밖으로 밀어내지 않게 */
+@media (max-width:600px){.pagehead:has(.mine){grid-template-columns:minmax(0,1fr)}}
+.mine .who>div,.sechd{min-width:0;overflow-wrap:anywhere}   /* 사람이 입력한 메일·팀 이름만 아무 데서나 끊는다 */
+/* break-word 는 칸의 최소 폭을 줄이지 않아, 사람이 쓴 긴 링크·메일 하나가 1fr 칸이나 flex 항목을 화면 밖까지
+   넓혔다(팀 카드의 '지원하기' 버튼이 가려짐). 칸을 화면 폭에 묶어 두면 break-word 가 그 안에서 끊는다 */
+@media (max-width:720px){.posts,.af-recap,.adm-row{grid-template-columns:minmax(0,1fr)}}
+.inapp p{min-width:0}
+#notice .nitem h3{overflow-wrap:anywhere}
+/* 영어 제목 'Recruit a team · Find a team' 이 가운뎃점으로 둘째 줄을 시작하지 않게 (점 뒤에서 꺾는다) */
+html[lang=en] #v-teams h1.ptitle{text-wrap:wrap;max-width:7.4em}
+/* 내용이 짧은 페이지(로그아웃 상태의 팀 게시판 등)에서 푸터가 화면 중간에 떠 있지 않게 */
+body{display:flex;flex-direction:column;min-height:100vh}
+body>footer{margin-top:auto}
+/* 짧은 페이지로 옮겨 스크롤바가 사라질 때 화면 전체가 옆으로 7px 씩 움찔하지 않게 */
+html{scrollbar-gutter:stable}
+/* 그 확보된 자리는 html 의 그라데이션 그림 밖이라 흰 띠(15px)로 보였다 — 그라데이션 가운데 색을 바탕색으로 */
+html{background-color:#1D1D1D}
+
+/* --- 정보 띠 (일정 · 장소 · 모집) ------------------------------------------- */
+/* 라벨이 두 줄이 되어도 날짜·장소 값은 세 칸이 같은 높이에. 오른쪽 안쪽 여백은 줄여 긴 영어 라벨이 덜 꺾이게 */
+.facts>div{display:flex;flex-direction:column}
+.facts .lab{align-self:flex-start}
+.facts b{margin-top:auto}
+@media (min-width:721px){
+  .facts>div{padding-right:clamp(16px,2vw,32px)}
+}
+/* 세 칸이 '라벨 줄 · 값 줄' 을 함께 쓴다(subgrid) — 어느 칸 라벨이 두 줄이 되어도 값은 같은 높이에서 시작.
+   subgrid 를 모르는 브라우저는 위의 flex(값을 아래로 붙임)를 그대로 쓴다 */
+@media (min-width:721px){@supports (grid-template-rows:subgrid){
+  .facts{grid-template-rows:auto auto}
+  .facts>div{display:grid;grid-row:span 2;grid-template-rows:subgrid;row-gap:0}
+  .facts .lab{align-self:end}
+  .facts b{margin-top:0}
+}}
+html[lang=en] .facts .lab{letter-spacing:.16em}
+/* 태블릿 폭에서는 영어 첫 라벨이 어차피 두 줄이 된다 — 원래 자간으로 두고 폭을 묶어 'MAIN HACKATHON · / 2 DAYS, 1 NIGHT'
+   처럼 '·' 뒤에서 꺾이게 한다 ('…· 2' 까지는 못 들어가는 폭) */
+@media (min-width:721px) and (max-width:1023px){
+  html[lang=en] .facts .lab{letter-spacing:.26em}
+  html[lang=en] .facts>div:first-child .lab{max-width:14.4em}
+}
+
+/* --- 첫 화면 --------------------------------------------------------------- */
+/* 넓은 화면에서 엠블럼이 본문 단 오른쪽 밖으로 밀려나던 것 — 첫 화면도 .wrap 과 같은 폭 안에 놓는다
+   (글자 쪽 왼쪽 여백 계산은 이때 정확히 var(--gut) 가 되어 헤더·아래 절과 그대로 맞는다) */
+@media (min-width:1061px){.hero-grid{max-width:var(--maxw);margin-inline:auto}}
+/* 가로로 든 태블릿(1024×768 등): 세로로 쌓이면 버튼과 정보 띠가 첫 화면 밖으로 밀려나므로 PC 처럼 좌우로 */
+@media (min-width:900px) and (max-width:1060px) and (min-height:541px) and (orientation:landscape){
+  .hero-grid{grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr)}
+  .hero-img{order:0;border-top:0;border-left:1px solid var(--line);padding:clamp(20px,3vw,40px)}
+  .hero-img img{max-height:min(52vh,400px)}
+  @supports (height:1svh){.hero-img img{max-height:min(52svh,400px)}}
+}
+/* 가로로 든 휴대폰: 글자 단이 좁아 br.opt 가 '· TCP가' 같은 짧은 줄을 만들고 버튼이 화면 밖으로 밀렸다 */
+@media (max-width:1060px) and (max-height:540px) and (orientation:landscape){
+  .top-in{min-height:60px}
+  .hero-txt{gap:14px;padding-top:20px;padding-bottom:22px}
+  .hero-txt br.opt{display:none}
+  .hero-cta{margin-top:2px}
+  .hero-cta .btn{padding:0 20px}   /* 667×375 에서 두 버튼이 한 줄에 */
+  h1.title{font-size:clamp(44px,13vh,64px)}
+}
+/* 세로가 짧은 작은 휴대폰(iPhone SE 등): 엠블럼을 조금 줄여 두 버튼이 첫 화면 안에 들어오게 */
+@media (max-width:400px) and (max-height:700px){
+  .hero-txt{padding-top:30px;gap:18px}
+  .hero-img img{max-height:min(29vh,240px)}
+  @supports (height:1svh){.hero-img img{max-height:min(29svh,240px)}}
+}
+
+/* --- 헤더 ------------------------------------------------------------------ */
+/* 영어 메뉴는 한국어보다 100px 가까이 길어 1061~1199px 에서 두 줄이 되었다 — 이 폭에서만 태블릿 압축형으로 */
+@media (min-width:1061px) and (max-width:1199px){
+  html[lang=en] .top .mark span{display:none}
+  html[lang=en] .top-auth .g-wide{display:none}
+  html[lang=en] .top-auth .g-icon{display:block}
+  html[lang=en] .top-auth .who .nm{display:none}
+  html[lang=en] .top nav a:not(.apply):not(.lang){padding-inline:11px}
+  html[lang=en] .top nav a:not(.apply):not(.lang)::after{left:11px;right:11px}
+}
+@media (min-width:721px) and (max-width:820px){
+  html[lang=en] .top nav a:not(.apply):not(.lang){padding-inline:8px}
+  html[lang=en] .top nav a:not(.apply):not(.lang)::after{left:8px;right:8px}
+  html[lang=en] .top nav a.apply{padding-inline:14px;margin-left:8px}
+}
+/* 영어는 401~410px 에서도 'How to apply' 까지 넣으면 두 줄이 된다 (바로 옆 'Apply' 와 같은 곳으로 간다) */
+@media (max-width:410px){html[lang=en] .top nav a[data-nav="/apply"]{display:none}}
+/* 로그인하면 가운데 위젯(사진 + 로그아웃)이 G 아이콘보다 70px 쯤 넓어 721~880px 에서 '로그아웃' 이 오른쪽 밖으로
+   밀렸다 — 그때만 '신청 안내' 글자 링크를 뺀다 (바로 옆 '참가 신청' 버튼과 같은 곳으로 간다) */
+@media (min-width:721px) and (max-width:880px){header.top:has(.top-auth .who) nav a[data-nav="/apply"]{display:none}}
+/* 공지가 올라와 '공지' 메뉴가 생기면 한 칸이 더 필요하다 — 그때만 로고 부제를 빼고(1061~1279),
+   영어 721~820px 에서는 '홈' 글자 링크를 뺀다 (로고가 같은 곳으로 간다) */
+@media (min-width:1061px) and (max-width:1279px){header.top:has(#nav-notice:not([hidden])) .mark span{display:none}}
+@media (min-width:721px) and (max-width:820px){html[lang=en] .top nav:has(#nav-notice:not([hidden])) a[data-nav="/"]{display:none}}
+/* 손가락으로 누르기 쉽게 — 메뉴 글자·언어 버튼을 40px 이상으로 (헤더 높이는 그대로) */
+@media (max-width:720px){
+  .top nav a{padding-block:10px}
+  .top nav a.lang{padding:9px 10px}
+}
+@media (pointer:coarse){.top nav a.lang{padding:9px 10px}}
+
+/* --- 동아리 ---------------------------------------------------------------- */
+/* 휴대폰·태블릿(3열): 3+2 의 아랫줄 두 칸을 가운데로. position:relative 의 left 는 offsetLeft 에도
+   반영되므로 펼칠 때의 자리 계산도 맞다 (% 는 그리드 한 칸의 폭).
+   (태블릿을 다섯 칸 한 줄로 바꾸면 펼칠 때 아래 내용이 밀리고 마우스 전환이 닫혀 버려 3열을 유지한다) */
+@media (max-width:1060px){.club:nth-child(n+4){left:calc(50% + var(--gap) / 2)}}
+/* 영어 1061~1279px: '다락방' 소개만 70ch 폭 제한에 걸려 두 줄이 되어 그 패널만 높았다 — 다른 동아리로 옮길 때
+   작은 엠블럼 줄이 위로 올라가 마우스가 벗어나 패널이 닫히고, 열 때 아래 내용이 밀렸다.
+   패널 폭이 충분하므로 폭 제한을 풀어 한 줄로 두면 모든 패널이 엠블럼 칸 높이로 같다 */
+@media (min-width:1061px) and (max-width:1279px){html[lang=en] .club-body p{max-width:none}}
+/* 펼친 상태에서 작은 엠블럼으로 마우스를 옮겨도 가끔 바뀌지 않던 것 (원래부터 있던 문제).
+   스크립트는 정수 px 로 잰 자리 안에서만 마우스를 받는데, 그려진 엠블럼은 그보다 1px 남짓 넓어 첫 마우스 위치가
+   그 테두리에 떨어지면 무시되고 다시 오지 않았다. 마우스가 닿는 면만 안쪽으로 10px(화면에서 2~3px) 줄인다.
+   보이는 모양과 터치(누르기)는 그대로다 */
+@media (hover:hover) and (pointer:fine){
+  .clubs.open .club:not(.act) .club-face{pointer-events:none}
+  .clubs.open .club:not(.act) .club-face::after{content:"";position:absolute;inset:10px;pointer-events:auto}
+}
+
+/* --- 일정 · 신청 단계 ------------------------------------------------------ */
+/* 넓은 화면: 절 머리의 안내 문장이 아래 설명 칸보다 오른쪽으로 30~40px 비켜 있던 것을 같은 칸에 맞춘다 */
+@media (min-width:1061px){
+  .head:has(+ .slot){grid-template-columns:210px minmax(0,1fr) minmax(0,1.2fr);column-gap:clamp(16px,3vw,48px)}
+  .head:has(+ .slot)>div{grid-column:1 / 3}
+  .head:has(+ .slot)>p{grid-column:3}
+}
+/* 태블릿 2단(날짜 | 제목·설명): 날짜를 두 줄에 걸쳐 두어 제목과 설명 사이가 벌어지지 않게 */
+@media (min-width:721px) and (max-width:1060px){
+  .slot{row-gap:8px}
+  .slot time{grid-row:1 / span 2}
+  html[lang=en] .slot{grid-template-columns:196px minmax(0,1fr)}
+  html[lang=en] .slot p{max-width:66ch}
+}
+
+/* --- 심사와 시상 ----------------------------------------------------------- */
+@media (min-width:1061px){
+  /* 흰 카드 칸을 조금 넓혀 원그래프 옆 범례가 꺾이지 않게 */
+  #prize .cards2{grid-template-columns:minmax(0,1.36fr) minmax(0,1fr) minmax(0,1fr)}
+  /* 트랙 상자: 이름은 위, 순위 줄은 아래(흰 카드의 각주와 같은 높이)로 — 상자 가운데가 비어 보이지 않게 */
+  #prize .cards2>.trk>div{display:flex;flex-direction:column}
+  #prize .cards2>.trk .rows{margin-top:auto;border-top:1px solid var(--line)}
+}
+/* 1061~1279px: 원그래프를 조금 줄여 범례를 옆에 둔다 (136px 아래로 줄이면 가운데 글자가 링에 닿는다).
+   가운데 작은 글자는 자간을 풀고, 영어는 10px 로 줄여 'Participant vote'(누르면 바뀌는 글)도 링 안에 들어오게 한다.
+   좁아진 트랙 상자에서 영어 순위 줄이 두 줄이 되지 않게 그 글자도 반 단계 줄인다 */
+@media (min-width:1061px) and (max-width:1279px){
+  .pie-fig{width:136px}
+  .pie{gap:12px}
+  .pie-c span{letter-spacing:0}
+  html[lang=en] .pie-c span{font-size:10px;margin-top:2px}
+  html[lang=en] #prize .rows .r{font-size:14.5px}
+}
+html[lang=en] .pie-lg .n{white-space:nowrap}
+
+/* --- 신청서 · 페이지 머리 -------------------------------------------------- */
+@media (min-width:561px) and (max-width:1060px){
+  /* 모집 기간·팀 규모·정원 세 칸이 한 단으로 길게 쌓이던 것을 가로 세 칸으로 */
+  .pagehead>.stack{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .pagehead>.stack>div{border-bottom:0;border-left:1px solid var(--line)}
+  .pagehead>.stack>div:first-child{border-left:0}
+  /* 라벨 하나가 두 줄이 되어도(영어 'RECRUITMENT PERIOD') 세 값이 같은 높이에 */
+  .pagehead>.stack>div{display:flex;flex-direction:column}
+  .pagehead>.stack .lab{align-self:flex-start}
+  .pagehead>.stack b{margin-top:auto;padding-top:6px}
+}
+@media (min-width:561px) and (max-width:720px){.pagehead>.stack>div{padding-inline:16px}}
+@media (max-width:720px){
+  /* 긴 항목 이름(영어)이 번호 밑으로 떨어지지 않고 번호 옆에서 줄바꿈되게 */
+  .fld-name{flex:1 1 0;min-width:0}
+  /* 제출 버튼을 다른 큰 버튼들처럼 꽉 차게 (기존 규칙은 버튼의 부모를 잘못 짚고 있었다) */
+  .af-acts{flex:1 1 100%}
+  .af-acts .btn{flex:1 1 auto}
+}
+/* 마지막 줄에 한 단어만 남지 않게 ('… team / here.', 'Tech stack and development / experience') */
+.mine>span{text-wrap:pretty}
+.fld-name{text-wrap:balance}
+@media (max-width:560px){
+  /* 읽어야 하는 작은 글자는 12px 아래로 두지 않는다 */
+  .q>.lab,.fld-no,.af-prog .n,.pie-c span{font-size:12px}
+}
+
+/* --- 푸터 ------------------------------------------------------------------ */
+@media (max-width:720px){
+  .f-links a{padding-block:8px}
+  .f-legal{margin-top:12px}
+  .f-legal a{display:inline-block;padding-block:8px}
+}
+@media (pointer:coarse){
+  .f-links a{padding-block:8px}
+  .f-legal a{display:inline-block;padding-block:8px}
+  .dept-link{min-height:40px}
+}
+@media (max-width:560px){footer .f-in{grid-template-columns:1fr}}
+.dept-name,.dept-sub{text-wrap:balance}
+/* 영어 주최 줄: 대학·학과 이름이 길어 구분선 '|' 이 줄 끝이나 처음에 혼자 남았다 —
+   구분선을 빼고 학과를 대학 이름 밑(로고 오른쪽)으로 내린다. 로고 폭 = 높이 × 326/292 */
+@media (max-width:1060px){
+  html[lang=en] .dept{row-gap:3px}
+  /* 막대는 높이 0 의 줄바꿈으로만 쓴다 (학과 링크가 줄 전체를 덮어 빈 곳을 눌러도 열리지 않게) */
+  html[lang=en] .dept-bar{display:block;flex-basis:100%;width:auto;height:0;background:none}
+  html[lang=en] .dept-bar+.dept-link{padding-left:calc(48px * 326 / 292 + 15px)}
+}
+@media (max-width:560px){html[lang=en] .dept-bar+.dept-link{padding-left:calc(38px * 326 / 292 + 11px)}}
+
+/* --- 큰 모니터 (FHD · QHD · 4K) -------------------------------------------- */
+/* 1340px 단이 넓은 화면에서 가는 띠처럼 보이고 글자가 작아지던 것. 넓은 화면에서 단 폭과 글자를 단계적으로 키운다.
+     1800×860 이상  (FHD 1920 · QHD 125%)   ×1.1      2600×1300 이상            ×1.3
+     2200×1100 이상 (QHD 2560 · 4K 150%)    ×1.2      3000×1500 이상 (4K 125%)  ×1.4
+     3400×1700 이상                          ×1.47     3800×1900 이상 (4K 100%)  ×1.59
+     4800×2600 이상 (5K)                     ×1.74
+   단계를 잘게 나누고 값을 이렇게 맞춘 것은 브라우저 확대(Ctrl +)를 할 때 글자가 오히려 작아지는 구간이 없게
+   하려는 것이다 (확대하면 CSS 폭이 줄어 아래 단계로 내려가는데, 단계 차이가 확대 비율 1.1·1.136 보다 크면 글자가 준다).
+   Chrome·Edge 의 확대 단계(110·125·150%…)에서는 작아지는 곳이 없고, Firefox(110→120%)·Safari(115→125%)
+   단계에서는 한 번쯤 1% 안쪽으로 그대로이거나 아주 조금 준다.
+   높이 조건은 배율을 키워도 첫 화면(헤더 · 첫 화면 · 정보 띠)이 한 화면에 들어오게 하는 문턱이다.
+   html·body 에는 zoom 을 걸지 않는다 — 진행 막대가 재는 body.scrollHeight 가 배율 전 값으로 나온다.
+   #clubs 에도 걸지 않는다 — 펼침 스크립트가 offset*(배율 전)와 getBoundingClientRect·clientX(배율 후)를
+   섞어 써서, zoom 이 걸리면 마우스를 올려도 열리지 않는다. 대신 같은 배율을 값마다 곱한다
+   (이 폭에서는 clamp 들이 모두 최댓값이라 그 값을 곱한다. 위쪽 값을 바꾸면 여기도 같이 바꾼다).
+   zoom 을 모르는 브라우저는 @supports 에서 통째로 건너뛰어 지금 모습 그대로다. */
+@supports (zoom:1){
+  @media (min-width:1800px) and (min-height:860px){:root{--z:1.1}}
+  @media (min-width:2200px) and (min-height:1100px){:root{--z:1.2}}
+  @media (min-width:2600px) and (min-height:1300px){:root{--z:1.3}}
+  @media (min-width:3000px) and (min-height:1500px){:root{--z:1.4}}
+  @media (min-width:3400px) and (min-height:1700px){:root{--z:1.47}}
+  @media (min-width:3800px) and (min-height:1900px){:root{--z:1.59}}
+  @media (min-width:4800px) and (min-height:2600px){:root{--z:1.74}}
+
+  @media (min-width:1800px) and (min-height:860px){
+    body>header.top,body>.inapp,body>footer,.toast,
+    main.view>:not(#clubs){zoom:var(--z)}
+    .progress{height:calc(2px * var(--z))}
+    /* zoom 이 걸린 상자 안에서는 vh 도 배율만큼 커진다 — 나눠 주어야 첫 화면이 화면의 64%·엠블럼이 56% 로 남는다 */
+    .hero-grid{min-height:clamp(440px,calc(64vh / var(--z)),660px)}
+    .hero-img img{max-height:min(calc(56vh / var(--z)),520px)}
+    @supports (height:1svh){
+      .hero-grid{min-height:clamp(440px,calc(64svh / var(--z)),660px)}
+      .hero-img img{max-height:min(calc(56svh / var(--z)),520px)}
+    }
+
+    /* 주최 동아리 — zoom 대신 값을 직접 곱한다 */
+    #clubs{padding-block:calc(120px * var(--z));scroll-margin-top:calc(72px * var(--z));font-size:calc(16px * var(--z))}
+    #clubs>.wrap{max-width:calc(var(--maxw) * var(--z));padding-inline:calc(76px * var(--z))}
+    #clubs .head{gap:calc(68px * var(--z));margin-bottom:calc(56px * var(--z))}
+    #clubs .head h2{font-size:calc(46px * var(--z))}
+    #clubs .head .lab{font-size:calc(11.5px * var(--z));margin-bottom:calc(18px * var(--z))}
+    #clubs .clubs{--gap:calc(20px * var(--z))}
+    #clubs .club{max-height:calc(230px * var(--z))}
+    #clubs .club-card{--h3:calc(38px * var(--z));--pad:calc(30px * var(--z));padding-inline:calc(40px * var(--z))}
+    #clubs .club-body{gap:calc(12px * var(--z))}
+    #clubs .club-body p{font-size:calc(15px * var(--z))}
+    #clubs .club-body::after{right:calc(28px * var(--z));font-size:calc(176px * var(--z))}
+    #clubs .club-link{gap:calc(10px * var(--z));margin-top:calc(-2px * var(--z));padding-bottom:calc(5px * var(--z));font-size:calc(13.5px * var(--z))}
+    #clubs .club-link .k{font-size:calc(10px * var(--z))}
+    #clubs .club-link svg{width:calc(11px * var(--z));height:calc(11px * var(--z))}
+    /* 가는 선도 옆 절들과 같은 굵기로 */
+    #clubs{border-bottom-width:calc(1px * var(--z))}
+    #clubs .club-card{border-width:calc(1px * var(--z))}
+    #clubs .club-link{border-bottom-width:calc(1px * var(--z))}
+  }
+  /* 세로가 짧은 FHD 창(860~899px)에서 고정 공지 띠가 떠 있으면 정보 띠 아래가 첫 화면 밖으로 밀린다 —
+     띠가 있을 때만 엠블럼을 띠 높이(배율 전 63px)만큼 줄인다 */
+  @media (min-width:1800px) and (min-height:860px) and (max-height:899px){
+    body:has(> #notice-band:not([hidden])) .hero-img img{max-height:calc(56svh / var(--z) - 63px)}
+  }
+  /* ×1.59 이상에서는 첫 화면 엠블럼이 768px 사본을 827px(×1.74 에서 905px)로 늘려 쓴다 — 1024px 사본으로 바꿔 낀다.
+     화소 밀도가 높은 화면(srcset 이 이미 1536px 사본을 고른 경우)은 그대로 둔다.
+     (사이트가 도메인 맨 위(2026endpoint.github.io/)에 있어 절대 경로가 맞다. 이 화면들에서만 더 받는다) */
+  @media (min-width:3800px) and (min-height:1900px) and (max-resolution:1.47dppx){.hero-img img{content:url(/assets/img/hero-1024.webp)}}
 }
 </style>
 <script src="https://accounts.google.com/gsi/client?hl=en" async defer></script>
