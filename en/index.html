@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#191919">
 <script>document.documentElement.className+=" js";</script>
 <title>ENDPoinT</title>
-<meta name="description" content="ENDPoinT: a union hackathon by five academic clubs of Seoul National University of Science and Technology (SeoulTech). Nov 13–14, 2026, overnight.">
+<meta name="description" content="ENDPoinT: the Computer Science and Engineering hackathon of Seoul National University of Science and Technology (SeoulTech), hosted by five academic clubs. Nov 13–14, 2026, overnight.">
 <!-- 엠블럼: 탭 아이콘 · 홈 화면 아이콘 -->
 <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
 <link rel="icon" href="../assets/img/icon-512.png" sizes="512x512" type="image/png">
@@ -16,8 +16,8 @@
 <meta property="og:site_name" content="ENDPoinT">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="ko_KR">
-<meta property="og:title" content="ENDPoinT — SeoulTech Union Hackathon">
-<meta property="og:description" content="A union hackathon hosted together by EC · NL · Darakbang · Plum · TCP. Nov 13–14, 2026, overnight, Room 109, Mirae Building.">
+<meta property="og:title" content="ENDPoinT — SeoulTech CSE Hackathon">
+<meta property="og:description" content="The SeoulTech Computer Science and Engineering hackathon, hosted by EC · NL · Darakbang · Plum · TCP. Nov 13–14, 2026, overnight, Room 109, Mirae Building.">
 <meta property="og:url" content="https://2026endpoint.github.io/en/">
 <link rel="canonical" href="https://2026endpoint.github.io/en/">
 <link rel="alternate" hreflang="en" href="https://2026endpoint.github.io/en/">
@@ -281,10 +281,22 @@ section{padding:clamp(60px,8.5vw,120px) 0;border-bottom:1px solid var(--line);sc
 .club-body.on{display:flex}
 .club-body h3{font-size:var(--h3);font-weight:100;letter-spacing:-.04em;line-height:1.14;color:#fff}
 .club-body p{font-size:14.5px;line-height:1.9;color:var(--dim);font-weight:300;max-width:70ch}
-/* 빈자리에 깔리는 큰 머리글자 — 소개(01)의 E·N·D·P·T 와 같은 글자 */
-.club-body::after{content:attr(data-ini);position:absolute;right:clamp(14px,2.2vw,28px);bottom:0;z-index:-1;pointer-events:none;
-  font-size:clamp(96px,12vw,176px);font-weight:100;line-height:.82;letter-spacing:-.06em;color:rgba(255,255,255,.05);
+/* 빈자리에 깔리는 동아리 마크 — assets/img/mark-<동아리>.png (흰 마크, 바탕 투명)를 모양 틀(mask)로 써서
+   예전 큰 머리글자(E·N·D·P·T)와 같은 옅은 흰색으로 칠한다. 크기는 --mk. EC 마크는 가로로 길고 위아래 여백이 있어
+   상자를 넓히고 가운데에 맞춘다 */
+.club-body{--mk:clamp(84px,10.5vw,150px)}
+.club-body[data-club="ec"]{--mark:url(../assets/img/mark-ec.png)}
+.club-body[data-club="nl"]{--mark:url(../assets/img/mark-nl.png)}
+.club-body[data-club="darakbang"]{--mark:url(../assets/img/mark-darakbang.png)}
+.club-body[data-club="plum"]{--mark:url(../assets/img/mark-plum.png)}
+.club-body[data-club="tcp"]{--mark:url(../assets/img/mark-tcp.png)}
+.club-body::after{content:"";position:absolute;right:clamp(14px,2.2vw,28px);bottom:clamp(12px,1.8vw,24px);z-index:-1;pointer-events:none;
+  width:var(--mk);height:var(--mk);background:rgba(255,255,255,.05);
+  -webkit-mask:var(--mark) right bottom/contain no-repeat;mask:var(--mark) right bottom/contain no-repeat;
   opacity:0;transform:translateY(14px);transition:opacity .2s var(--ease),transform .2s var(--ease)}
+.club-body[data-club="ec"]::after{width:calc(var(--mk) * 1.5);-webkit-mask-size:100% auto;mask-size:100% auto;-webkit-mask-position:center;mask-position:center}
+/* 휴대폰은 패널이 좁아 마크가 글 뒤로 많이 겹친다 — 조금 작게 */
+@media (max-width:720px){.club-body{--mk:64px}}
 .clubs.open .club-body.in::after{opacity:1;transform:none;transition:opacity 1s var(--ease) .45s,transform 1.1s var(--ease) .45s}
 /* 이름 → 소개 → 링크 순서로 하나씩 올라온다. 동아리를 바꿀 때도 새 글이 다시 하나씩 올라온다 */
 .club-body>*{opacity:0;transform:translateY(12px);transition:opacity .2s var(--ease),transform .2s var(--ease)}
@@ -365,6 +377,20 @@ footer a:hover{color:#fff}
 .f-legal a{display:inline}
 .f-legal a.pp{color:#fff;font-weight:500}
 .host{display:flex;align-items:center;gap:22px;margin-top:30px;padding-top:26px;border-top:1px solid var(--line);flex-wrap:wrap}
+/* 주최(동아리) 줄 밑에 주관(학과) 줄이 이어진다 — 두 줄 사이에는 선을 다시 긋지 않는다 */
+.host-by+.host{margin-top:16px;padding-top:0;border-top:0}
+/* 주최 동아리 엠블럼 — 누르면 그 동아리 사이트로 (02. Clubs 의 링크와 같다). 흰 마크라 어두운 바탕에 그대로 쓴다.
+   마크마다 그림 안 여백이 달라 눈으로 보는 높이가 비슷하도록 높이를 따로 준다 (EC 는 가로로 길고 위아래 여백이 크다) */
+.host-clubs{display:flex;align-items:center;flex-wrap:wrap;gap:4px 20px}
+.host-club{display:inline-flex;align-items:center;justify-content:center;height:44px;opacity:.85;transition:opacity .3s var(--ease)}
+.host-club:hover,.host-club:focus-visible{opacity:1}
+.host-club:focus-visible{outline:2px solid var(--blue);outline-offset:4px}
+.host-club img{display:block;height:35px;width:auto}
+.hc-ec img{height:53px}
+.hc-plum img{height:42px}
+.hc-tcp img{height:37px}
+html[lang=en] .host>.lab{min-width:10.8em}   /* 'HOSTED BY' · 'ORGANIZED BY' 뒤 내용이 같은 선에서 시작하게 */
+@media (max-width:560px){.host-clubs{gap:4px 16px}.host-club img{height:25px}.hc-ec img{height:38px}.hc-plum img{height:30px}.hc-tcp img{height:27px}}
 .dept{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
 .dept-mark{height:48px;width:auto;opacity:.92}
 .dept-name,.dept-sub{font-size:17px;font-weight:600;color:#fff;letter-spacing:-.02em;line-height:1.2}
@@ -1131,6 +1157,8 @@ html[lang=en] .facts .lab{letter-spacing:.16em}
   html[lang=en] #prize .rows .r{font-size:14.5px}
 }
 html[lang=en] .pie-lg .n{white-space:nowrap}
+/* 상금 줄: 금액 | 팀 수 — 푸터 학교·학과 사이의 막대와 같은 가는 세로선 */
+.rows .r-sep{display:inline-block;width:1px;height:.95em;margin:0 12px;background:rgba(255,255,255,.34);vertical-align:-.12em}
 
 /* --- 신청서 · 페이지 머리 -------------------------------------------------- */
 @media (min-width:561px) and (max-width:1060px){
@@ -1230,7 +1258,8 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
     #clubs .club-card{--h3:calc(38px * var(--z));--pad:calc(30px * var(--z));padding-inline:calc(40px * var(--z))}
     #clubs .club-body{gap:calc(12px * var(--z))}
     #clubs .club-body p{font-size:calc(15px * var(--z))}
-    #clubs .club-body::after{right:calc(28px * var(--z));font-size:calc(176px * var(--z))}
+    #clubs .club-body{--mk:calc(150px * var(--z))}
+    #clubs .club-body::after{right:calc(28px * var(--z));bottom:calc(24px * var(--z))}
     #clubs .club-link{gap:calc(10px * var(--z));margin-top:calc(-2px * var(--z));padding-bottom:calc(5px * var(--z));font-size:calc(13.5px * var(--z))}
     #clubs .club-link .k{font-size:calc(10px * var(--z))}
     #clubs .club-link svg{width:calc(11px * var(--z));height:calc(11px * var(--z))}
@@ -1259,7 +1288,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
 
 <header class="top" id="top-bar">
   <div class="wrap top-in">
-    <a class="mark" href="#/"><b>ENDPoinT</b><span>SeoulTech Union Hackathon</span></a>
+    <a class="mark" href="#/"><b>ENDPoinT</b><span>SeoulTech CSE Hackathon</span></a>
     <div class="top-auth" id="top-auth" aria-live="polite"></div>
     <nav>
       <a href="#/" data-nav="/" class="on sm-hide">Home</a>
@@ -1299,7 +1328,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <div class="hero-txt">
         <span class="lab blue" data-anim data-hero>2026 · Vol.01</span>
         <h1 class="title wm" id="wordmark" data-hero>ENDPoinT</h1>
-        <p class="sub" data-anim data-hero>A union hackathon hosted together by five academic clubs of<br class="opt"> Seoul National University of Science and Technology (SeoulTech): EC · NL · Darakbang · Plum · TCP.</p>
+        <p class="sub" data-anim data-hero>The Computer Science and Engineering hackathon of<br class="opt"> Seoul National University of Science and Technology (SeoulTech), hosted by five academic clubs: EC · NL · Darakbang · Plum · TCP.</p>
         <div class="hero-cta" data-anim data-hero>
           <a class="btn" href="#/apply" data-gate="apply"><span>Apply now</span></a>
           <a class="btn btn-o" href="#/teams"><span>Team board</span></a>
@@ -1321,7 +1350,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
   </div>
 
   <div class="facts">
-    <div data-anim style="--d:.05s"><span class="lab">Main hackathon · 2 days, 1 night</span><b>Nov 13 (Fri) – 14 (Sat)</b></div>
+    <div data-anim style="--d:.05s"><span class="lab">Main hackathon · 2 days, 1 night</span><b>Nov 13 (Fri) 19:00 – 14 (Sat)</b></div>
     <div data-anim style="--d:.15s"><span class="lab">Location</span><b>Room 109, Mirae Building</b></div>
     <div data-anim style="--d:.25s"><span class="lab">First recruitment round</span><b>Oct 7 (Wed) – Oct 16 (Fri)</b></div>
   </div>
@@ -1362,7 +1391,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <div class="cards3" style="margin-top:clamp(20px,3vw,32px)" data-stagger>
         <div class="card blue-top" data-anim>
           <h3>Who can join?</h3>
-          <p>Any student in the Department of Computer Science and Engineering can apply, regardless of club membership (students on leave are excluded). We accept up to 120 participants, and we run pre-event training sessions so that people with little development experience can join too.</p>
+          <p>Any undergraduate in the Department of Computer Science and Engineering (double majors included) can apply, regardless of club membership (students on leave are excluded). We accept up to 120 participants, and we run pre-event training sessions so that people with little development experience can join too.</p>
         </div>
         <div class="card blue-top" data-anim>
           <h3>How are teams formed?</h3>
@@ -1459,9 +1488,9 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
         <p>Guest talks by working professionals and alumni, plus team-by-team mentoring. Each talk includes a 10-minute Q&amp;A, and teams that are ready can give a mid-point demo and get feedback.</p>
       </div>
       <div class="slot fin" data-anim>
-        <time>Nov 13 (Fri) – 14 (Sat)</time>
+        <time>Nov 13 (Fri) 19:00 – 14 (Sat)</time>
         <h3>Main hackathon · 2 days, 1 night</h3>
-        <p>It will be held in Room 109, Mirae Building, and wraps up on the last day with presentations, judging, awards, and a prize raffle.</p>
+        <p>Held in Room 109, Mirae Building. Development runs from 7 p.m. on Friday, Nov 13 until 10 a.m. on Saturday, Nov 14. Team presentations and judging start at 10 a.m., followed by the awards and a prize raffle.</p>
       </div>
     </div>
   </section>
@@ -1501,15 +1530,18 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
           <div style="border:1px solid var(--line);padding:clamp(24px,3vw,32px)">
             <span class="lab red" style="margin-bottom:16px">Hackathon track</span>
             <div class="rows">
-              <div class="r"><b>1st place</b><span>1 team</span></div>
-              <div class="r"><b>2nd place</b><span>2 teams</span></div>
-              <div class="r"><b>3rd place</b><span>3 teams</span></div>
+              <div class="r"><b>1st</b><span>₩700,000<i class="r-sep" aria-hidden="true"></i>1 team</span></div>
+              <div class="r"><b>2nd</b><span>₩400,000<i class="r-sep" aria-hidden="true"></i>2 teams</span></div>
+              <div class="r"><b>3rd</b><span>₩200,000<i class="r-sep" aria-hidden="true"></i>3 teams</span></div>
             </div>
           </div>
           <div style="border:1px solid var(--line);padding:clamp(24px,3vw,32px)">
             <span class="lab blue" style="margin-bottom:16px">Implementation track</span>
             <div class="rows">
-              <div class="r"><b>1st · 2nd · 3rd · 4th</b><span>1 team each</span></div>
+              <div class="r"><b>1st</b><span>₩350,000<i class="r-sep" aria-hidden="true"></i>1 team</span></div>
+              <div class="r"><b>2nd</b><span>₩250,000<i class="r-sep" aria-hidden="true"></i>1 team</span></div>
+              <div class="r"><b>3rd</b><span>₩200,000<i class="r-sep" aria-hidden="true"></i>1 team</span></div>
+              <div class="r"><b>4th</b><span>₩100,000<i class="r-sep" aria-hidden="true"></i>1 team</span></div>
             </div>
           </div>
         </div>
@@ -1541,7 +1573,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
         <details class="faq" data-anim><summary>When will the topics be revealed?</summary><p>Detailed topics for each track will be revealed at Session 1 on Nov 4. Until then, only the track categories are announced.</p></details>
         <details class="faq" data-anim><summary>Can I still participate if I miss Session 1 or Session 2?</summary><p>Please mark the dates you cannot attend on the application form in advance. We will take them into account for team assignment and scheduling.</p></details>
         <details class="faq" data-anim><summary>Can I submit my capstone design project as is?</summary><p>No. Existing capstone design projects, or projects that are essentially the same, cannot be submitted. Capstone design projects are exhibited and awarded separately, and this rule prevents winning twice with the same work. Entries judged to be duplicates may be disqualified.</p></details>
-        <details class="faq" data-anim><summary>Is there a participation fee?</summary><p>The participation fee is KRW 20,000 per person and may be reduced once the number of participants is confirmed. <br> (The bank account for payment will be announced later.)</p></details>
+        <details class="faq" data-anim><summary>Is there a participation fee?</summary><p>The participation fee is KRW 15,000 per person and may be reduced once the number of participants is confirmed. <br> (The bank account for payment will be announced later.)</p></details>
       </div>
     </div>
   </section>
@@ -1588,12 +1620,13 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <div class="slot" data-anim><time>STEP 1</time><h3>Submit the application form</h3><p>Sign in with Google and submit directly on this page. If you have a team, the team leader should write “Team leader: your name”.</p></div>
       <div class="slot" data-anim><time>STEP 2</time><h3>Team matching · Additional recruitment</h3><p>If you applied without a team, please use the Team board.<br>To promote your own team, post in the “Recruiting teams” tab of the Team board.</p></div>
       <div class="slot" data-anim><time>STEP 3</time><h3>Teams confirmed</h3><p>The final teams will be announced at Session 1 on Nov 4.</p></div>
-      <div class="slot fin" data-anim><time>STEP 4</time><h3>Main hackathon</h3><p>Nov 13 (Fri) – 14 (Sat), Room 109, Mirae Building.</p></div>
+      <div class="slot fin" data-anim><time>STEP 4</time><h3>Main hackathon</h3><p>Nov 13 (Fri) 7 p.m. – 14 (Sat), Room 109, Mirae Building. Team presentations and judging start at 10 a.m. on Nov 14.</p></div>
     </div>
   </section>
   <section>
     <div class="wrap">
       <div class="head"><div><span class="lab blue" data-anim>Notice</span><h2><span data-anim="mask"><span>Please note</span></span></h2></div></div>
+      <div class="slot" data-anim><time>Eligibility</time><h3>Open to Computer Science and Engineering undergraduates</h3><p>Any undergraduate in the Department of Computer Science and Engineering, including double majors, can apply regardless of club membership. <strong>Students on leave of absence cannot take part.</strong></p></div>
       <div class="slot fin" data-anim><time>No duplicate submissions</time><h3>Capstone design projects cannot be submitted</h3><p>Existing capstone design projects, or projects that are essentially the same, cannot be submitted. Capstone design projects are exhibited and awarded separately, and this rule prevents winning twice with the same work. Entries judged to be duplicates may be disqualified. (<a href="terms/#t12">Terms of Use, Articles 8 and 12</a>)</p></div>
       <div class="slot" data-anim><time>Personal data</time><h3>We delete it after the event</h3><p>The name, student ID, and contact details on the application form are used only to run the event and are deleted within 3 months after the event ends (winners’ information is kept for up to 1 year). Only the organizers can see application information. For details, see the <a href="privacy/#p3">Privacy Policy</a>.</p></div>
     </div>
@@ -1682,16 +1715,26 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
     <hr class="rule" data-anim="line" style="margin-bottom:clamp(30px,4vw,46px)">
     <div class="f-in">
       <div>
-        <div class="mark" style="margin-bottom:16px"><b>ENDPoinT</b><span>SeoulTech Union Hackathon</span></div>
-        <div>SeoulTech union hackathon<br>EC · NL · Darakbang · Plum · TCP</div>
+        <div class="mark" style="margin-bottom:16px"><b>ENDPoinT</b><span>SeoulTech CSE Hackathon</span></div>
+        <div>SeoulTech CSE hackathon<br>EC · NL · Darakbang · Plum · TCP</div>
       </div>
       <div class="f-links">
         <a class="ilink" href="https://github.com/2026ENDPoinT/2026ENDPoinT.github.io" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository (opens in a new window)"><svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
         <a class="ilink" id="mail-link" href="mailto:recognize@seoultech.ac.kr" target="_blank" rel="noopener noreferrer" title="recognize@seoultech.ac.kr" aria-label="Contact email recognize@seoultech.ac.kr"><svg class="ico" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><rect x="3" y="5.5" width="18" height="13" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.8 6.6l8.2 6.3 8.2-6.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span>Contact email</span></a>
       </div>
     </div>
+    <div class="host host-by">
+      <span class="lab">Hosted by</span>
+      <span class="host-clubs">
+        <a class="host-club hc-ec" href="https://endless-creation.netlify.app/" target="_blank" rel="noopener noreferrer" title="EC (opens in new window)" aria-label="EC (opens in new window)"><img src="../assets/img/mark-ec.png" alt="" loading="lazy" decoding="async"></a>
+        <a class="host-club hc-nl" href="https://github.com/NL-s" target="_blank" rel="noopener noreferrer" title="NL (opens in new window)" aria-label="NL (opens in new window)"><img src="../assets/img/mark-nl.png" alt="" loading="lazy" decoding="async"></a>
+        <a class="host-club hc-darakbang" href="https://www.instagram.com/darackbang_com" target="_blank" rel="noopener noreferrer" title="Darakbang (opens in new window)" aria-label="Darakbang (opens in new window)"><img src="../assets/img/mark-darakbang.png" alt="" loading="lazy" decoding="async"></a>
+        <a class="host-club hc-plum" href="https://wirehaired-stoat-970.notion.site/Plum-1e690c957a2e43c08c68430e29e05366" target="_blank" rel="noopener noreferrer" title="Plum (opens in new window)" aria-label="Plum (opens in new window)"><img src="../assets/img/mark-plum.png" alt="" loading="lazy" decoding="async"></a>
+        <a class="host-club hc-tcp" href="https://teamcrazyperformance.com/" target="_blank" rel="noopener noreferrer" title="TCP (opens in new window)" aria-label="TCP (opens in new window)"><img src="../assets/img/mark-tcp.png" alt="" loading="lazy" decoding="async"></a>
+      </span>
+    </div>
     <div class="host">
-      <span class="lab">Host</span>
+      <span class="lab">Organized by</span>
       <span class="dept">
         <a class="dept-link" href="https://www.seoultech.ac.kr/" target="_blank" rel="noopener noreferrer" title="Seoul National University of Science and Technology (opens in a new window)">
           <img class="dept-mark" src="../assets/seoultech-cse.png" width="326" height="292" loading="lazy" decoding="async" alt="SEOULTECH">

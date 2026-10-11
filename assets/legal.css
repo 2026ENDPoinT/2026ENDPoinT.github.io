@@ -150,6 +150,20 @@ footer a:hover{color:#fff}
 .f-links{display:flex;gap:30px;flex-wrap:wrap}
 .f-links a.pp{color:#fff;font-weight:500}
 .host{display:flex;align-items:center;gap:22px;margin-top:30px;padding-top:26px;border-top:1px solid var(--line);flex-wrap:wrap}
+/* 주최(동아리) 줄 밑에 주관(학과) 줄이 이어진다 — 두 줄 사이에는 선을 다시 긋지 않는다 */
+.host-by+.host{margin-top:16px;padding-top:0;border-top:0}
+/* 주최 동아리 엠블럼 — 누르면 그 동아리 사이트로 (02. Clubs 의 링크와 같다). 흰 마크라 어두운 바탕에 그대로 쓴다.
+   마크마다 그림 안 여백이 달라 눈으로 보는 높이가 비슷하도록 높이를 따로 준다 (EC 는 가로로 길고 위아래 여백이 크다) */
+.host-clubs{display:flex;align-items:center;flex-wrap:wrap;gap:4px 20px}
+.host-club{display:inline-flex;align-items:center;justify-content:center;height:44px;opacity:.85;transition:opacity .3s var(--ease)}
+.host-club:hover,.host-club:focus-visible{opacity:1}
+.host-club:focus-visible{outline:2px solid var(--blue);outline-offset:4px}
+.host-club img{display:block;height:35px;width:auto}
+.hc-ec img{height:53px}
+.hc-plum img{height:42px}
+.hc-tcp img{height:37px}
+html[lang=en] .host>.lab{min-width:10.8em}   /* 'HOSTED BY' · 'ORGANIZED BY' 뒤 내용이 같은 선에서 시작하게 */
+@media (max-width:720px){.host-clubs{gap:4px 16px}.host-club img{height:25px}.hc-ec img{height:38px}.hc-plum img{height:30px}.hc-tcp img{height:27px}}
 .dept{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
 .dept-mark{height:48px;width:auto;opacity:.92}
 .dept-name,.dept-sub{font-size:17px;font-weight:600;color:#fff;letter-spacing:-.02em;line-height:1.2}
