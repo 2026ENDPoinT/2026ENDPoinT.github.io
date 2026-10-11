@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#191919">
 <script>document.documentElement.className+=" js";</script>
 <title>ENDPoinT</title>
-<meta name="description" content="ENDPoinT: the Computer Science and Engineering hackathon of Seoul National University of Science and Technology (SeoulTech), hosted by five academic clubs. Nov 13–14, 2026, overnight.">
+<meta name="description" content="ENDPoinT: the Computer Science and Engineering hackathon of Seoul National University of Science and Technology (SeoulTech), organized by five academic clubs. Nov 13–14, 2026, overnight.">
 <!-- 엠블럼: 탭 아이콘 · 홈 화면 아이콘 -->
 <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
 <link rel="icon" href="../assets/img/icon-512.png" sizes="512x512" type="image/png">
@@ -17,7 +17,7 @@
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="ko_KR">
 <meta property="og:title" content="ENDPoinT — SeoulTech CSE Hackathon">
-<meta property="og:description" content="The SeoulTech Computer Science and Engineering hackathon, hosted by EC · NL · Darakbang · Plum · TCP. Nov 13–14, 2026, overnight, Room 109, Mirae Building.">
+<meta property="og:description" content="The SeoulTech Computer Science and Engineering hackathon, organized by EC · NL · Darakbang · Plum · TCP. Nov 13–14, 2026, overnight, Room 109, Mirae Building.">
 <meta property="og:url" content="https://2026endpoint.github.io/en/">
 <link rel="canonical" href="https://2026endpoint.github.io/en/">
 <link rel="alternate" hreflang="en" href="https://2026endpoint.github.io/en/">
@@ -377,9 +377,9 @@ footer a:hover{color:#fff}
 .f-legal a{display:inline}
 .f-legal a.pp{color:#fff;font-weight:500}
 .host{display:flex;align-items:center;gap:22px;margin-top:30px;padding-top:26px;border-top:1px solid var(--line);flex-wrap:wrap}
-/* 주최(동아리) 줄 밑에 주관(학과) 줄이 이어진다 — 두 줄 사이에는 선을 다시 긋지 않는다 */
+/* 주관(동아리) 줄 밑에 주최(학과) 줄이 이어진다 — 두 줄 사이에는 선을 다시 긋지 않는다 */
 .host-by+.host{margin-top:16px;padding-top:0;border-top:0}
-/* 주최 동아리 엠블럼 — 누르면 그 동아리 사이트로 (02. Clubs 의 링크와 같다). 흰 마크라 어두운 바탕에 그대로 쓴다.
+/* 주관 동아리 엠블럼 — 누르면 그 동아리 사이트로 (02. Clubs 의 링크와 같다). 흰 마크라 어두운 바탕에 그대로 쓴다.
    마크마다 그림 안 여백이 달라 눈으로 보는 높이가 비슷하도록 높이를 따로 준다 (EC 는 가로로 길고 위아래 여백이 크다) */
 .host-clubs{display:flex;align-items:center;flex-wrap:wrap;gap:4px 20px}
 .host-club{display:inline-flex;align-items:center;justify-content:center;height:44px;opacity:.85;transition:opacity .3s var(--ease)}
@@ -1247,7 +1247,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       .hero-img img{max-height:min(calc(56svh / var(--z)),520px)}
     }
 
-    /* 주최 동아리 — zoom 대신 값을 직접 곱한다 */
+    /* 주관 동아리(#clubs) — zoom 대신 값을 직접 곱한다 */
     #clubs{padding-block:calc(120px * var(--z));scroll-margin-top:calc(72px * var(--z));font-size:calc(16px * var(--z))}
     #clubs>.wrap{max-width:calc(var(--maxw) * var(--z));padding-inline:calc(76px * var(--z))}
     #clubs .head{gap:calc(68px * var(--z));margin-bottom:calc(56px * var(--z))}
@@ -1328,7 +1328,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <div class="hero-txt">
         <span class="lab blue" data-anim data-hero>2026 · Vol.01</span>
         <h1 class="title wm" id="wordmark" data-hero>ENDPoinT</h1>
-        <p class="sub" data-anim data-hero>The Computer Science and Engineering hackathon of<br class="opt"> Seoul National University of Science and Technology (SeoulTech), hosted by five academic clubs: EC · NL · Darakbang · Plum · TCP.</p>
+        <p class="sub" data-anim data-hero>The Computer Science and Engineering hackathon of<br class="opt"> Seoul National University of Science and Technology (SeoulTech), organized by five academic clubs: EC · NL · Darakbang · Plum · TCP.</p>
         <div class="hero-cta" data-anim data-hero>
           <a class="btn" href="#/apply" data-gate="apply"><span>Apply now</span></a>
           <a class="btn btn-o" href="#/teams"><span>Team board</span></a>
@@ -1415,7 +1415,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <div class="head">
         <div>
           <span class="lab blue" data-anim>02. Clubs</span>
-          <h2><span data-anim="mask"><span>Host clubs</span></span></h2>
+          <h2><span data-anim="mask"><span>Organizing clubs</span></span></h2>
         </div>
         
       </div>
@@ -1724,7 +1724,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       </div>
     </div>
     <div class="host host-by">
-      <span class="lab">Hosted by</span>
+      <span class="lab">Organized by</span>
       <span class="host-clubs">
         <a class="host-club hc-ec" href="https://endless-creation.netlify.app/" target="_blank" rel="noopener noreferrer" title="EC (opens in new window)" aria-label="EC (opens in new window)"><img src="../assets/img/mark-ec.png" alt="" loading="lazy" decoding="async"></a>
         <a class="host-club hc-nl" href="https://github.com/NL-s" target="_blank" rel="noopener noreferrer" title="NL (opens in new window)" aria-label="NL (opens in new window)"><img src="../assets/img/mark-nl.png" alt="" loading="lazy" decoding="async"></a>
@@ -1734,7 +1734,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       </span>
     </div>
     <div class="host">
-      <span class="lab">Organized by</span>
+      <span class="lab">Hosted by</span>
       <span class="dept">
         <a class="dept-link" href="https://www.seoultech.ac.kr/" target="_blank" rel="noopener noreferrer" title="Seoul National University of Science and Technology (opens in a new window)">
           <img class="dept-mark" src="../assets/seoultech-cse.png" width="326" height="292" loading="lazy" decoding="async" alt="SEOULTECH">
