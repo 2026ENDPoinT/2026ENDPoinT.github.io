@@ -1350,7 +1350,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
   <div class="facts">
     <div data-anim style="--d:.05s"><span class="lab">본 해커톤 · 1박 2일</span><b>11.13 (금) 19:00 – 11.14 (토)</b></div>
     <div data-anim style="--d:.15s"><span class="lab">장소</span><b>미래관 109호</b></div>
-    <div data-anim style="--d:.25s"><span class="lab">1차 모집</span><b>10.07 (수) – 10.23 (금)</b></div>
+    <div data-anim style="--d:.25s"><span class="lab">1차 모집</span><b>10.07 (수) – 10.31 (토)</b></div>
   </div>
 
   <!-- 공지사항 — 공지 모듈이 채운다 (Notice.gs). 게시 중인 공지가 하나도 없으면 절 자체가 숨겨진다 -->
@@ -1467,11 +1467,11 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
           <span class="lab blue" data-anim>03. Schedule</span>
           <h2><span data-anim="mask"><span>진행 일정</span></span></h2>
         </div>
-        <p data-anim style="--d:.15s">1차 모집 기간은 10월 7일(수)부터 23일(금)까지입니다.</p>
+        <p data-anim style="--d:.15s">1차 모집 기간은 10월 7일(수)부터 31일(토)까지입니다.</p>
       </div>
 
       <div class="slot" data-anim>
-        <time>10.07 (수) – 10.23 (금)</time>
+        <time>10.07 (수) – 10.31 (토)</time>
         <h3>참가 신청</h3>
         <p>사이트에서 개인 또는 팀 단위로 신청하실 수 있습니다.<br> 신청서는 10월 7일(수) 오전 8시에 열릴 예정입니다.</p>
       </div>
@@ -1581,7 +1581,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <div class="cta" data-anim="plate">
         <div>
           <h2>준비되셨나요?</h2>
-          <p>1차 모집 10.07 – 10.23 · 신청 오픈 10.07 08:00 (예정)</p>
+          <p>1차 모집 10.07 – 10.31 · 신청 오픈 10.07 08:00 (예정)</p>
         </div>
         <a class="btn btn-k" href="#/apply" data-gate="apply"><span>참가 신청하기</span></a>
       </div>
@@ -1604,7 +1604,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
           </div>
         </div>
         <div class="stack" data-anim style="--d:.3s">
-          <div><span class="lab">모집 기간</span><b>10.07 – 10.23</b></div>
+          <div><span class="lab">모집 기간</span><b>10.07 – 10.31</b></div>
           <div><span class="lab">팀 규모</span><b>팀당 2~6명</b></div>
           <div><span class="lab">정원</span><b>최대 120명</b></div>
         </div>
@@ -1700,7 +1700,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
         <p class="tb-msg" id="tb-msg" hidden></p>
         <div id="board" class="posts"></div>
 
-        <p class="sub" id="tb-note" style="margin-top:clamp(30px,4vw,48px);white-space:pre-line">팀을 못 찾아도 괜찮습니다. 10월 23일 모집 마감 후 남은 인원은 운영진이 자동으로 매칭합니다.</p>
+        <p class="sub" id="tb-note" style="margin-top:clamp(30px,4vw,48px);white-space:pre-line">팀을 못 찾아도 괜찮습니다. 10월 31일 모집 마감 후 남은 인원은 운영진이 자동으로 매칭합니다.</p>
       </div>
     </div>
   </section>
@@ -1967,10 +1967,10 @@ window.EPCONFIG = {
    [고칠 곳은 바로 아래 세 줄뿐입니다]
      OPEN_AT  모집이 열리는 시각. 이 시각이 되면 자동으로 열린다.
      CLOSE_AT 다시 닫을 시각. **비워 두면 열린 뒤로 계속 열려 있다.**
-              1차 모집을 마감하고 잠그려면 그때 이 줄을 채우세요.
+              이 시각이 되면 이미 열어 둔 탭도 새로 고쳐져 마감 화면으로 바뀐다.
      PERIOD   안내 문구에 보일 기간 표기.
    시각은 '+09:00'(한국 시간)을 붙여 둡니다. 보는 사람이 어느 시간대에 있어도
-   같은 순간에 열립니다.
+   같은 순간에 열립니다. 판정은 보는 사람의 컴퓨터 시계로 합니다.
 
    [로컬에서는 항상 열려 있습니다]
    localhost · 127.0.0.1 · file:// · 사설 IP 에서는 날짜를 보지 않고 열어 둡니다.
@@ -1983,8 +1983,8 @@ window.EPCONFIG = {
    ============================================================== */
 window.EPGATE = (function () {
   var OPEN_AT  = '2026-10-07T08:00:00+09:00';   // 1차 모집 시작
-  var CLOSE_AT = '';                            // 비우면 계속 열려 있음
-  var PERIOD   = '10.07 – 10.23';
+  var CLOSE_AT = '2026-10-31T23:59:59+09:00';   // 1차 모집 마감
+  var PERIOD   = '10.07 – 10.31';
 
   var loc = window.location;
   var host = String(loc.hostname || '').toLowerCase();
@@ -2015,6 +2015,25 @@ window.EPGATE = (function () {
     else state = 'open';
   }
 
+  // 위 판정은 페이지를 열 때 한 번뿐이다. 마감 전에 열어 둔 탭이 그 뒤에도 신청을 받지 않도록
+  // 마감 시각을 지켜보다가 지나면 새로 고친다 (새로 고친 화면은 마감 후 화면이다).
+  // 신청서 임시 저장본은 localStorage 에 있어서 새로 고쳐도 남는다.
+  // 로컬은 날짜와 무관하게 열려 있으므로 ?gate=real 일 때만 지켜본다 — 아니면 새로 고침이 되풀이된다.
+  if (state === 'open' && !isNaN(closeAt) && (!local || forced === 'real')) {
+    var watch = function () {
+      var left = closeAt - Date.now();
+      if (left <= 0) { loc.reload(); return; }
+      // 1분보다 길게 걸지 않는다. 노트북이 잠들었다 깨어나도 곧 알아채고,
+      // setTimeout 의 최대 지연(약 24일)에도 걸리지 않는다.
+      setTimeout(watch, Math.min(left, 60000));
+    };
+    watch();
+    // 다른 탭에 있다가 돌아오면 바로 확인한다
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && Date.now() >= closeAt) loc.reload();
+    });
+  }
+
   /** 'YYYY-MM-DDT...' 에서 '10.07' 만 뽑는다 */
   function md(iso) {
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
@@ -2037,6 +2056,7 @@ window.EPGATE = (function () {
     },
     after: {
       tag: 'Closed',
+      short: '모집 마감',     // 헤더 알약처럼 좁은 버튼. 모집 전에는 버튼의 data-gate-label 을 쓴다
       apply: '1차 모집이 마감되었습니다',
       board: '1차 모집이 마감되어 글을 쓸 수 없습니다',
       why: '1차 모집이 끝났습니다. 추가 모집이 열리면 이 자리에 다시 안내하겠습니다.',
@@ -2376,7 +2396,7 @@ window.EPUI = {
   /* 1) 참가 신청 버튼 → 눌리지 않는 안내 라벨 */
   var label = t.apply;
   Array.prototype.forEach.call(document.querySelectorAll('[data-gate="apply"]'), function (a) {
-    var short = a.getAttribute('data-gate-label');
+    var short = t.short || a.getAttribute('data-gate-label');
     a.removeAttribute('href');           // href 가 없으면 클릭도 포커스도 가지 않는다
     a.classList.add('gated');
     a.setAttribute('aria-disabled', 'true');
@@ -3463,7 +3483,7 @@ window.EPUI = {
   }
 
   var NOTE = {
-    team: '팀을 못 찾아도 괜찮습니다. 10월 23일 모집 마감 후 남은 인원은 운영진이 자동으로 매칭합니다. 쓴 글은 “수정”으로 언제든 고칠 수 있습니다.',
+    team: '팀을 못 찾아도 괜찮습니다. 10월 31일 모집 마감 후 남은 인원은 운영진이 자동으로 매칭합니다. 쓴 글은 “수정”으로 언제든 고칠 수 있습니다.',
     person: '마음에 드는 사람이 있으면 “팀에 초대”를 누르세요. 상대가 수락하면 팀에 합류합니다.',
     done: '모집이 끝난 팀입니다. 팀글은 “수정”으로 언제든 고칠 수 있고, 11월 4일 1차 프로그램에서 발표됩니다.',
     apps: '지원 및 모집글에 들어온 지원을 볼 수 있습니다.\n' + ' 수락하면 팀 현재 인원에 추가되며, \n' + ' 조장과 지원자의 이름·연락처가 서로 공개됩니다.\n' + ' 지원자의 다른 팀 지원서는 자동으로 취소됩니다.'

@@ -1352,7 +1352,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
   <div class="facts">
     <div data-anim style="--d:.05s"><span class="lab">Main hackathon · 2 days, 1 night</span><b>Nov 13 (Fri) 19:00 – 14 (Sat)</b></div>
     <div data-anim style="--d:.15s"><span class="lab">Location</span><b>Room 109, Mirae Building</b></div>
-    <div data-anim style="--d:.25s"><span class="lab">First recruitment round</span><b>Oct 7 (Wed) – Oct 23 (Fri)</b></div>
+    <div data-anim style="--d:.25s"><span class="lab">First recruitment round</span><b>Oct 7 (Wed) – Oct 31 (Sat)</b></div>
   </div>
 
   <!-- 공지사항 — 공지 모듈이 채운다 (Notice.gs). 게시 중인 공지가 하나도 없으면 절 자체가 숨겨진다 -->
@@ -1469,11 +1469,11 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
           <span class="lab blue" data-anim>03. Schedule</span>
           <h2><span data-anim="mask"><span>Schedule</span></span></h2>
         </div>
-        <p data-anim style="--d:.15s">The first recruitment round runs from Oct 7 (Wed) to Oct 23 (Fri).</p>
+        <p data-anim style="--d:.15s">The first recruitment round runs from Oct 7 (Wed) to Oct 31 (Sat).</p>
       </div>
 
       <div class="slot" data-anim>
-        <time>Oct 7 (Wed) – Oct 23 (Fri)</time>
+        <time>Oct 7 (Wed) – Oct 31 (Sat)</time>
         <h3>Apply</h3>
         <p>You can apply on this site as an individual or as a team.<br> The application form is scheduled to open on Oct 7 (Wed) at 08:00.</p>
       </div>
@@ -1583,7 +1583,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <div class="cta" data-anim="plate">
         <div>
           <h2>Ready?</h2>
-          <p>First recruitment round Oct 7 – Oct 23 · Applications open Oct 7 at 08:00 (tentative)</p>
+          <p>First recruitment round Oct 7 – Oct 31 · Applications open Oct 7 at 08:00 (tentative)</p>
         </div>
         <a class="btn btn-k" href="#/apply" data-gate="apply"><span>Apply now</span></a>
       </div>
@@ -1606,7 +1606,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
           </div>
         </div>
         <div class="stack" data-anim style="--d:.3s">
-          <div><span class="lab">Recruitment period</span><b>Oct 7 – Oct 23</b></div>
+          <div><span class="lab">Recruitment period</span><b>Oct 7 – Oct 31</b></div>
           <div><span class="lab">Team size</span><b>2–6 per team</b></div>
           <div><span class="lab">Capacity</span><b>Up to 120 people</b></div>
         </div>
@@ -1702,7 +1702,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
         <p class="tb-msg" id="tb-msg" hidden></p>
         <div id="board" class="posts"></div>
 
-        <p class="sub" id="tb-note" style="margin-top:clamp(30px,4vw,48px);white-space:pre-line">It is okay if you cannot find a team. After recruitment closes on Oct 23, the organizers will automatically match the remaining participants.</p>
+        <p class="sub" id="tb-note" style="margin-top:clamp(30px,4vw,48px);white-space:pre-line">It is okay if you cannot find a team. After recruitment closes on Oct 31, the organizers will automatically match the remaining participants.</p>
       </div>
     </div>
   </section>
@@ -1951,10 +1951,10 @@ window.EPCONFIG = {
    [고칠 곳은 바로 아래 세 줄뿐입니다]
      OPEN_AT  모집이 열리는 시각. 이 시각이 되면 자동으로 열린다.
      CLOSE_AT 다시 닫을 시각. **비워 두면 열린 뒤로 계속 열려 있다.**
-              1차 모집을 마감하고 잠그려면 그때 이 줄을 채우세요.
+              이 시각이 되면 이미 열어 둔 탭도 새로 고쳐져 마감 화면으로 바뀐다.
      PERIOD   안내 문구에 보일 기간 표기.
    시각은 '+09:00'(한국 시간)을 붙여 둡니다. 보는 사람이 어느 시간대에 있어도
-   같은 순간에 열립니다.
+   같은 순간에 열립니다. 판정은 보는 사람의 컴퓨터 시계로 합니다.
 
    [로컬에서는 항상 열려 있습니다]
    localhost · 127.0.0.1 · file:// · 사설 IP 에서는 날짜를 보지 않고 열어 둡니다.
@@ -1967,8 +1967,8 @@ window.EPCONFIG = {
    ============================================================== */
 window.EPGATE = (function () {
   var OPEN_AT  = '2026-10-07T08:00:00+09:00';   // 1차 모집 시작
-  var CLOSE_AT = '';                            // 비우면 계속 열려 있음
-  var PERIOD   = 'Oct 7 – Oct 23';
+  var CLOSE_AT = '2026-10-31T23:59:59+09:00';   // 1차 모집 마감
+  var PERIOD   = 'Oct 7 – Oct 31';
 
   var loc = window.location;
   var host = String(loc.hostname || '').toLowerCase();
@@ -1999,6 +1999,25 @@ window.EPGATE = (function () {
     else state = 'open';
   }
 
+  // 위 판정은 페이지를 열 때 한 번뿐이다. 마감 전에 열어 둔 탭이 그 뒤에도 신청을 받지 않도록
+  // 마감 시각을 지켜보다가 지나면 새로 고친다 (새로 고친 화면은 마감 후 화면이다).
+  // 신청서 임시 저장본은 localStorage 에 있어서 새로 고쳐도 남는다.
+  // 로컬은 날짜와 무관하게 열려 있으므로 ?gate=real 일 때만 지켜본다 — 아니면 새로 고침이 되풀이된다.
+  if (state === 'open' && !isNaN(closeAt) && (!local || forced === 'real')) {
+    var watch = function () {
+      var left = closeAt - Date.now();
+      if (left <= 0) { loc.reload(); return; }
+      // 1분보다 길게 걸지 않는다. 노트북이 잠들었다 깨어나도 곧 알아채고,
+      // setTimeout 의 최대 지연(약 24일)에도 걸리지 않는다.
+      setTimeout(watch, Math.min(left, 60000));
+    };
+    watch();
+    // 다른 탭에 있다가 돌아오면 바로 확인한다
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && Date.now() >= closeAt) loc.reload();
+    });
+  }
+
   var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   /** 'YYYY-MM-DDT...' -> 'Oct 7' */
   function md(iso) {
@@ -2022,6 +2041,7 @@ window.EPGATE = (function () {
     },
     after: {
       tag: 'Closed',
+      short: 'Closed',        // 헤더 알약처럼 좁은 버튼. 모집 전에는 버튼의 data-gate-label 을 쓴다
       apply: 'The first recruitment round has closed',
       board: 'The first recruitment round has closed, so posting is unavailable',
       why: 'The first recruitment round has ended. If additional recruitment opens, we will post an update here.',
@@ -2361,7 +2381,7 @@ window.EPUI = {
   /* 1) 참가 신청 버튼 → 눌리지 않는 안내 라벨 */
   var label = t.apply;
   Array.prototype.forEach.call(document.querySelectorAll('[data-gate="apply"]'), function (a) {
-    var short = a.getAttribute('data-gate-label');
+    var short = t.short || a.getAttribute('data-gate-label');
     a.removeAttribute('href');           // href 가 없으면 클릭도 포커스도 가지 않는다
     a.classList.add('gated');
     a.setAttribute('aria-disabled', 'true');
@@ -3439,7 +3459,7 @@ window.EPUI = {
   }
 
   var NOTE = {
-    team: 'It is okay if you do not find a team. After recruitment closes on Oct 23, the organizers will automatically match any remaining participants. You can edit your posts anytime with “Edit”.',
+    team: 'It is okay if you do not find a team. After recruitment closes on Oct 31, the organizers will automatically match any remaining participants. You can edit your posts anytime with “Edit”.',
     person: 'If you find someone you like, click “Invite to team”. When they accept, they will join your team.',
     done: 'These teams have finished recruiting. You can edit your team post anytime with “Edit”, and teams will be presented at Session 1 (Nov 4).',
     apps: 'Here you can see the applications you sent and those received on your recruiting posts.\nWhen you accept an applicant, they are added to your current team members.\nThe team leader and the applicant can then see each other’s name and contact details.\nThe applicant’s applications to other teams are cancelled automatically.'
