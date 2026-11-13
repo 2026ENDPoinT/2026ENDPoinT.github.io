@@ -11,7 +11,7 @@
 <!-- 열람 링크의 토큰이 다른 사이트로 새지 않게 -->
 <meta name="referrer" content="no-referrer">
 <title>제출 · 투표 현황 · ENDPoinT</title>
-<meta name="description" content="ENDPoinT 해커톤 제출 · 투표 현황. 팀마다 낸 것과 투표 참여를 보고, 심사위원 · 운영진은 열람 링크로 자료를 봅니다.">
+<meta name="description" content="ENDPoinT 해커톤 제출 · 투표 현황. 팀마다 제출한 것과 투표 참여를 보고, 심사위원 · 운영진은 참여 토큰으로 자료를 봅니다.">
 <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
 <link rel="icon" href="../assets/img/icon-512.png" sizes="512x512" type="image/png">
 <link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@100;200;300;400;500;600&display=swap">
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
-<link rel="stylesheet" href="../assets/submit.css?v=274fe616">
+<link rel="stylesheet" href="../assets/submit.css?v=84908da7">
 </head>
 <body>
 
@@ -65,7 +65,7 @@
           <div class="tabs" id="tabs" role="tablist" aria-label="트랙"></div>
           <div class="tools">
             <span class="when" id="when"></span>
-            <button class="chipbtn" type="button" id="only" aria-pressed="false">낸 팀만 보기</button>
+            <button class="chipbtn" type="button" id="only" aria-pressed="false">제출한 팀만 보기</button>
             <button class="chipbtn" type="button" id="reload">새로 고침</button>
           </div>
         </div>
@@ -103,10 +103,28 @@
   <div class="viewer-body" id="vw-body"></div>
 </div>
 
+<!-- 심사위원: 발표 자료(왼쪽)와 그 팀 평가(오른쪽)를 나란히 -->
+<div class="review" id="review" hidden role="dialog" aria-modal="true" aria-label="발표 자료와 평가">
+  <div class="rv-scrim"></div>
+  <section class="rv-doc" id="rv-doc">
+    <div class="rv-bar">
+      <div class="t"><b id="rv-title"></b><span id="rv-sub"></span></div>
+      <div class="rv-acts">
+        <button class="mini quiet" type="button" id="rv-prev" aria-label="이전 팀" title="이전 팀 (←)">←</button>
+        <button class="mini quiet" type="button" id="rv-next" aria-label="다음 팀" title="다음 팀 (→)">→</button>
+        <button class="mini quiet" type="button" id="rv-save" hidden>내려받기</button>
+        <button class="mini" type="button" id="rv-close">닫기</button>
+      </div>
+    </div>
+    <div class="rv-body" id="rv-body"></div>
+  </section>
+  <aside class="rv-side" id="rv-side" aria-label="평가"></aside>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="../assets/submit-config.js?v=1f1bcd66"></script>
-<script src="../assets/submit-core.js?v=e75e7f12"></script>
-<script src="../assets/judge-page.js?v=21d67c50"></script>
+<script src="../assets/submit-core.js?v=1fff80b8"></script>
+<script src="../assets/judge-page.js?v=188a0c0d"></script>
 </body>
 </html>

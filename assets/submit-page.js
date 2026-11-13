@@ -13,6 +13,7 @@
   var KIND_NAME = { deck: '발표 자료', program: '프로그램 파일' };
 
   var st = {
+    pdf: {},               // 발표 자료 번호 → 보기용 PDF 만들기 'busy' · 'ok' · 'fail'
     me: null,              // 서버의 me 응답
     state: null,           // 내 팀의 제출 상태
     as: '',                // 운영진 대리: 고른 팀 번호
@@ -105,6 +106,7 @@
     st.limits = d.limits || st.limits;
     st.loadedAt = Date.now();
     st.state = d.team ? d.state : null;
+    if (st.state) ensurePdf(st.state.deck);
     gate.hidden = true; app.hidden = false;
     if (!st.built) build();
     fill(false);
@@ -140,7 +142,7 @@
               '<p class="err" id="e-url" hidden></p></div>' +
             '<div class="q"><span class="lab">프로그램 파일</span><div id="slot-program" data-slot="program" style="margin-top:6px"></div></div>') +
           step('deck', '03', '발표 자료', true,
-            '<div id="slot-deck" data-slot="deck"></div>', 'PDF 권장') +
+            '<div id="slot-deck" data-slot="deck"></div>', 'PDF 권장 · PPT 는 보기용 PDF 로 바꿔 둡니다 · Keynote 는 PDF 로 내보내 주세요') +
           step('video', '04', '데모 영상', false,
             '<div><label class="q"><span class="lab">영상 주소</span>' +
               '<input class="tin" id="f-video" type="text" inputmode="url" maxlength="500" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://youtu.be/…"></label>' +
@@ -312,7 +314,7 @@
         '<div class="prog"><span class="t"><span class="f" id="pf-' + kind + '"></span></span><span class="n" id="pn-' + kind + '">0%</span></div></div>';
     } else if (f) {
       html = '<div class="file now"><div class="t"><div class="nm">' + esc(f.name) + '</div>' +
-        '<div class="meta">' + EP.fmtSize(f.size) + ' · ' + EP.fmtTime(f.at) + ' 제출' + (f.by ? ' · ' + esc(f.by) : '') +
+        '<div class="meta">' + EP.fmtSize(f.size) + ' · ' + EP.fmtTime(f.at) + ' 제출' + (f.by ? ' · ' + esc(f.by) : '') + pdfNote(f) +
         (f.md5 ? ' · <span title="파일 지문(md5). 내 컴퓨터의 파일과 같은지 확인할 때 씁니다">md5 <code>' + esc(f.md5.slice(0, 10)) + '…</code></span>' : '') +
         '</div></div><div class="acts">' +
         '<button class="mini quiet" type="button" data-act="get" data-id="' + f.id + '">받아서 확인</button>' +
@@ -403,6 +405,7 @@
       st.state = state;
       fill(false);
       paint();
+      if (kind === 'deck') ensurePdf(state.deck);
       EP.toast(KIND_NAME[kind] + (kind === 'deck' ? '를' : '을') + ' 올렸습니다');
     }, function (e) {
       if (st.up[kind] !== up) return;
@@ -410,6 +413,34 @@
       if (!e || e.code !== 'CANCELLED') st.err[kind] = EP.say(e);
       paint();
     });
+  }
+
+  /* ------------------------------ 보기용 PDF ------------------------------
+     PowerPoint · odp 발표 자료를 올리면 서버(Drive)가 PDF 로 바꿔 둔다 — 심사위원 화면에서 바로 열리게.
+     몇 초 – 1분 걸린다. 올린 직후, 그리고 이 화면을 열 때(아직 없으면) 한 번씩 부른다. 실패해도 제출은 그대로다. */
+  var CONV = /\.(pptx|ppt|pptm|ppsx|pps|potx|pot|odp)$/i;
+  function pdfNote(f) {
+    if (!f || f.kind !== 'deck' || !CONV.test(f.name)) return '';
+    var s = st.pdf[f.id];
+    if (f.pdf || s === 'ok') return ' · <span class="ok">보기용 PDF 준비됨</span>';
+    if (s === 'busy') return ' · 보기용 PDF 만드는 중…';
+    if (s === 'fail') return ' · <span class="bad">PDF 로 바꾸지 못했습니다 (원본은 제출됨)</span>';
+    return '';
+  }
+  function ensurePdf(f) {
+    if (!f || f.pdf || !CONV.test(f.name) || st.pdf[f.id]) return;
+    st.pdf[f.id] = 'busy';
+    if (st.built) paintSlot('deck');
+    EP.api('deck.pdf', { id: f.id, as: st.as || undefined }, { timeout: 330000, tries: 1 }).then(function (r) {
+      if (r && r.ok) {
+        st.pdf[f.id] = 'ok';
+        if (st.state && st.state.deck && st.state.deck.id === f.id) st.state.deck.pdf = r.pdf;
+      } else if (r && (r.error === 'PDF_BUSY' || r.error === 'BUSY')) {
+        st.pdf[f.id] = '';                                   // 다른 사람(같은 팀)이 이미 바꾸는 중 — 조금 뒤 다시
+        setTimeout(function () { if (st.state && st.state.deck && st.state.deck.id === f.id) ensurePdf(st.state.deck); }, 20000);
+      } else st.pdf[f.id] = 'fail';
+      if (st.built) paintSlot('deck');
+    }, function () { st.pdf[f.id] = 'fail'; if (st.built) paintSlot('deck'); });
   }
 
   function fetchFile(btn, id) {
@@ -515,7 +546,7 @@
       if (st.built) FIELDS.forEach(function (k) { $('f-' + k).value = ''; });
     }
     st.me = null; st.state = null; st.err = { deck: '', program: '' };
-    if (!u) { $('h-team').textContent = '로그인하면 보입니다'; gateLogin(why === 'expired'); return; }
+    if (!u) { $('h-team').textContent = '로그인을 해주세요'; gateLogin(why === 'expired'); return; }
     lastSub = u.sub;
     load();
   });

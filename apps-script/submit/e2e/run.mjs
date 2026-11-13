@@ -318,7 +318,7 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   const page = await newPage(browser);
   await page.goto(SITE + '/judge/');
   await page.waitForSelector('#key-form');
-  R.match('링크 없이 오면 안내만 보인다', await text(page, '#gate'), /열람 링크로 들어와 주세요/);
+  R.match('링크 없이 오면 안내만 보인다', await text(page, '#gate'), /참여 토큰을 입력해 주세요/);
   // 공개 현황판: 팀 번호 · 낸 것의 유무 · 투표한 사람 수만 (프로젝트 이름은 없다)
   await page.waitForSelector('#pub-submit .tchip');
   R.match('공개 현황판: 제출 현황(해커톤 → 구현과제) · 투표 현황', await text(page, '#pub'), /제출 현황[\s\S]*5분마다 갱신[\s\S]*해커톤[\s\S]*구현과제[\s\S]*투표 현황[\s\S]*1분마다 갱신[\s\S]*12:12 시작[\s\S]*투표한 사람 0/);
@@ -346,22 +346,27 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   R.match('안 낸 팀', await text(page, '#card-01'), /제출 전/);
   await shot(page, 'e2e-judge-1-list');
 
-  // 자료 보기 (PDF 를 이 화면 안에서)
+  // 자료 보기: 심사위원은 왼쪽에 발표 자료, 오른쪽에 그 팀 평가를 나란히
   await page.click('#card-03 [data-act="view"]');
   // PDF 보기가 있는 브라우저는 화면 안에(iframe), 없는 브라우저는 '새 탭에서 열기' 로 같은 자료를 준다
-  await page.waitForSelector('#vw-body iframe, #vw-body a.btn', { timeout: 60000 });
+  await page.waitForSelector('#rv-body iframe, #rv-body a.btn', { timeout: 60000 });
+  R.eq('나란히 보기: 오른쪽에 그 팀 평가 칸이 옮겨 온다', await page.evaluate(() => [!!document.querySelector('#rv-side form.jscore[data-no="03"]'), !!document.querySelector('#card-03 .jghost')]), [true, true]);
   const got = await page.evaluate(async () => {
-    const el = document.querySelector('#vw-body iframe, #vw-body a.btn');
+    const el = document.querySelector('#rv-body iframe, #rv-body a.btn');
     const src = (el.src || el.href).split('#')[0];
     const buf = await (await fetch(src)).arrayBuffer();
     const d = await crypto.subtle.digest('SHA-256', buf);
     return [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, '0')).join('');
   });
-  R.eq('화면에 연 자료가 올린 파일과 같다 (9MB, 조각 셋을 이어 붙임)', got, sha256(deck));
-  R.match('보는 창에 팀과 파일 이름', await text(page, '.viewer-bar'), /03팀 · 분실물 찾기 지도[\s\S]*team03_발표_v2_/);
+  R.eq('화면에 연 자료가 올린 파일과 같다 (9MB, 조각을 나란히 받아 이어 붙임)', got, sha256(deck));
+  R.match('보는 창에 팀과 파일 이름', await text(page, '.rv-bar'), /03팀 · 분실물 찾기 지도[\s\S]*team03_발표_v2_/);
   await shot(page, 'e2e-judge-2-viewer');
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => /^04팀/.test(document.getElementById('rv-title').textContent));
+  R.eq('→ 로 다음 팀 (평가 칸도 그 팀 것으로)', await page.evaluate(() => [!!document.querySelector('#rv-side form.jscore[data-no="04"]'), !!document.querySelector('#card-03 form.jscore')]), [true, true]);
   await page.keyboard.press('Escape');
-  R.eq('Esc 로 닫힌다', await page.locator('#viewer').isHidden(), true);
+  await page.waitForFunction(() => document.getElementById('review').hidden);
+  R.eq('Esc 로 닫히고 평가 칸은 제자리로', await page.evaluate(() => [!!document.querySelector('#card-04 form.jscore'), document.querySelectorAll('.jghost').length]), [true, 0]);
 
   // 프로그램 받기
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#card-12 [data-act="get"]')]);
@@ -388,7 +393,7 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   await page.click('#tabs [data-tab="해커톤"]');
   R.eq('트랙 탭: 해커톤 10팀', await page.locator('#list .post').count(), 10);
   await page.click('#only');
-  R.eq('낸 팀만 보기', await page.locator('#list .post').count(), 1);
+  R.eq('제출한 팀만 보기', await page.locator('#list .post').count(), 1);
 
   const res = w.bodies.filter((x) => x.action === 'view.list').map((x) => x.res).join('\n');
   R.check('심사위원 응답에 이메일 · Drive 주소 · 폴더가 없다', !/@x\.com|drive\.google\.com|driveUrl|folderUrl|"by"/.test(res), (res.match(/@x\.com|drive\.google\.com|driveUrl|folderUrl|"by"/) || [])[0]);
@@ -540,8 +545,11 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
   R.match('내 평가 진행이 늘어난다', await text(page, '#s-parts'), /^1 \/ 20팀$/);
   const g = 'form.jscore[data-no="05"]';
   await page.fill(`${g} input[name="idea"]`, '26');
-  await page.click(`${g} button[type="submit"]`);
-  R.match('25 를 넘으면 저장하지 않고 알린다', await text(page, `${g} [data-state]`), /0 – 25 사이/);
+  R.match('25 를 넘으면 바로 알리고', await text(page, `${g} [data-state]`), /0 – 25 사이[\s\S]*저장할 수 없습니다/);
+  R.eq('저장 단추를 잠근다', await page.locator(`${g} button[type="submit"]`).isDisabled(), true);
+  await page.focus(`${g} input[name="idea"]`);
+  await page.keyboard.press('Meta+Enter');
+  await page.waitForTimeout(400);
   R.eq('잘못된 점수는 시트에 들어가지 않는다', w.b.scoreBook().getSheetByName('점수').objects().length, 1);
   await page.reload();
   await page.waitForSelector('form.jscore');
@@ -567,7 +575,7 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
   const p2 = await newPage(browser);
   await p2.goto(SITE + '/judge/score/#k=' + prof);
   await p2.waitForSelector('#key-form');
-  R.match('심사위원 토큰으로는 종합을 못 본다', await text(p2, '#gate'), /운영진 열람 토큰으로만/);
+  R.match('심사위원 토큰으로는 종합을 못 본다', await text(p2, '#gate'), /운영진 참여 토큰으로만/);
   await p2.context().close();
 
   const sp = await newPage(browser);
@@ -590,6 +598,39 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
   R.eq('화면 오류 없음', [...page.errs, ...sp.errs], []);
   await page.context().close();
   await sp.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('발표 PPT → 보기용 PDF: 올리면 저절로 바뀌고, 심사위원은 PDF 로 바로 본다', async (w) => {
+  const page = await newPage(browser);
+  await page.goto(SITE + '/submit/');
+  await page.waitForSelector('#fake-gsi');
+  await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForSelector('#steps:not([hidden])');
+  const ppt = bytesOf(300 * 1024, 4);
+  await page.setInputFiles('#in-deck', file('발표.pptx', ppt, 'application/vnd.openxmlformats-officedocument.presentationml.presentation'));
+  await page.waitForFunction(() => /보기용 PDF 준비됨/.test(document.querySelector('#slot-deck')?.textContent || ''), null, { timeout: 30000 });
+  R.check('올리고 나면 보기용 PDF 를 저절로 만든다', true);
+  const row = w.b.rows('파일').find((r) => r['상태'] === '현재' && r['종류'] === '발표');
+  R.check('`파일` 탭에 PDF ID · 크기', !!row && !!row['PDF ID'] && Number(row['PDF 크기']) > 0);
+  R.match('Keynote 는 PDF 로 내보내라고 안내', await text(page, '#steps'), /Keynote 는 PDF 로 내보내 주세요/);
+  await page.context().close();
+
+  const judge = await newPage(browser);
+  await judge.goto(SITE + '/judge/#k=' + w.b.viewer('나 교수님', '심사위원'));
+  await judge.waitForSelector('#card-03 [data-act="view"]');
+  R.eq('PPT 발표도 "발표 자료 보기"', await text(judge, '#card-03 [data-act="view"]'), '발표 자료 보기');
+  await judge.click('#card-03 [data-act="view"]');
+  await judge.waitForSelector('#rv-body iframe, #rv-body a.btn', { timeout: 30000 });
+  const head = await judge.evaluate(async () => {
+    const el = document.querySelector('#rv-body iframe, #rv-body a.btn');
+    const buf = new Uint8Array(await (await fetch((el.src || el.href).split('#')[0])).arrayBuffer());
+    return new TextDecoder().decode(buf.slice(0, 8));
+  });
+  R.eq('왼쪽에 뜨는 것은 보기용 PDF', head, '%PDF-1.7');
+  R.match('보는 창에 "보기용 PDF"', await text(judge, '#rv-sub'), /보기용 PDF/);
+  R.eq('화면 오류 없음', judge.errs, []);
+  await judge.context().close();
 });
 
 /* ---------------------------------------------------------------- */

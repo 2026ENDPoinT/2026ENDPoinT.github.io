@@ -27,9 +27,9 @@
   function showGate(html) { gate.innerHTML = html; gate.hidden = false; app.hidden = true; }
   function gateKey(why) {
     showGate('<div class="t"><span class="lab ' + (why ? 'red' : 'blue') + '">Staff</span>' +
-      '<b>' + esc(why || '운영진 열람 토큰으로 들어와 주세요') + '</b></div>' +
+      '<b>' + esc(why || '운영진 참여 토큰을 입력해 주세요') + '</b></div>' +
       '<form class="act rowy" id="key-form" autocomplete="off">' +
-        '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="열람 코드" placeholder="운영진 토큰" style="min-width:min(300px,70vw)">' +
+        '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="참여 토큰" placeholder="운영진 참여 토큰" style="min-width:min(300px,70vw)">' +
         '<button class="btn btn-o" type="submit"><span>열기</span></button></form>');
     $('key-form').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -51,7 +51,7 @@
       if (my !== seq) return;
       if (d && d.ok) { st.d = d; st.loadedAt = Date.now(); render(); return; }
       if (d && d.error === 'KEY_INVALID') { forget(); gateKey(EP.say(d)); return; }
-      if (d && d.error === 'NOT_STAFF') { gateKey('운영진 열람 토큰으로만 볼 수 있습니다'); return; }
+      if (d && d.error === 'NOT_STAFF') { gateKey('운영진 참여 토큰으로만 볼 수 있습니다'); return; }
       if (!silent) showGate('<div class="t"><span class="lab red">Error</span><b>불러오지 못했습니다</b><span>' + esc(EP.say(d)) + '</span></div>');
     }, function (e) {
       if (my !== seq || silent) return;

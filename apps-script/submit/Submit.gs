@@ -126,7 +126,8 @@ var MB = 1024 * 1024;
 var KINDS = {
   deck: {
     label: '발표',
-    exts: ['pdf', 'pptx', 'ppt', 'key', 'odp', 'mp4', 'mov', 'webm', 'zip'],
+    // PowerPoint 계열 · odp 는 받으면 보기용 PDF 를 만든다 (PDF_FROM). key(Keynote)는 Google 이 바꾸지 못한다 — PDF 로 내보내 올리게 안내
+    exts: ['pdf', 'pptx', 'ppt', 'pptm', 'ppsx', 'pps', 'potx', 'pot', 'key', 'odp', 'mp4', 'mov', 'webm', 'zip'],
     max: 300 * MB
   },
   program: {
@@ -140,6 +141,9 @@ var MIME = {
   pdf: 'application/pdf',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   ppt: 'application/vnd.ms-powerpoint',
+  pptm: 'application/vnd.ms-powerpoint.presentation.macroEnabled.12', pps: 'application/vnd.ms-powerpoint',
+  ppsx: 'application/vnd.openxmlformats-officedocument.presentationml.slideshow', pot: 'application/vnd.ms-powerpoint',
+  potx: 'application/vnd.openxmlformats-officedocument.presentationml.template',
   key: 'application/vnd.apple.keynote',
   odp: 'application/vnd.oasis.opendocument.presentation',
   mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
@@ -163,7 +167,8 @@ var STATE_TTL = 300;         // 팀 상태 캐시(초). 쓰기가 있을 때마�
 /** 시트 탭과 열. 열은 이름으로 찾으므로 운영진이 열을 끼워 넣어도 어긋나지 않는다. */
 var TABS = {
   team:   { name: '팀',   head: ['팀', '트랙', '프로젝트', '설명', '배포 주소', '프로그램', '발표 자료', '데모 영상', '완료', '마지막 제출', '제출자', '폴더', '순서', '메모'] },
-  file:   { name: '파일', head: ['번호', '팀', '종류', '버전', '상태', '경로', '이름', '원래 이름', '크기', 'md5', '형식', '올린 시각', '올린 사람', 'Drive ID', '링크'] },
+  // PDF ID · PDF 크기 = PPT 등을 올렸을 때 Drive 로 만든 보기용 PDF (심사위원 화면이 연다). 원본은 그대로
+  file:   { name: '파일', head: ['번호', '팀', '종류', '버전', '상태', '경로', '이름', '원래 이름', '크기', 'md5', '형식', '올린 시각', '올린 사람', 'Drive ID', '링크', 'PDF ID', 'PDF 크기'] },
   member: { name: '팀원', head: ['팀', '이름', '이메일', '계정 식별자', '역할', '상태', '비고', '출처'] },
   // 검증 = 이름과 토큰 해시를 비밀 솔트와 묶은 값. 시트에서 이름을 바꾸면 그 토큰은 더 통하지 않는다
   view:   { name: '열람', head: ['이름', '역할', '토큰 해시', '만든 시각', '만료', '사용', '마지막 접속', '검증'] },
@@ -174,7 +179,7 @@ var TABS = {
   score:  { name: '점수', book: 'score', head: ['심사위원', '심사위원 ID', '팀', '트랙'].concat(CONFIG.CRITERIA.map(function (c) { return c.name; }), ['합계', '코멘트', '저장 시각']) }
 };
 /** 숫자로 두는 열과 그 표시 형식 (나머지 열은 전부 글자 서식) */
-var NUMERIC = { '번호': '0', '버전': '0', '크기': '0', '합계': '0.00' };
+var NUMERIC = { '번호': '0', '버전': '0', '크기': '0', '합계': '0.00', 'PDF 크기': '0' };
 CONFIG.CRITERIA.forEach(function (c) { NUMERIC[c.name] = '0.00'; });
 
 /** 한 번의 요청이 끝날 때까지만 사는 메모. 실행마다 새로 만들어진다. */
@@ -234,6 +239,7 @@ function route_(action, body) {
     case 'score.summary': return actScoreSummary_(body);
     case 'score.state':   return actScoreState_(body);
     case 'status.public': return actStatusPublic_(body);
+    case 'deck.pdf':      return actDeckPdf_(body);
     default:              return fail_('UNKNOWN_ACTION');
   }
 }
@@ -297,13 +303,11 @@ function actInfoSave_(body) {
   if (bad.length) return fail_('INVALID', { fields: bad });
   if (!Object.keys(v).length) return fail_('INVALID', { fields: [] });
 
-  return withLock_(function () {
-    return once_(a, body.nonce, function () {
-      teamPatch_(a, v);
-      log_(a, 'info.save', '', Object.keys(v).join(', '));
-      var st = refreshStates_()[a.team];
-      return { ok: true, state: stateOut_(st, 'member') };
-    });
+  return once_(a, body.nonce, function () {
+    withLock_(function () { teamPatch_(a, v); });               // 잠근 채로는 `팀` 탭 한 줄만 — 기록 · 다시 읽기는 풀고 나서
+    log_(a, 'info.save', '', Object.keys(v).join(', '));
+    var st = refreshStates_()[a.team];
+    return { ok: true, state: stateOut_(st, 'member') };
   });
 }
 
@@ -443,7 +447,7 @@ function finishUpload_(a, id) {
   }
 
   // 3) 색인을 고친다
-  return withLock_(function () {
+  var out = withLock_(function () {
     var t = table_('file', true), i = findFile_(t, id);
     if (i < 0) return fail_('NOT_FOUND');
     var cur = str_(t.rows[i][t.col['상태']]);
@@ -468,6 +472,8 @@ function finishUpload_(a, id) {
         '?supportsAllDrives=true&fields=id&addParents=' + encodeURIComponent(folders.old) +
         '&removeParents=' + encodeURIComponent(folders.team), {}));
     }
+    var prevPdf = prev >= 0 && t.col['PDF ID'] !== undefined ? str_(t.rows[prev][t.col['PDF ID']]) : '';
+    if (prevPdf) reqs.push(driveMove_(prevPdf, folders.team, folders.old));   // 보기용 PDF 도 함께 (실패해도 넘어간다)
     var rs = UrlFetchApp.fetchAll(reqs);
     if (rs[0].getResponseCode() !== 200) throw new Error('DRIVE_ERROR: rename ' + rs[0].getResponseCode());
     var prevGone = false;
@@ -487,10 +493,13 @@ function finishUpload_(a, id) {
     patch[K.label === '발표' ? '발표 자료' : '프로그램'] = finalName;
     teamPatch_(a, patch, [{ head: K.label === '발표' ? '발표 자료' : '프로그램', text: finalName, url: fileUrl_(driveId) }]);
     cacheDrop_('tk1:' + id);
-    log_(a, 'upload.finish', '#' + id, finalName + ' · ' + size + 'B' + (phase_() === 'grace' && !a.proxy ? ' · 마감 직후 도착' : ''));
-    var st = refreshStates_()[a.team];
-    return { ok: true, state: stateOut_(st, 'member') };
+    return { ok: true, done: { name: finalName, size: size } };
   });
+  if (!out.ok || out.already) return out;
+  // 잠금을 풀고 나서: 기록 한 줄, 팀 상태 새로 읽기 (마감 직전에 여러 팀이 몰려도 줄이 짧게)
+  log_(a, 'upload.finish', '#' + id, out.done.name + ' · ' + out.done.size + 'B' + (phase_() === 'grace' && !a.proxy ? ' · 마감 직후 도착' : ''));
+  var st = refreshStates_()[a.team];
+  return { ok: true, state: stateOut_(st, 'member') };
 }
 
 /** 올리던 것을 그만둔다. */
@@ -529,7 +538,7 @@ function actWithdraw_(body) {
   if (!K) return fail_('BAD_KIND');
   var folders = folders_(a.team);
 
-  return withLock_(function () {
+  var out = withLock_(function () {
     return once_(a, body.nonce, function () {
       var t = table_('file', true), cur = -1;
       t.rows.forEach(function (row, j) {
@@ -537,21 +546,27 @@ function actWithdraw_(body) {
       });
       if (cur >= 0) {
         var driveId = str_(t.rows[cur][t.col['Drive ID']]);
-        var res = UrlFetchApp.fetchAll([driveReq_('patch', '/drive/v3/files/' + encodeURIComponent(driveId) +
+        var reqs = [driveReq_('patch', '/drive/v3/files/' + encodeURIComponent(driveId) +
           '?supportsAllDrives=true&fields=id&addParents=' + encodeURIComponent(folders.old) +
-          '&removeParents=' + encodeURIComponent(folders.team), {})])[0];
+          '&removeParents=' + encodeURIComponent(folders.team), {})];
+        var pdfId = t.col['PDF ID'] !== undefined ? str_(t.rows[cur][t.col['PDF ID']]) : '';
+        if (pdfId) reqs.push(driveMove_(pdfId, folders.team, folders.old));
+        var res = UrlFetchApp.fetchAll(reqs)[0];
         var code = res.getResponseCode();
         if (code !== 200 && code !== 404) throw new Error('DRIVE_ERROR: move ' + code);
         put_(t, cur + 2, { '상태': code === 404 ? '없음' : '이전', '경로': '/team' + a.team + '/' + OLD_NAME + '/' });
         var patch = {};
         patch[K.label === '발표' ? '발표 자료' : '프로그램'] = '';
         teamPatch_(a, patch);
-        log_(a, 'file.withdraw', '#' + t.rows[cur][t.col['번호']], K.label);
+        return t.rows[cur][t.col['번호']];
       }
-      var st = refreshStates_()[a.team];
-      return { ok: true, state: stateOut_(st, 'member') };
+      return '';
     });
   });
+  if (out && typeof out === 'object') return out;               // once_ 가 먼젓번 응답을 돌려준 경우
+  if (out) log_(a, 'file.withdraw', '#' + out, K.label);
+  var st = refreshStates_()[a.team];
+  return { ok: true, state: stateOut_(st, 'member') };
 }
 
 /* ================================================================
@@ -578,12 +593,17 @@ function actFileGet_(body) {
   var id = Number(body.id);
   var f = id > 0 ? fileById_(id, team, noTest) : null;
   if (!f) return fail_('NOT_FOUND');
+  var src = { drive: f.drive, size: f.size, name: f.name, mime: f.mime, md5: f.md5 };
+  if (body.variant === 'pdf') {                             // 보기용 PDF (PPT 등을 바꾼 것)
+    if (!f.pdf || !f.pdf.drive) return fail_('NO_PDF');
+    src = { drive: f.pdf.drive, size: f.pdf.size, name: pdfName_(f.name), mime: 'application/pdf', md5: '' };
+  }
   var offset = Number(body.offset) || 0;
   var len = Math.min(Math.max(1, Number(body.length) || DL_CHUNK), DL_MAX);
-  if (offset < 0 || offset >= f.size) return fail_('BAD_RANGE');
-  var end = Math.min(f.size, offset + len) - 1;
+  if (offset < 0 || offset >= src.size) return fail_('BAD_RANGE');
+  var end = Math.min(src.size, offset + len) - 1;
 
-  var res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(f.drive) +
+  var res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(src.drive) +
     '?alt=media&supportsAllDrives=true&acknowledgeAbuse=true', {
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), Range: 'bytes=' + offset + '-' + end },
     muteHttpExceptions: true
@@ -593,9 +613,94 @@ function actFileGet_(body) {
   var bytes = res.getContent();
   if (code === 200 && bytes.length > end - offset + 1) bytes = bytes.slice(offset, end + 1);   // Range 를 무시하고 통째로 준 경우
   return {
-    ok: true, id: id, name: f.name, size: f.size, mime: f.mime, md5: f.md5,
+    ok: true, id: id, name: src.name, size: src.size, mime: src.mime, md5: src.md5, variant: body.variant === 'pdf' ? 'pdf' : '',
     offset: offset, length: bytes.length, data: Utilities.base64Encode(bytes)
   };
+}
+
+/* ================================================================
+   발표 자료 보기용 PDF — PPT 를 올리면 Drive 로 PDF 를 만들어 둔다 (심사위원 화면에서 바로 열리게)
+   ----------------------------------------------------------------
+   pptx · ppt · odp → Google 프레젠테이션으로 바꾼 사본 → PDF 로 내보내 원본 옆에 '…_보기용.pdf' 로 둔다.
+   사본은 휴지통으로. `파일` 탭 그 줄의 'PDF ID' · 'PDF 크기' 에 적는다. 원본은 그대로 — 받기는 원본, 보기는 PDF.
+   몇 초 – 1분 걸리므로 잠금 밖에서 하고, 같은 파일을 두 실행이 함께 바꾸지 않게 캐시에 표시한다.
+   부르는 곳: 참가자 화면(올린 직후 · 제출 화면을 열 때), 심사위원 화면(아직 없을 때), 시트 메뉴(빠진 것 한꺼번에).
+   Google 에 없는 글꼴은 비슷한 글꼴로 바뀔 수 있다 (보기용).
+   ================================================================ */
+
+// Google 프레젠테이션으로 가져올 수 있는 발표 형식 전부 (Drive 의 가져오기 지원 목록). Keynote 는 없다
+var PDF_FROM = ['pptx', 'ppt', 'pptm', 'ppsx', 'pps', 'potx', 'pot', 'odp'];
+function convertible_(name) { return PDF_FROM.indexOf(ext_(name)) !== -1; }
+function pdfName_(name) { return String(name || 'deck').replace(/\.[A-Za-z0-9]{1,10}$/, '') + '_보기용.pdf'; }
+/** Drive 파일을 한 폴더에서 다른 폴더로 (fetchAll 에 넣는 요청) */
+function driveMove_(id, from, to) {
+  return driveReq_('patch', '/drive/v3/files/' + encodeURIComponent(id) + '?supportsAllDrives=true&fields=id&addParents=' +
+    encodeURIComponent(to) + '&removeParents=' + encodeURIComponent(from), {});
+}
+
+/** { id } — 그 팀 사람(로그인) 이나 열람 토큰. 이미 있으면 바로 돌려준다 */
+function actDeckPdf_(body) {
+  var team = '', who = '';
+  if (body.key) {
+    var v = viewer_(body.key);
+    if (!v) return fail_('KEY_INVALID');
+    who = 'v:' + v.hash.slice(0, 12);
+  } else {
+    var a = actor_(body);
+    if (a.error) return fail_(a.error);
+    if (!a.team) return fail_('NOT_MEMBER');
+    team = a.team; who = 't:' + a.team;
+  }
+  var id = Number(body.id), f = id > 0 ? fileById_(id, team, false) : null;
+  if (!f) return fail_('NOT_FOUND');
+  if (f.kind !== 'deck' || !convertible_(f.name)) return fail_('NOT_CONVERTIBLE');
+  if (f.pdf && f.pdf.drive) return { ok: true, id: id, pdf: f.pdf.size || 1 };
+  if (!hit_('pdf:' + who, 30, 600)) return fail_('TOO_MANY');
+  return deckPdf_(id);
+}
+
+/** 한 파일의 보기용 PDF 를 만든다. { ok, id, pdf:크기 } · fail_('PDF_BUSY' | 'PDF_FAILED' …) */
+function deckPdf_(id) {
+  var c = cache_(), busy = 'pdfing:' + id;
+  if (c && c.get(busy)) return fail_('PDF_BUSY');           // 다른 실행이 바꾸는 중
+  if (c) c.put(busy, '1', 330);
+  var gid = '';
+  try {
+    var t = table_('file', true), i = findFile_(t, id);
+    if (i < 0) return fail_('NOT_FOUND');
+    var col = t.col, row = t.rows[i];
+    if (col['PDF ID'] !== undefined && str_(row[col['PDF ID']])) return { ok: true, id: id, pdf: Number(row[col['PDF 크기']]) || 1 };
+    var src = str_(row[col['Drive ID']]), name = str_(row[col['이름']]);
+    if (!src || !convertible_(name)) return fail_('NOT_CONVERTIBLE');
+    var meta = driveMeta_(src);
+    if (!meta || meta.trashed) return fail_('FILE_GONE');
+    var parent = (meta.parents || [])[0];
+    // 1) Google 프레젠테이션으로 바꾼 사본
+    var cp = driveFetch_('post', '/drive/v3/files/' + encodeURIComponent(src) + '/copy?supportsAllDrives=true&fields=id',
+      { name: pdfName_(name).replace(/\.pdf$/, '') + ' (변환 중)', mimeType: 'application/vnd.google-apps.presentation', parents: [parent] });
+    if (cp.getResponseCode() !== 200) throw driveFail_(cp, 'convert');
+    gid = JSON.parse(cp.getContentText()).id;
+    // 2) PDF 로 내보내기. Drive API 는 10MB 넘는 내보내기를 막으므로, 그때는 Apps Script 의 변환으로
+    var ex = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(gid) + '/export?mimeType=application%2Fpdf',
+      { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    var blob = ex.getResponseCode() === 200 ? ex.getBlob() : DriveApp.getFileById(gid).getAs('application/pdf');
+    blob.setName(pdfName_(name));
+    var pdf = DriveApp.getFolderById(parent).createFile(blob), pdfId = pdf.getId(), pdfSize = Number(pdf.getSize()) || 0;
+    // 3) 색인에 적는다
+    withLock_(function () {
+      var t2 = table_('file', true), j = findFile_(t2, id);
+      if (j >= 0) put_(t2, j + 2, { 'PDF ID': pdfId, 'PDF 크기': pdfSize });
+    });
+    refreshStates_();
+    return { ok: true, id: id, pdf: pdfSize || 1 };
+  } catch (e) {
+    var msg = String((e && e.message) || e);
+    try { console.error('PDF ' + id + ': ' + msg.replace(/https?:\/\/[^\s'"]+/g, '(주소)')); } catch (e2) {}
+    return fail_('PDF_FAILED', { message: msg.split(':')[0] });
+  } finally {
+    if (gid) driveTrash_(gid);
+    if (c) c.remove(busy);
+  }
 }
 
 /* ================================================================
@@ -932,7 +1037,7 @@ function votes_() {
 }
 function voteCount_(t, salt) {
   var c = t.col, ballots = {}, bad = {};
-  t.rows.forEach(function (row) {
+  t.rows.forEach(function (row, pos) {
     var key = trackKeyByName_(row[c['트랙']]), ballot = str_(row[c['투표지']]), voter = str_(row[c['투표자(익명)']]);
     var vt = teamNo_(row[c['투표자 팀']]), team = teamNo_(row[c['대상 팀']]), at = str_(row[c['시각']]);
     if (!key && !ballot && !voter && !team) return;                       // 빈 줄
@@ -943,13 +1048,14 @@ function voteCount_(t, salt) {
     }
     var id = voter + '|' + key;
     var b = ballots[id] = ballots[id] || {};
-    (b[ballot] = b[ballot] || { voter: voter, key: key, vt: vt, seq: Number(ballot.replace(/\D/g, '')) || 0, rows: [] }).rows.push({ team: team, sig: sig });
+    // 순서: 투표지 번호의 시각(ms, 예전 투표지는 일련번호) → 같으면 시트에 먼저 붙은 줄
+    (b[ballot] = b[ballot] || { voter: voter, key: key, vt: vt, seq: Number((/^B(\d+)/.exec(ballot) || [])[1]) || 0, pos: pos, rows: [] }).rows.push({ team: team, sig: sig });
   });
   var out = { by: {}, n: {}, voters: {}, bad: bad }, max = voteMax_(), self = voteSelf_();
   Object.keys(ballots).forEach(function (id) {
     // 투표자마다 가장 나중에 낸 투표지만
     var last = null;
-    Object.keys(ballots[id]).forEach(function (bid) { var b = ballots[id][bid]; if (!last || b.seq > last.seq) last = b; });
+    Object.keys(ballots[id]).forEach(function (bid) { var b = ballots[id][bid]; if (!last || b.seq > last.seq || (b.seq === last.seq && b.pos > last.pos)) last = b; });
     var seen = {}, ok = last.rows.length >= 1 && last.rows.length <= max;
     last.rows.forEach(function (r) {
       if (seen[r.team] || trackKeyOf_(r.team) !== last.key || (!self && r.team === last.vt)) ok = false;
@@ -1046,34 +1152,38 @@ function actVoteSubmit_(body) {
     seen[no] = 1;
   }
   if (!hit_('vote:' + a.sub, 20, 600)) return fail_('TOO_MANY');
-  var salt = voteSalt_(), voter = voterKey_(a, salt);          // 잠그기 전에 (솔트를 처음 만들 때 잠근다)
+  var salt = voteSalt_(), voter = voterKey_(a, salt);          // (솔트를 처음 만들 때만 잠근다)
 
-  return withLock_(function () {
-    return once_(a, body.nonce, function () {
-      // 잠근 뒤 다시 본다 — 운영진이 방금 닫았을 수 있다 (캐시가 아니라 지금 값으로)
-      propsDrop_();
-      var now = voteState_(tr.key, t0);
-      if (now !== 'open') return fail_(now === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN');
-      var t = table_('vote', true), c = t.col, at = kst_(nowMs_()), n0 = nextId_(t);
-      var ballot = 'B' + n0;
-      // 먼젓번 투표지는 '바꿈' 으로 표시만 한다 (셀 때는 어차피 가장 나중 투표지만 센다)
-      t.rows.forEach(function (row, j) {
-        if (str_(row[c['투표자(익명)']]) === voter && trackKeyByName_(row[c['트랙']]) === tr.key && str_(row[c['상태']]) === '유효') {
-          put_(t, j + 2, { '상태': '바꿈' });
-        }
-      });
-      pick.forEach(function (no, k) {
-        put_(t, 0, {
-          '번호': n0 + k, '시각': at, '트랙': tr.name, '투표지': ballot, '투표자(익명)': voter, '투표자 팀': a.team,
-          '대상 팀': no, '검증': voteSig_(salt, ballot, tr.key, voter, a.team, no, at), '상태': '유효'
-        });
-      });
-      var v = voteCount_(t, salt), m = (v.by[voter] || {})[tr.key] || { teams: [], codes: {} };
-      // `기록` 에는 누가 냈는지도 남기지 않는다 — 시각이 `투표` 탭과 같아서, 이메일을 적으면 두 탭을 맞춰 보는 것만으로 누가 누구에게 줬는지 드러난다
-      log_({ email: '(익명 투표)', team: '' }, 'vote.submit', tr.name, pick.length + '표');
-      return { ok: true, track: tr.key, mine: m.teams, codes: m.codes };
+  // 잠그지 않는다 — 발표가 끝나고 수십 명이 한꺼번에 내도 줄 서지 않게. appendRow 는 다른 실행과 겹쳐도 줄이 섞이지 않는다.
+  // 투표지 번호는 시각(ms) + 임의 세 자리라 시트를 읽지 않고 만들 수 있고, 셀 때 '가장 나중 투표지'를 이 번호로 고른다.
+  return once_(a, body.nonce, function () {
+    propsDrop_();                                                // 운영진이 방금 닫았을 수 있다 — 캐시가 아니라 지금 값으로
+    var now = voteState_(tr.key, t0);
+    if (now !== 'open') return fail_(now === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN');
+    var ms = nowMs_(), at = kst_(ms), ballot = 'B' + ms + '-' + ('00' + Math.floor(Math.random() * 1000)).slice(-3);
+    var sh = voteSheet_(), head = voteHead_(sh), codes = {};
+    pick.forEach(function (no) {
+      var sig = voteSig_(salt, ballot, tr.key, voter, a.team, no, at);
+      codes[no] = sig.slice(0, 6).toUpperCase();
+      var rec = { '시각': at, '트랙': tr.name, '투표지': ballot, '투표자(익명)': voter, '투표자 팀': a.team, '대상 팀': no, '검증': sig, '상태': '유효' };
+      // ' 를 붙여 글자로 고정한다 (시각이 날짜로, '03' 이 3 으로 바뀌면 검증값이 맞지 않게 된다)
+      sh.appendRow(head.map(function (h) { return rec[h] === undefined ? '' : "'" + rec[h]; }));
     });
+    cacheDrop_('votes1');
+    // `기록` 에는 누가 냈는지도 남기지 않는다 — 시각이 `투표` 탭과 같아서, 이메일을 적으면 두 탭을 맞춰 보는 것만으로 누가 누구에게 줬는지 드러난다
+    log_({ email: '(익명 투표)', team: '' }, 'vote.submit', tr.name, pick.length + '표');
+    return { ok: true, track: tr.key, mine: pick.slice(), codes: codes };
   });
+}
+
+function voteSheet_() { return ss_().getSheetByName(TABS.vote.name) || table_('vote').sheet; }
+/** `투표` 탭의 머리줄만 읽는다 (탭 전체를 읽지 않게). 빠진 열이 있으면 한 번 채운다 */
+function voteHead_(sh) {
+  var read = function () { var n = sh.getLastColumn(); return n ? sh.getRange(1, 1, 1, n).getValues()[0].map(function (h) { return str_(h); }) : []; };
+  var head = read();
+  if (TABS.vote.head.every(function (h) { return h === '번호' || head.indexOf(h) !== -1; })) return head;
+  table_('vote', true);
+  return read();
 }
 
 /**
@@ -1491,7 +1601,8 @@ function buildStates_() {
       id: Number(row[f['번호']]) || 0, kind: kind, v: Number(row[f['버전']]) || 0,
       name: str_(row[f['이름']]), orig: str_(row[f['원래 이름']]), size: Number(row[f['크기']]) || 0,
       md5: str_(row[f['md5']]), mime: str_(row[f['형식']]), at: time_(row[f['올린 시각']]),
-      by: str_(row[f['올린 사람']]), drive: str_(row[f['Drive ID']])
+      by: str_(row[f['올린 사람']]), drive: str_(row[f['Drive ID']]),
+      pdf: f['PDF ID'] !== undefined && str_(row[f['PDF ID']]) ? { drive: str_(row[f['PDF ID']]), size: Number(row[f['PDF 크기']]) || 0 } : null
     };
     if (!x.id) return;
     if (status === '현재') s[kind] = x;
@@ -1564,8 +1675,9 @@ function fileById_(id, team, noTest) {
 function fileOut_(x, aud) {
   if (!x) return null;
   var o = { id: x.id, kind: x.kind, v: x.v, name: x.name, size: x.size, md5: x.md5, mime: x.mime, at: x.at };
+  if (x.pdf) o.pdf = x.pdf.size || 1;                       // 보기용 PDF 가 있다 (크기). Drive 주소는 주지 않는다
   if (aud === 'member') { o.orig = x.orig; o.by = whoLabel_(x.by); }
-  if (aud === 'staff') { o.orig = x.orig; o.by = x.by; o.driveUrl = fileUrl_(x.drive); }
+  if (aud === 'staff') { o.orig = x.orig; o.by = x.by; o.driveUrl = fileUrl_(x.drive); if (x.pdf) o.pdfUrl = fileUrl_(x.pdf.drive); }
   return o;
 }
 function stateOut_(s, aud) {

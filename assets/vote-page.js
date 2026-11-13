@@ -120,7 +120,7 @@
     $('h-team').textContent = d.me ? d.me.team + '팀 · ' + d.me.track : (d.admin ? '운영진 계정' : '—');
     d.tracks.forEach(function (tr) {
       var el = $('h-' + tr.key);
-      if (el) el.textContent = stateTxt(tr) + (d.me && tr.mine.length ? ' · ' + tr.mine.length + '표 냄' : '');
+      if (el) el.textContent = stateTxt(tr) + (d.me && tr.mine.length ? ' · ' + tr.mine.length + '표 투표함' : '');
     });
   }
 
@@ -324,7 +324,7 @@
   var lastSub = '';
   S.onChange(function (u, why) {
     if (why === 'logout' || (u && lastSub && u.sub !== lastSub)) { st.sel = {}; st.editing = {}; st.prev = {}; st.d = null; st.tab = ''; }
-    if (!u) { $('h-team').textContent = '로그인하면 보입니다'; gateLogin(why === 'expired'); return; }
+    if (!u) { $('h-team').textContent = '로그인을 해주세요'; gateLogin(why === 'expired'); return; }
     lastSub = u.sub;
     load();
   });

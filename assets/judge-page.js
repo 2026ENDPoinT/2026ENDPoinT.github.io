@@ -12,6 +12,9 @@
   var gate = $('gate'), app = $('app'), list = $('list');
   // 화면 안에서 바로 열 수 있는 형식
   var VIEW = { pdf: 'pdf', mp4: 'video', webm: 'video', mov: 'video' };
+  // 서버가 보기용 PDF 로 바꿔 두는 발표 형식 (PowerPoint 계열 · odp)
+  var CONV = /\.(pptx|ppt|pptm|ppsx|pps|potx|pot|odp)$/i;
+  var MB = 1024 * 1024, KEEP_BYTES = 320 * MB;   // 받아 둔 자료를 이 탭에 기억하는 양 (넘으면 오래된 것부터 잊는다)
   var IOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   // 화면 안에서 PDF 를 넘겨 볼 수 없는 기기: iOS(첫 쪽만 보인다) · 안드로이드 크롬처럼 PDF 보기가 없는 브라우저
   var NO_INLINE_PDF = IOS || navigator.pdfViewerEnabled === false;
@@ -19,8 +22,12 @@
   var st = {
     mine: {}, jdirty: {},      // 심사위원: 내 점수 · 고치는 중인 팀
     key: '', data: null, tab: '', only: false, loadedAt: 0, shape: '', sig: {}, open: {}, jit: 1000 + Math.floor(Math.random() * 4000), cutSeen: 0,
-    blobs: {}, order: [], pending: {}, viewSeq: 0, viewUrl: ''
+    blobs: {}, order: [], pending: {}, viewSeq: 0, viewUrl: '', kept: 0
   };
+  // 심사위원: 발표 자료와 평가를 나란히 보는 창 (아래 '나란히 보기')
+  var rv = { no: '', form: null, seq: 0, url: '', busy: false };
+  var REDUCE = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var EASE = 'cubic-bezier(.32,.72,0,1)';            // 빠르게 나가 부드럽게 멈춘다
 
   /* ------------------------------ 열람 토큰 ------------------------------ */
   /** 주소의 # 뒤에 토큰이 있으면 받아 두고 주소에서는 지운다 */
@@ -56,10 +63,10 @@
         '<div class="act rowy"><a class="btn" href="../submit/"><span>결과물 제출</span></a>' +
         '<a class="btn btn-o" href="./vote/"><span>참가자 투표</span></a></div></div>' +
       '<div class="row"><div class="t"><span class="lab' + (why ? ' red' : '') + '">Judges</span>' +
-        '<b>' + (why ? esc(why) : '심사위원 · 운영진은 받으신 열람 링크로 들어와 주세요') + '</b>' +
-        (why ? '<span>링크가 만료됐다면 운영진에게 새 링크를 요청해 주세요.</span>' : '') + '</div>' +
+        '<b>' + (why ? esc(why) : '참여 토큰을 입력해 주세요') + '</b>' +
+        (why ? '<span>토큰이 만료됐다면 운영진에게 새 토큰을 요청해 주세요.</span>' : '') + '</div>' +
         '<form class="act rowy" id="key-form" autocomplete="off">' +
-          '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="열람 코드" placeholder="열람 코드" style="min-width:min(260px,70vw)">' +
+          '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="참여 토큰" placeholder="참여 토큰" style="min-width:min(260px,70vw)">' +
           '<button class="btn btn-o" type="submit"><span>열기</span></button></form></div>' +
       '</div>');
     pubShow(true);
@@ -67,7 +74,7 @@
       e.preventDefault();
       var v = $('key-in').value.trim(), m = /k=([A-Za-z0-9_\-]{24,128})/.exec(v);   // 링크를 통째로 붙여 넣어도 된다
       v = m ? m[1] : v;
-      if (!/^[A-Za-z0-9_\-]{24,128}$/.test(v)) { gateKey('열람 코드가 올바르지 않습니다'); return; }
+      if (!/^[A-Za-z0-9_\-]{24,128}$/.test(v)) { gateKey('참여 토큰이 올바르지 않습니다'); return; }
       st.key = v;
       try { sessionStorage.setItem(KEY, v); } catch (e2) {}
       load();
@@ -222,7 +229,7 @@
       var html = tracks.map(function (tr, i) {
         return '<section class="trk"><div class="trk-hd"><h2>' + esc(tr.name) + ' 트랙</h2><small id="trk-n-' + i + '"></small></div>' +
           (tr.teams.length ? '<div class="posts">' + tr.teams.map(function (t) { st.sig[t.no] = JSON.stringify(t); return card(t); }).join('') + '</div>'
-                           : '<div class="empty-all">아직 낸 팀이 없습니다.</div>') + '</section>';
+                           : '<div class="empty-all">아직 제출한 팀이 없습니다.</div>') + '</section>';
       }).join('');
       list.innerHTML = html || '<div class="empty-all">보여 줄 팀이 없습니다.</div>';
     } else {
@@ -241,14 +248,23 @@
       var el = $('trk-n-' + i);
       if (el) el.textContent = '제출 완료 ' + tr.all.filter(function (t) { return t.complete; }).length + ' / ' + tr.all.length + '팀';
     });
-    Object.keys(st.pending).forEach(function (id) { setProg(Number(id), st.pending[id].pct); });
+    Object.keys(st.pending).forEach(function (id) { setProg(parseInt(id, 10), st.pending[id].pct); });
   }
 
+  /** 화면에서 볼 수 있는 파일이면 { id, type 'pdf'|'video', variant 'pdf'(보기용 PDF)|'', size, f } */
+  function viewOf(f) {
+    if (!f || f.kind !== 'deck') return null;
+    var ext = EP.extOf(f.name);
+    if (VIEW[ext]) return { id: f.id, type: VIEW[ext], variant: '', size: f.size, f: f };
+    if (CONV.test(f.name)) return { id: f.id, type: 'pdf', variant: 'pdf', size: f.pdf || 0, f: f };
+    return null;
+  }
   function fileBtn(t, f, primary) {
-    var ext = EP.extOf(f.name), type = f.kind === 'deck' ? VIEW[ext] : '';
+    var v = viewOf(f), type = v ? v.type : '';
     var label = f.kind === 'program' ? '프로그램 받기' : type === 'video' ? '발표 영상 보기' : type ? '발표 자료 보기' : '발표 자료 받기';
     return '<button class="btn ' + (primary ? 'btn-k' : 'btn-w') + ' btn-sm" type="button" data-act="' + (type ? 'view' : 'get') + '" data-id="' + f.id +
-      '" data-no="' + esc(t.no) + '" data-type="' + (type || '') + '" data-label="' + label + '" title="' + esc(f.name) + ' · ' + EP.fmtSize(f.size) + '"><span>' + label + '</span></button>';
+      '" data-no="' + esc(t.no) + '" data-type="' + (type || '') + '" data-variant="' + (v ? v.variant : '') + '" data-label="' + label + '" title="' + esc(f.name) + ' · ' + EP.fmtSize(f.size) +
+      (v && v.variant ? (f.pdf ? ' · 보기용 PDF' : ' · 보기용 PDF 를 만들어 엽니다') : '') + '"><span>' + label + '</span></button>';
   }
   function ext(href, label, primary) {
     if (!/^https?:\/\//i.test(String(href || ''))) return '';       // http · https 가 아닌 주소는 링크로 만들지 않는다
@@ -259,7 +275,7 @@
     var any = has(t), cls = t.complete ? 'done' : any ? 'part' : 'none';
     if (!any) {
       return '<article class="post none" id="card-' + esc(t.no) + '"><div class="hd"><span class="no">' + esc(t.no) + '</span>' +
-        '<span class="badge">제출 전</span></div><h3>아직 낸 것이 없습니다</h3></article>';
+        '<span class="badge">제출 전</span></div><h3>제출하지 않았습니다</h3></article>';
     }
     var miss = [];
     if (!t.title) miss.push('이름');
@@ -359,6 +375,17 @@
     el.className = 'jstate' + (kind ? ' ' + kind : '');
   }
   /** 입력 칸의 합계와 상태 줄 */
+  /** 문항마다 0 – 만점(25)인지. 첫 번째 틀린 칸 { el, c } 또는 null — 틀린 칸은 빨갛게 */
+  function badField(form) {
+    var bad = null;
+    st.data.criteria.forEach(function (c) {
+      var el = form.elements[c.key], raw = String(el.value).trim(), n = Number(raw);
+      var wrong = raw !== '' && (!isFinite(n) || n < 0 || n > c.max || (el.validity && el.validity.badInput));
+      el.classList.toggle('bad', !!wrong);
+      if (wrong && !bad) bad = { el: el, c: c };
+    });
+    return bad;
+  }
   function refreshForm(form) {
     var d = st.data, no = form.getAttribute('data-no'), sum = 0, filled = 0;
     d.criteria.forEach(function (c) {
@@ -368,8 +395,10 @@
       if (isFinite(n)) { sum += n; filled++; }
     });
     form.querySelector('[data-sum]').textContent = filled ? fmt2(sum) : '—';
-    var m = st.mine[no];
-    if (d.scoreError) setState(form, '심사 시트가 아직 연결되지 않았습니다. 운영진에게 알려 주세요.', 'err');
+    var m = st.mine[no], bad = badField(form), btn = form.querySelector('button[type="submit"]');
+    if (btn && !btn.classList.contains('saving')) btn.disabled = !!bad;
+    if (bad) setState(form, bad.c.name + ' 은(는) 0 – ' + bad.c.max + ' 사이로 적어 주세요 · 저장할 수 없습니다', 'err');
+    else if (d.scoreError) setState(form, '심사 시트가 아직 연결되지 않았습니다. 운영진에게 알려 주세요.', 'err');
     else if (d.scoring === 'closed') setState(form, '심사가 마감되었습니다', '');
     else if (st.jdirty[no]) setState(form, '저장하지 않은 내용이 있습니다', 'dirty');
     else if (m && m.complete) setState(form, '저장됨 · ' + EP.fmtTime(m.at).slice(6), 'ok');
@@ -377,8 +406,9 @@
     else setState(form, '아직 평가하지 않았습니다', '');
   }
   /** 서버 값으로 칸을 채운다 (고치는 중인 칸 · 커서가 있는 칸은 건드리지 않는다) */
+  function formOf(no) { return rv.form && rv.no === no ? rv.form : list.querySelector('form.jscore[data-no="' + no + '"]'); }
   function fillForm(no, force) {
-    var form = list.querySelector('form.jscore[data-no="' + no + '"]');
+    var form = formOf(no);
     if (!form) return;
     var m = st.mine[no], d = st.data;
     if (force || !st.jdirty[no]) {
@@ -407,7 +437,7 @@
       list.innerHTML = tracks.map(function (tr, i) {
         return '<section class="trk"><div class="trk-hd"><h2>' + esc(tr.name) + ' 트랙</h2><small id="trk-n-' + i + '"></small></div>' +
           (tr.teams.length ? '<div class="jlist">' + tr.teams.map(function (t) { st.sig[t.no] = JSON.stringify(t); return jrow(t); }).join('') + '</div>'
-                           : '<div class="empty-all">아직 낸 팀이 없습니다.</div>') + '</section>';
+                           : '<div class="empty-all">아직 제출한 팀이 없습니다.</div>') + '</section>';
       }).join('') || '<div class="empty-all">보여 줄 팀이 없습니다.</div>';
       Array.prototype.forEach.call(list.querySelectorAll('form.jscore'), refreshForm);
     } else {
@@ -428,26 +458,25 @@
       if (el) el.textContent = '내 평가 ' + tr.all.filter(function (t) { return st.mine[t.no] && st.mine[t.no].complete; }).length + ' / ' + tr.all.length + '팀';
     });
     paintProgress();
-    Object.keys(st.pending).forEach(function (id) { setProg(Number(id), st.pending[id].pct); });
+    Object.keys(st.pending).forEach(function (id) { setProg(parseInt(id, 10), st.pending[id].pct); });
+    if (rv.form) fillForm(rv.no, false);
+    prefetchDecks();
   }
 
   function saveScore(form) {
-    var d = st.data, no = form.getAttribute('data-no'), scores = {}, bad = null, badName = '', badMax = 0;
+    var d = st.data, no = form.getAttribute('data-no'), scores = {};
+    var bad = badField(form);
+    if (bad) { setState(form, bad.c.name + ' 은(는) 0 – ' + bad.c.max + ' 사이로 적어 주세요 · 저장할 수 없습니다', 'err'); bad.el.focus(); return; }
     d.criteria.forEach(function (c) {
-      var el = form.elements[c.key], raw = String(el.value).trim();
-      el.classList.remove('bad');
-      if (raw === '') { scores[c.key] = ''; return; }
-      var n = Number(raw);
-      if (!isFinite(n) || n < 0 || n > c.max) { if (!bad) { bad = el; badName = c.name; badMax = c.max; } el.classList.add('bad'); return; }
-      scores[c.key] = Math.round(n * 100) / 100;
+      var raw = String(form.elements[c.key].value).trim();
+      scores[c.key] = raw === '' ? '' : Math.round(Number(raw) * 100) / 100;
     });
-    if (bad) { setState(form, badName + ' 은(는) 0 – ' + badMax + ' 사이로 적어 주세요', 'err'); bad.focus(); return; }
     var btn = form.querySelector('button[type="submit"]');
     if (!btn || btn.disabled) return;
-    btn.disabled = true;
+    btn.disabled = true; btn.classList.add('saving');
     setState(form, '저장하는 중…', '');
     EP.api('score.save', { team: no, scores: scores, comment: form.elements.comment.value }, { key: st.key, nonce: EP.nonce(), tries: 3 }).then(function (r) {
-      btn.disabled = false;
+      btn.disabled = false; btn.classList.remove('saving');
       if (r && r.ok) {
         st.mine[no] = r.saved; st.jdirty[no] = false;
         fillForm(no, true);
@@ -460,7 +489,7 @@
       if (r && r.error === 'BAD_SCORE' && form.elements[r.item]) { form.elements[r.item].classList.add('bad'); form.elements[r.item].focus(); }
       if (r && r.error === 'SCORE_CLOSED') { load(true); }
       setState(form, EP.say(r), 'err');
-    }, function (e) { btn.disabled = false; setState(form, EP.say(e), 'err'); });
+    }, function (e) { btn.disabled = false; btn.classList.remove('saving'); setState(form, EP.say(e), 'err'); });
   }
   function tracksCount() {
     var d = st.data, i = 0;
@@ -469,23 +498,28 @@
       if (el) el.textContent = '내 평가 ' + tr.teams.filter(function (t) { return st.mine[t.no] && st.mine[t.no].complete; }).length + ' / ' + tr.teams.length + '팀';
     });
   }
-  list.addEventListener('input', function (e) {
+  function onJInput(e) {
     var form = e.target.closest ? e.target.closest('form.jscore') : null;
     if (!form) return;
     st.jdirty[form.getAttribute('data-no')] = true;
-    e.target.classList.remove('bad');
     refreshForm(form);
-  });
-  list.addEventListener('submit', function (e) {
+  }
+  function onJSubmit(e) {
     var form = e.target.closest ? e.target.closest('form.jscore') : null;
     if (!form) return;
     e.preventDefault();
     saveScore(form);
-  });
-  list.addEventListener('keydown', function (e) {
+  }
+  function onJKey(e) {
     if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return;
     var form = e.target.closest ? e.target.closest('form.jscore') : null;
     if (form) { e.preventDefault(); saveScore(form); }
+  }
+  [list, $('rv-side')].forEach(function (el) {
+    if (!el) return;
+    el.addEventListener('input', onJInput);
+    el.addEventListener('submit', onJSubmit);
+    el.addEventListener('keydown', onJKey);
   });
   window.addEventListener('beforeunload', function (e) {
     if (Object.keys(st.jdirty).some(function (k) { return st.jdirty[k]; })) { e.preventDefault(); e.returnValue = ''; }
@@ -500,27 +534,41 @@
       b.classList.toggle('wait', on);
     }
   }
-  /** 같은 파일은 한 번만 받는다. 받은 것은 탭이 열려 있는 동안 몇 개까지 기억해 다시 열 때 바로 뜬다. */
-  function fetchBlob(id, onProg) {
-    if (st.blobs[id]) return Promise.resolve(st.blobs[id]);
-    var p = st.pending[id];
+  /**
+   * 같은 파일은 한 번만 받는다. 받은 것은 탭이 열려 있는 동안 KEEP_BYTES 까지 기억해 다시 열 때 바로 뜬다.
+   * variant 'pdf' 는 보기용 PDF (PPT 를 바꾼 것) — 아직 없으면 서버에 만들어 달라고 한 뒤 받는다.
+   */
+  function fetchBlob(id, onProg, variant, size) {
+    var k = id + (variant ? ':' + variant : '');
+    if (st.blobs[k]) { st.order.splice(st.order.indexOf(k), 1); st.order.push(k); return Promise.resolve(st.blobs[k]); }
+    var p = st.pending[k];
     if (p) { if (onProg) p.subs.push(onProg); return p.promise; }
-    p = st.pending[id] = { subs: onProg ? [onProg] : [], pct: 0, promise: null };
+    p = st.pending[k] = { subs: onProg ? [onProg] : [], pct: 0, promise: null };
     setProg(id, 0);
-    p.promise = EP.download(id, { key: st.key, onProgress: function (got, total) {
-      p.pct = Math.floor(got / total * 100);
-      setProg(id, p.pct);
-      p.subs.forEach(function (f) { f(got, total); });
-    } }).then(function (r) {
-      delete st.pending[id];
+    var ready = variant === 'pdf' && !(size > 0)
+      ? EP.api('deck.pdf', { id: id }, { key: st.key, timeout: 330000, tries: 1 }).then(function (r) {
+          if (!r || !r.ok) { var e = new Error((r && r.error) || 'PDF_FAILED'); e.code = (r && r.error) || 'PDF_FAILED'; throw e; }
+          var f = fileById(id);
+          if (f) f.pdf = r.pdf;
+          return r.pdf;
+        })
+      : Promise.resolve(size);
+    p.promise = ready.then(function (sz) {
+      return EP.download(id, { key: st.key, variant: variant || undefined, size: sz, onProgress: function (got, total) {
+        p.pct = Math.floor(got / total * 100);
+        setProg(id, p.pct);
+        p.subs.forEach(function (f) { f(got, total); });
+      } });
+    }).then(function (r) {
+      delete st.pending[k];
       setProg(id, null);
-      if (r.size <= 120 * 1024 * 1024) {
-        st.blobs[id] = r; st.order.push(id);
-        while (st.order.length > 8) delete st.blobs[st.order.shift()];
+      if (r.size <= 120 * MB) {
+        st.blobs[k] = r; st.order.push(k); st.kept += r.size;
+        while (st.kept > KEEP_BYTES && st.order.length > 1) { var old = st.order.shift(); st.kept -= (st.blobs[old] || {}).size || 0; delete st.blobs[old]; }
       }
       return r;
     }, function (e) {
-      delete st.pending[id];
+      delete st.pending[k];
       setProg(id, null);
       if (e && e.code === 'KEY_INVALID') { forget(); gateKey(EP.say(e)); }
       throw e;
@@ -530,13 +578,19 @@
   function getFile(id) {
     fetchBlob(id).then(function (r) { EP.saveBlob(r.blob, r.name); }, function (e) { EP.toast(EP.say(e)); });
   }
+  function fileById(id) {
+    var hit = null;
+    if (st.data) st.data.tracks.forEach(function (tr) { tr.teams.forEach(function (t) { var f = fileOf(t, id); if (f) hit = f; }); });
+    return hit;
+  }
 
-  function viewFile(id, no, type) {
+  function viewFile(id, no, type, variant) {
     var t = team(no), f = t && fileOf(t, id);
     if (!f) return;
+    if (judgeMode()) { openReview(no, document.querySelector('.jrow[data-no="' + no + '"] .post')); return; }
     var v = $('viewer'), body = $('vw-body'), seq = ++st.viewSeq;
     $('vw-title').textContent = no + '팀 · ' + (t.title || '이름 없음');
-    $('vw-sub').textContent = f.name + ' · ' + EP.fmtSize(f.size);
+    $('vw-sub').textContent = f.name + ' · ' + EP.fmtSize(f.size) + (variant === 'pdf' ? ' · 보기용 PDF' : '');
     $('vw-save').hidden = true;
     body.innerHTML = '<div class="loading" role="status">' + EP.spin('') + '<span>자료를 받는 중입니다</span>' +
       '<div class="prog"><span class="t"><span class="f" id="vw-f"></span></span><span class="n" id="vw-n">0%</span></div></div>';
@@ -548,7 +602,7 @@
       var pct = Math.floor(got / total * 100);
       $('vw-f').style.width = pct + '%';
       $('vw-n').textContent = pct + '%';
-    }).then(function (r) {
+    }, variant, variant === 'pdf' ? f.pdf : f.size).then(function (r) {
       if (seq !== st.viewSeq) return;
       var url = URL.createObjectURL(r.blob);
       st.viewUrl = url;
@@ -577,12 +631,12 @@
     var b = e.target.closest ? e.target.closest('[data-act]') : null;
     if (!b || b.classList.contains('wait')) return;
     var act = b.getAttribute('data-act'), id = Number(b.getAttribute('data-id')), no = b.getAttribute('data-no');
-    if (act === 'view') viewFile(id, no, b.getAttribute('data-type'));
+    if (act === 'view') viewFile(id, no, b.getAttribute('data-type'), b.getAttribute('data-variant') || '');
     else if (act === 'get') getFile(id);
     else if (act === 'hist') {
       st.open[no] = !st.open[no];
       var t = team(no), el = judgeMode() ? list.querySelector('#card-' + no + ' .post') : $('card-' + no);
-      if (t && el) { el.outerHTML = judgeMode() ? infoCard(t) : card(t); Object.keys(st.pending).forEach(function (k) { setProg(Number(k), st.pending[k].pct); }); }
+      if (t && el) { el.outerHTML = judgeMode() ? infoCard(t) : card(t); Object.keys(st.pending).forEach(function (k) { setProg(parseInt(k, 10), st.pending[k].pct); }); }
     }
   });
   $('tabs').addEventListener('click', function (e) {
@@ -599,6 +653,190 @@
   $('reload').addEventListener('click', function () { if (st.data) load(true); });
   $('vw-close').addEventListener('click', closeView);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('viewer').hidden) closeView(); });
+
+  /* ------------------------------ 심사위원: 발표 자료와 평가를 나란히 ------------------------------
+     '발표 자료 보기' → 왼쪽에 발표 자료(PDF · 영상), 오른쪽에 그 팀의 점수 · 코멘트.
+     누른 카드 자리에서 왼쪽 창이 커지며 열리고(FLIP), 평가 칸은 오른쪽에서 미끄러져 들어온다. 닫으면 그 자리로 돌아간다.
+     평가 칸은 목록에 있던 그 팀 폼을 그대로 옮겨 온 것이다 — 적던 것 · 저장 상태가 그대로이고, 닫으면 제자리로 돌려놓는다.
+     ← → (또는 키보드 ← →) 로 발표 순서대로 다른 팀. 다음 팀 자료는 미리 받아 두어 바로 뜬다. */
+  function teamOrder() {
+    var out = [];
+    st.data.tracks.forEach(function (tr) { tr.teams.forEach(function (t) { if (t.no !== '00') out.push(t.no); }); });
+    return out;
+  }
+  function putFormBack() {
+    if (!rv.form) return;
+    var row = list.querySelector('.jrow[data-no="' + rv.no + '"]');
+    if (row) {
+      var fresh = row.querySelector('form.jscore'), ph = row.querySelector('.jghost');
+      if (fresh && fresh !== rv.form) row.replaceChild(rv.form, fresh);        // 그 사이에 목록을 새로 그렸다
+      else if (ph) row.replaceChild(rv.form, ph);
+      else row.appendChild(rv.form);
+    }
+    var no = rv.no;
+    rv.form = null;
+    if (row) fillForm(no, false);
+  }
+  function sideHtml(t) {
+    var links = '';
+    if (t.url) links += '<a class="mini" href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">서비스 열기 ↗</a>';
+    if (t.video) links += '<a class="mini quiet" href="' + esc(t.video) + '" target="_blank" rel="noopener noreferrer">데모 영상 ↗</a>';
+    if (t.repo) links += '<a class="mini quiet" href="' + esc(t.repo) + '" target="_blank" rel="noopener noreferrer">코드 ↗</a>';
+    if (t.program) links += '<button class="mini quiet" type="button" data-rv="get" data-id="' + t.program.id + '">프로그램 받기</button>';
+    return '<div class="rv-team"><span class="no">' + esc(t.no) + '</span><div class="t"><small>' + esc(t.track || '') + '</small>' +
+      '<b>' + esc(t.title || '이름을 아직 적지 않았습니다') + '</b></div></div>' +
+      (t.desc ? '<p class="rv-desc">' + esc(t.desc) + '</p>' : '') +
+      (links ? '<div class="rv-links">' + links + '</div>' : '') + '<div class="rv-slot"></div>';
+  }
+  function openReview(no, fromEl) {
+    var t = team(no);
+    if (!t) return;
+    var R = $('review'), side = $('rv-side'), opening = R.hidden;
+    var from = opening && fromEl ? fromEl.getBoundingClientRect() : null;
+    putFormBack();
+    rv.no = no;
+    side.innerHTML = sideHtml(t);
+    var form = list.querySelector('form.jscore[data-no="' + no + '"]');
+    if (form) {
+      var ph = document.createElement('div');
+      ph.className = 'jghost'; ph.textContent = '오른쪽 창에서 평가하는 중입니다';
+      form.parentNode.replaceChild(ph, form);
+      side.querySelector('.rv-slot').appendChild(form);
+      rv.form = form;
+      refreshForm(form);
+    }
+    var ord = teamOrder(), i = ord.indexOf(no);
+    $('rv-prev').disabled = i <= 0; $('rv-next').disabled = i < 0 || i >= ord.length - 1;
+    $('rv-title').textContent = no + '팀 · ' + (t.title || '이름 없음');
+    showDoc(t);
+    if (opening) {
+      R.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      animIn(from);
+      setTimeout(function () { var x = rv.form && rv.form.querySelector('input:not([disabled])'); (x || $('rv-close')).focus({ preventScroll: true }); }, REDUCE ? 0 : 420);
+    } else if (!REDUCE) {
+      $('rv-doc').animate([{ opacity: .4, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 360, easing: EASE });
+      side.animate([{ opacity: 0, transform: 'translateX(18px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: EASE });
+    }
+    var nx = team(ord[i + 1]);                                     // 다음 팀 자료를 미리
+    if (nx) { var nv = viewOf(nx.deck); if (nv && nv.type === 'pdf') fetchBlob(nv.id, null, nv.variant, nv.size).catch(function () {}); }
+  }
+  function showDoc(t) {
+    var body = $('rv-body'), seq = ++rv.seq, v = viewOf(t.deck);
+    if (rv.url) { var u0 = rv.url; rv.url = ''; setTimeout(function () { URL.revokeObjectURL(u0); }, 1500); }
+    $('rv-save').hidden = true;
+    $('rv-sub').textContent = t.deck ? t.deck.name + ' · ' + EP.fmtSize(t.deck.size) + (v && v.variant ? ' · 보기용 PDF' : '') : '';
+    if (!v) {
+      body.innerHTML = '<div class="rv-empty"><span>' + (t.deck ? '이 형식은 화면에서 볼 수 없습니다. 내려받아 열어 주세요.' : '발표 자료를 아직 제출하지 않았습니다.') + '</span>' +
+        (t.deck ? '<button class="btn btn-o btn-sm" type="button" data-rv="get" data-id="' + t.deck.id + '"><span>발표 자료 받기</span></button>' : '') + '</div>';
+      return;
+    }
+    var conv = v.variant === 'pdf' && !(v.size > 0);
+    body.innerHTML = '<div class="rv-empty" role="status">' + EP.spin('') + '<span>' + (conv ? '보기용 PDF 를 만드는 중입니다 (처음 한 번, 1분까지)' : '자료를 여는 중입니다') + '</span>' +
+      '<div class="prog"><span class="t"><span class="f" id="rv-f"></span></span><span class="n" id="rv-n"></span></div></div>';
+    fetchBlob(v.id, function (got, total) {
+      if (seq !== rv.seq || !$('rv-f')) return;
+      var pct = Math.floor(got / total * 100);
+      $('rv-f').style.width = pct + '%'; $('rv-n').textContent = pct + '%';
+    }, v.variant, v.size).then(function (r) {
+      if (seq !== rv.seq) return;
+      var url = URL.createObjectURL(r.blob);
+      rv.url = url;
+      $('rv-save').hidden = false;
+      $('rv-save').onclick = function () { EP.saveBlob(r.blob, r.name); };
+      if (v.type === 'video') body.innerHTML = '<video controls playsinline src="' + url + '"></video>';
+      else if (NO_INLINE_PDF) body.innerHTML = '<div class="rv-empty"><span>이 기기에서는 화면 안에서 PDF 를 넘겨 볼 수 없습니다.</span>' +
+        '<a class="btn btn-o btn-sm" href="' + url + '" target="_blank" rel="noopener"><span>새 탭에서 열기</span></a></div>';
+      else body.innerHTML = '<iframe src="' + url + '#view=FitH" title="' + esc(t.no + '팀 발표 자료') + '"></iframe>';
+      var el = body.firstChild;
+      if (el && !REDUCE && el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out' });
+    }, function (e) {
+      if (seq !== rv.seq) return;
+      body.innerHTML = '<div class="rv-empty"><span>' + esc(EP.say(e)) + '</span>' +
+        '<button class="btn btn-o btn-sm" type="button" data-rv="get" data-id="' + t.deck.id + '"><span>원본 받기</span></button></div>';
+    });
+  }
+  function animIn(from) {
+    var R = $('review'), doc = $('rv-doc'), side = $('rv-side'), scrim = R.querySelector('.rv-scrim');
+    if (REDUCE || !doc.animate) return;
+    scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 420, easing: 'ease-out' });
+    var to = doc.getBoundingClientRect();
+    if (from && from.width && to.width) {
+      var sx = from.width / to.width, sy = from.height / to.height;
+      doc.animate([{ transform: 'translate(' + (from.left - to.left) + 'px,' + (from.top - to.top) + 'px) scale(' + sx + ',' + sy + ')', opacity: .55 },
+                   { transform: 'none', opacity: 1 }], { duration: 620, easing: EASE });
+    } else {
+      doc.animate([{ transform: 'scale(.96)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 520, easing: EASE });
+    }
+    side.animate([{ transform: 'translateX(40px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 640, delay: 120, easing: EASE, fill: 'backwards' });
+  }
+  function closeReview() {
+    var R = $('review');
+    if (R.hidden || rv.busy) return;
+    var doc = $('rv-doc'), side = $('rv-side'), scrim = R.querySelector('.rv-scrim');
+    var card = list.querySelector('.jrow[data-no="' + rv.no + '"] .post');
+    var done = function () {
+      rv.busy = false;
+      R.hidden = true;
+      [doc, side, scrim].forEach(function (x) { if (x.getAnimations) x.getAnimations().forEach(function (a) { a.cancel(); }); });
+      rv.seq++;
+      $('rv-body').innerHTML = '';
+      if (rv.url) { var u = rv.url; rv.url = ''; setTimeout(function () { URL.revokeObjectURL(u); }, 1500); }
+      putFormBack();
+      document.documentElement.style.overflow = '';
+      if (card) { var b = card.querySelector('[data-act="view"]'); if (b) b.focus({ preventScroll: true }); }
+    };
+    if (REDUCE || !doc.animate) return done();
+    rv.busy = true;
+    var to = card ? card.getBoundingClientRect() : null, at = doc.getBoundingClientRect();
+    var onScreen = to && to.bottom > 0 && to.top < innerHeight && to.width;
+    side.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(32px)', opacity: 0 }], { duration: 260, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+    doc.animate([{ transform: 'none', opacity: 1 },
+                 onScreen ? { transform: 'translate(' + (to.left - at.left) + 'px,' + (to.top - at.top) + 'px) scale(' + (to.width / at.width) + ',' + (to.height / at.height) + ')', opacity: .35 }
+                          : { transform: 'scale(.96)', opacity: 0 }], { duration: 420, easing: EASE, fill: 'forwards' });
+    scrim.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, easing: 'ease-in', fill: 'forwards' }).onfinish = done;
+  }
+  function stepReview(dir) {
+    var ord = teamOrder(), i = ord.indexOf(rv.no) + dir;
+    if (i >= 0 && i < ord.length) openReview(ord[i]);
+  }
+  (function () {
+    var R = $('review');
+    if (!R) return;
+    $('rv-close').addEventListener('click', closeReview);
+    $('rv-prev').addEventListener('click', function () { stepReview(-1); });
+    $('rv-next').addEventListener('click', function () { stepReview(1); });
+    R.querySelector('.rv-scrim').addEventListener('click', closeReview);
+    R.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-rv="get"]') : null;
+      if (b) getFile(Number(b.getAttribute('data-id')));
+    });
+    document.addEventListener('keydown', function (e) {
+      if (R.hidden) return;
+      if (e.key === 'Escape') { e.preventDefault(); closeReview(); return; }
+      var typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '');
+      if (!typing && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); stepReview(e.key === 'ArrowRight' ? 1 : -1); }
+    });
+  })();
+
+  /* 심사위원: 발표 순서대로 볼 수 있는 발표 자료(PDF · 보기용 PDF)를 하나씩 미리 받아 둔다 — 누르면 바로 뜨게.
+     한 번에 하나씩, KEEP_BYTES 안에서, 60MB 넘는 것과 영상은 빼고. 새 제출이 오면 그것만 더 받는다. */
+  var pre = { busy: false, q: [] };
+  function prefetchDecks() {
+    if (!judgeMode()) return;
+    pre.q = teamOrder().map(team).map(function (t) { return t && viewOf(t.deck); }).filter(function (v) {
+      return v && v.type === 'pdf' && v.size > 0 && v.size < 60 * MB && !st.blobs[v.id + (v.variant ? ':' + v.variant : '')];
+    });
+    if (!pre.busy) setTimeout(pumpPrefetch, 2000);
+  }
+  function pumpPrefetch() {
+    if (pre.busy || document.hidden) return;
+    var v = pre.q.shift();
+    if (!v || st.kept + v.size > KEEP_BYTES) return;
+    pre.busy = true;
+    var next = function () { pre.busy = false; setTimeout(pumpPrefetch, 400); };
+    fetchBlob(v.id, null, v.variant, v.size).then(next, next);
+  }
 
   /* ------------------------------ 시각 · 새로 고침 ------------------------------ */
   function tick() {

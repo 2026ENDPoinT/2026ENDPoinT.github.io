@@ -106,11 +106,15 @@
     NOT_JUDGE: '심사위원 토큰으로만 점수를 적을 수 있습니다.',
     NOT_STAFF: '운영진 토큰으로만 볼 수 있습니다.',
     SCORE_CLOSED: '심사가 마감되어 더 고칠 수 없습니다.',
+    NOT_CONVERTIBLE: '이 형식은 PDF 로 바꿀 수 없습니다.',
+    PDF_FAILED: 'PDF 로 바꾸지 못했습니다. 원본은 제출되어 있습니다.',
+    PDF_BUSY: 'PDF 로 바꾸는 중입니다. 잠시 뒤 다시 열어 주세요.',
+    NO_PDF: '아직 보기용 PDF 가 없습니다.',
     BAD_SCORE: '점수를 확인해 주세요 (문항마다 0 – 25).',
     BAD_TEAM: '팀을 다시 골라 주세요.',
     SCORE_SHEET_MISSING: '심사 시트가 아직 연결되지 않았습니다. 운영진에게 알려 주세요.',
     BAD_TRACK: '트랙을 다시 골라 주세요.',
-    KEY_INVALID: '열람 링크가 만료됐거나 올바르지 않습니다.',
+    KEY_INVALID: '참여 토큰이 만료됐거나 올바르지 않습니다.',
     NOT_FOUND: '파일을 찾지 못했습니다. 새로 고쳐 확인해 주세요.',
     FILE_GONE: '파일이 저장소에 없습니다. 운영진에게 알려 주세요.',
     NETWORK: '네트워크가 불안정합니다. 연결을 확인하고 다시 시도해 주세요.',
@@ -554,39 +558,55 @@
     for (var i = 0; i < n; i++) out[i] = bin.charCodeAt(i);
     return out;
   }
+  /** base64 → 조각. 큰 조각(8MB)은 브라우저가 화면 밖에서 풀게 data: 주소로 — 받는 동안 점수를 적어도 화면이 끊기지 않게 */
+  function decode(b64) {
+    if (b64.length < 256 * 1024 || !window.fetch) return Promise.resolve(b64ToBytes(b64));
+    return fetch('data:application/octet-stream;base64,' + b64).then(function (r) { return r.blob(); })
+      .catch(function () { return b64ToBytes(b64); });
+  }
   /**
    * 파일을 조각으로 받아 이어 붙인다. → { blob, name, size, md5 }
-   * o: { key 열람 토큰, as, onProgress(got, total) }
+   * o: { key 열람 토큰, as, variant 'pdf'(보기용 PDF), size 크기를 알면 첫 조각부터 나란히, onProgress(got, total) }
    */
   function download(id, o) {
     o = o || {};
-    var CH = 4 * MB;
+    var CH = 8 * MB;                                         // 서버가 한 번에 주는 최대 (DL_MAX)
     var get = function (offset) {
-      return api('file.get', { id: id, offset: offset, length: CH, as: o.as }, { key: o.key, timeout: 120000, tries: 3 }).then(function (r) {
+      return api('file.get', { id: id, offset: offset, length: CH, as: o.as, variant: o.variant || undefined }, { key: o.key, timeout: 120000, tries: 3 }).then(function (r) {
         if (!r || !r.ok) throw apiErr(r);
         return r;
       });
     };
-    return get(0).then(function (first) {
-      var parts = [b64ToBytes(first.data)], size = first.size, got = first.length, offsets = [], next = 0;
-      for (var off = first.length; off < size; off += CH) offsets.push(off);
-      if (o.onProgress) o.onProgress(got, size);
-      // 두 줄로 나란히 받는다. 더 늘리면 서버의 동시 실행 한도를 다른 사람과 나눠 쓰게 된다.
+    // 크기를 알면 처음부터 세 줄로 나란히, 모르면 첫 조각으로 크기를 알아낸 뒤 나머지를 나란히.
+    // 세 줄보다 늘리면 서버의 동시 실행 한도(약 30)를 다른 사람과 나눠 쓰게 된다.
+    var known = Number(o.size) > 0 ? Number(o.size) : 0;
+    var start = known ? Promise.resolve(null) : get(0);
+    return start.then(function (first) {
+      return first ? decode(first.data).then(function (p0) { return { first: first, p0: p0 }; }) : { first: null, p0: null };
+    }).then(function (h) {
+      var first = h.first, size = first ? first.size : known, parts = [], got = 0, offsets = [], next = 0, meta = first;
+      if (first) { parts[0] = h.p0; got = first.length; }
+      for (var off = first ? first.length : 0; off < size; off += CH) offsets.push(off);
+      if (o.onProgress) o.onProgress(got, size || 1);
       function worker() {
         if (next >= offsets.length) return Promise.resolve();
         var i = next++;
         return get(offsets[i]).then(function (r) {
-          parts[i + 1] = b64ToBytes(r.data);
-          got += r.length;
-          if (o.onProgress) o.onProgress(got, size);
-          return worker();
+          if (!meta) meta = r;
+          return decode(r.data).then(function (part) {
+            parts[(first ? 1 : 0) + i] = part;
+            got += r.length;
+            if (o.onProgress) o.onProgress(got, size);
+            return worker();
+          });
         });
       }
-      return Promise.all([worker(), worker()]).then(function () {
+      return Promise.all([worker(), worker(), worker()]).then(function () {
+        var first = meta;
         // 화면 안에서 여는 것은 PDF · 영상뿐이다. 그 밖의 형식(특히 HTML · SVG)은 이 사이트 주소로 열리면 스크립트가 돌 수 있으므로
         // 형식을 지워 내려받기로만 다룬다 — 참가자가 올린 파일이 심사위원 화면의 토큰을 읽지 못하게.
         var type = SAFE_MIME.test(String(first.mime || '')) ? first.mime : 'application/octet-stream';
-        return { blob: new Blob(parts, { type: type }), name: first.name, size: size, md5: first.md5 };
+        return { blob: new Blob(parts, { type: type }), name: first.name, size: size, md5: first.md5, variant: first.variant || '' };
       });
     });
   }
@@ -684,6 +704,7 @@
       s.title = x[0]; s.desc = x[1]; s.at = at;
       if (x[2] === 'none') return;
       if (x[2] !== 'part') s.deck = mkFile(no, 'deck', 2, x[2] === 'video' ? 'mp4' : (i % 4 === 3 ? 'pptx' : 'pdf'), (3 + i) * 1.3 * MB, at);
+      if (s.deck && /\.pptx$/.test(s.deck.name) && i % 8 === 3) s.deck.pdf = 52000;       // PPT 는 보기용 PDF 가 있는 것과 없는 것을 섞어 둔다
       if (x[2] === 'app') s.program = mkFile(no, 'program', 1, 'zip', (40 + i * 9) * MB, at - 600000);
       else s.url = 'https://team' + no + '-demo.example.app';
       if (s.deck) s.history = [mkFile(no, 'deck', 1, 'pdf', (2 + i) * MB, at - 3600000)];
@@ -838,13 +859,20 @@
           if (mine[b.kind]) { mine.history.unshift(mine[b.kind]); mine[b.kind] = null; }
           r.state = out(mine, 'member');
           return r;
+        case 'deck.pdf': {
+          var dh = findFile(Number(b.id));
+          if (!dh) return { ok: false, error: 'NOT_FOUND' };
+          if (!/\.(pptx?|pptm|ppsx?|potx?|odp)$/.test(dh.f.name)) return { ok: false, error: 'NOT_CONVERTIBLE' };
+          return wait(1600).then(function () { dh.f.pdf = 48000; r.id = dh.f.id; r.pdf = dh.f.pdf; return r; });
+        }
         case 'file.get': {
           var hit = findFile(Number(b.id));
           if (!hit) return { ok: false, error: 'NOT_FOUND' };
-          var isPdf = /\.pdf$/.test(hit.f.name);
+          var isPdf = /\.pdf$/.test(hit.f.name) || (b.variant === 'pdf' && hit.f.pdf);
           var body = isPdf ? pdf('team ' + hit.no + ' / ' + (hit.f.kind === 'deck' ? 'presentation' : 'program') + ' v' + hit.f.v)
                            : 'ENDPoinT preview file (' + hit.f.name.replace(/[^\x20-\x7E]/g, '_') + ')\n';
-          r.id = hit.f.id; r.name = hit.f.name; r.size = body.length; r.mime = isPdf ? 'application/pdf' : 'application/octet-stream';
+          r.id = hit.f.id; r.name = b.variant === 'pdf' ? hit.f.name.replace(/\.[^.]+$/, '') + '_보기용.pdf' : hit.f.name; r.size = body.length;
+          r.mime = isPdf ? 'application/pdf' : 'application/octet-stream'; r.variant = b.variant === 'pdf' ? 'pdf' : '';
           r.md5 = hit.f.md5; r.offset = 0; r.length = body.length; r.data = btoa(body);
           return r;
         }

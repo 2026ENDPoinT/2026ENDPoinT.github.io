@@ -130,6 +130,24 @@ class FakeDrive {
       this.sessions.set(loc, { meta, size, mime: headers['x-upload-content-type'], origin: headers.origin || '', received: Buffer.alloc(0), done: false });
       return json(200, {}, { Location: loc });
     }
+    // 사본 만들기 (mimeType 을 주면 Google 형식으로 바꾼 사본) · PDF 로 내보내기
+    const cp = /^\/drive\/v3\/files\/([^/]+)\/copy$/.exec(u.pathname);
+    if (cp && method === 'post') {
+      const src = this.files.get(decodeURIComponent(cp[1]));
+      if (!src) return json(404, { error: 'not found' });
+      if (this.convertFail) return json(400, { error: { message: 'Unable to convert this file' } });
+      const body = JSON.parse(opt.payload || '{}'), id = this.newId('g');
+      this.files.set(id, { id, name: body.name || src.name, parents: body.parents || [...src.parents], mimeType: body.mimeType || src.mimeType, bytes: src.bytes, trashed: false, from: src.id });
+      return json(200, { id });
+    }
+    const ex = /^\/drive\/v3\/files\/([^/]+)\/export$/.exec(u.pathname);
+    if (ex) {
+      const f = this.files.get(decodeURIComponent(ex[1]));
+      if (!f) return json(404, { error: 'not found' });
+      if (this.exportLimit !== undefined && f.bytes.length > this.exportLimit) return json(403, { error: { errors: [{ reason: 'exportSizeLimitExceeded' }], message: 'This file is too large to be exported.' } });
+      this.exports = (this.exports || 0) + 1;
+      return { code: 200, headers: {}, text: '', bytes: fakePdf(f) };
+    }
     const m = /^\/drive\/v3\/files\/([^/]+)$/.exec(u.pathname);
     if (m) {
       const f = this.files.get(decodeURIComponent(m[1]));
@@ -156,7 +174,16 @@ class FakeDrive {
   }
 }
 
+/** Google 형식 → PDF 로 바꾼 것처럼 보이는 바이트 (원본 앞부분을 붙여 파일마다 다르게) */
+const fakePdf = (f) => Buffer.concat([Buffer.from('%PDF-1.7\n% converted from ' + f.name + '\n'), Buffer.from(f.bytes).subarray(0, 64)]);
+/** Apps Script Blob 흉내 */
+const blobOf = (bytes, type = 'application/pdf') => {
+  const b = { bytes: Buffer.from(bytes), name: '', type };
+  b.getBytes = () => [...b.bytes]; b.setName = (n) => { b.name = n; return b; }; b.getName = () => b.name; b.getContentType = () => b.type;
+  return b;
+};
 const response = (r) => ({
+  getBlob: () => blobOf(r.bytes ?? Buffer.from(r.text || '')),
   getResponseCode: () => r.code,
   getContentText: () => (r.bytes ? Buffer.from(r.bytes).toString('utf8') : r.text),
   getContent: () => [...(r.bytes ?? Buffer.from(r.text || ''))],
@@ -206,6 +233,11 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
       getFolders: () => { const list = drive.childFolders(f.id); let i = 0; return { hasNext: () => i < list.length, next: () => folderObj(list[i++].id) }; },
       getFiles: () => { const list = [...drive.files.values()].filter((x) => !x.trashed && x.parents.includes(f.id)); let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; },
       createFolder: (name) => folderObj(drive.addFolder(name, f.id)),
+      createFile: (blob) => {
+        const id = drive.newId('p');
+        drive.files.set(id, { id, name: blob.name || 'untitled', parents: [f.id], mimeType: blob.type || 'application/pdf', bytes: Buffer.from(blob.bytes), trashed: false });
+        return { getId: () => id, getSize: () => blob.bytes.length, getName: () => blob.name };
+      },
       getFilesByName: (name) => {
         const list = [];
         if (name === '팀원 추가 계정' && extra.sheets.size) list.push({ getId: () => 'sheet-extra', getMimeType: () => 'application/vnd.google-apps.spreadsheet' });
@@ -287,6 +319,10 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
     DriveApp: {
       getFolderById: folderObj,
       getFileById: (id) => {
+        if (drive.files.has(id)) {                           // Drive 파일 (발표 자료 변환)
+          const df = drive.files.get(id);
+          return { getId: () => id, getName: () => df.name, getSize: () => df.bytes.length, getAs: () => { drive.getAs = (drive.getAs || 0) + 1; return blobOf(fakePdf(df)); } };
+        }
         const m = books.get(id) || books.get('sheet-submit');
         return {
           getId: () => id,

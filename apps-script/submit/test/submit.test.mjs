@@ -1139,7 +1139,7 @@ describe('참가자 인기투표', () => {
     const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
     assert.equal(t.voters, 1);                                              // 한 사람
     assert.deepEqual(t.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['05', 1], ['06', 1]]);
-    assert.deepEqual(b.rows('투표').map((r) => r['상태']), ['바꿈', '바꿈', '바꿈', '유효', '유효']);
+    assert.ok(b.rows('투표').every((r) => r['상태'] === '유효'));         // 표시는 그대로 — 셀 때 가장 나중 투표지만 센다 (잠그지 않고 붙이므로)
     assert.equal(vote(b, 'tok-a2', 'A', ['05']).ok, true);                  // 같은 팀의 다른 사람은 따로
     assert.equal(b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A').voters, 2);
   });
@@ -1224,7 +1224,8 @@ describe('참가자 인기투표', () => {
     const tl = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
     assert.deepEqual(tl.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['01', 3], ['02', 3], ['04', 1]]);
     assert.equal(b.isLocked(), false);
-    assert.equal(new Set(b.rows('투표').map((r) => r['번호'])).size, b.rows('투표').length);   // 번호가 겹치지 않는다
+    assert.equal(new Set(b.rows('투표').map((r) => r['투표지'] + '|' + r['대상 팀'])).size, b.rows('투표').length);   // 줄이 겹치지 않는다
+    assert.ok(b.rows('투표').every((r) => /^B\d{13}-\d{3}$/.test(r['투표지'])));                                  // 투표지 번호 = 시각(ms) - 세 자리
   });
 
   test('운영진이 닫는 순간과 겹친 투표는 잠근 뒤 다시 보고 거절한다', () => {
@@ -1606,5 +1607,95 @@ describe('공개 현황판 (로그인 없이 — 메인 메뉴 제출·투표 �
     const r = pub(b);
     assert.deepEqual([r.submit.every, r.vote.every, r.submit.next, r.vote.next],
       [60, 30, ms('2026-11-14T09:01:00+09:00'), ms('2026-11-14T09:00:30+09:00')]);
+  });
+});
+
+describe('발표 자료 보기용 PDF (PowerPoint · odp)', () => {
+  const pdfRow = (b, id) => b.rows('파일').find((x) => Number(x['번호']) === id);
+  const folderName = (b, f) => b.drive.folders.get(f.parents[0])?.name;
+
+  test('pptx 를 올리면 보기용 PDF 를 만들고, 심사위원은 PDF 로 본다 (원본은 그대로 받기)', () => {
+    const b = backend();
+    const { fin } = upload(b, { name: '발표.pptx', bytes: bytesOf(5000, 3) });
+    const id = fin.state.deck.id;
+    assert.equal(fin.state.deck.pdf, undefined);
+    const r = b.post({ action: 'deck.pdf', idToken: 'tok-a1', id });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    const row = pdfRow(b, id);
+    assert.ok(row['PDF ID'] && Number(row['PDF 크기']) > 0);
+    assert.ok([...b.drive.files.values()].filter((f) => f.mimeType === 'application/vnd.google-apps.presentation').every((f) => f.trashed));   // 중간 사본은 휴지통
+    const pdf = b.drive.files.get(row['PDF ID']);
+    assert.match(pdf.name, /^team03_발표_v1_.*_보기용\.pdf$/);
+    assert.equal(folderName(b, pdf), 'team03');                                // 원본 옆
+    const key = b.viewer('심사');
+    const t3 = b.post({ action: 'view.list', key }).tracks.find((t) => t.name === '구현과제').teams.find((t) => t.no === '03');
+    assert.equal(t3.deck.pdf, Number(row['PDF 크기']));
+    assert.equal(t3.deck.pdfUrl, undefined);                                   // 심사위원에게 Drive 주소는 없다
+    const g = b.post({ action: 'file.get', key, id, variant: 'pdf' });
+    assert.deepEqual([g.ok, g.mime, g.variant], [true, 'application/pdf', 'pdf']);
+    assert.match(g.name, /_보기용\.pdf$/);
+    assert.match(Buffer.from(g.data, 'base64').toString('utf8'), /^%PDF-1\.7/);
+    assert.equal(b.post({ action: 'file.get', key, id }).size, 5000);          // 원본은 그대로
+    const n = b.drive.exports;
+    assert.equal(b.post({ action: 'deck.pdf', key, id }).ok, true);           // 이미 있으면 다시 만들지 않는다
+    assert.equal(b.drive.exports, n);
+  });
+
+  test('PowerPoint 계열 · odp 는 모두 바꾸고, PDF · 영상 · Keynote 는 바꾸지 않는다', () => {
+    for (const ext of ['ppt', 'pptm', 'ppsx', 'pps', 'potx', 'pot', 'odp']) {
+      const b = backend();
+      const { fin } = upload(b, { name: '발표.' + ext, bytes: bytesOf(700, 5) });
+      assert.equal(b.post({ action: 'deck.pdf', idToken: 'tok-a1', id: fin.state.deck.id }).ok, true, ext);
+    }
+    for (const ext of ['pdf', 'mp4', 'key']) {
+      const b = backend();
+      const { fin } = upload(b, { name: '발표.' + ext, bytes: bytesOf(700, 5) });
+      assert.equal(b.post({ action: 'deck.pdf', idToken: 'tok-a1', id: fin.state.deck.id }).error, 'NOT_CONVERTIBLE', ext);
+    }
+  });
+
+  test('다른 팀 사람은 부를 수 없고, 틀린 토큰도 안 된다', () => {
+    const b = backend();
+    const { fin } = upload(b, { name: '발표.pptx' });
+    assert.equal(b.post({ action: 'deck.pdf', idToken: 'tok-b1', id: fin.state.deck.id }).error, 'NOT_FOUND');
+    assert.equal(b.post({ action: 'deck.pdf', key: 'x'.repeat(40), id: fin.state.deck.id }).error, 'KEY_INVALID');
+    assert.equal(b.post({ action: 'file.get', key: b.viewer('심사'), id: fin.state.deck.id, variant: 'pdf' }).error, 'NO_PDF');
+  });
+
+  test('10MB 넘는 내보내기는 Apps Script 변환으로 · 바꾸지 못하면 PDF_FAILED (제출은 그대로)', () => {
+    const b = backend();
+    const { fin } = upload(b, { name: '큰발표.pptx', bytes: bytesOf(3000, 1) });
+    b.drive.exportLimit = 100;
+    assert.equal(b.post({ action: 'deck.pdf', idToken: 'tok-a1', id: fin.state.deck.id }).ok, true);
+    assert.equal(b.drive.getAs, 1);
+    const c = backend();
+    const up = upload(c, { name: '깨진발표.pptx' });
+    c.drive.convertFail = true;
+    const r = c.post({ action: 'deck.pdf', idToken: 'tok-a1', id: up.fin.state.deck.id });
+    assert.equal(r.error, 'PDF_FAILED');
+    assert.equal(c.post({ action: 'me', idToken: 'tok-a1' }).state.deck.id, up.fin.state.deck.id);   // 제출은 그대로
+    assert.equal(c.isLocked(), false);
+  });
+
+  test('다시 올리거나 내리면 보기용 PDF 도 옛날 자료로 옮긴다', () => {
+    const b = backend();
+    const first = upload(b, { name: 'v1.pptx', bytes: bytesOf(800, 1) });
+    b.post({ action: 'deck.pdf', idToken: 'tok-a1', id: first.fin.state.deck.id });
+    const pdf1 = b.drive.files.get(pdfRow(b, first.fin.state.deck.id)['PDF ID']);
+    const second = upload(b, { name: 'v2.pptx', bytes: bytesOf(900, 2) });
+    assert.equal(folderName(b, pdf1), '옛날 자료');
+    b.post({ action: 'deck.pdf', idToken: 'tok-a1', id: second.fin.state.deck.id });
+    const pdf2 = b.drive.files.get(pdfRow(b, second.fin.state.deck.id)['PDF ID']);
+    assert.equal(b.post({ action: 'file.withdraw', idToken: 'tok-a1', kind: 'deck' }).ok, true);
+    assert.equal(folderName(b, pdf2), '옛날 자료');
+  });
+
+  test('시트 메뉴 "발표 자료 PDF 만들기": 빠진 것만 한꺼번에', () => {
+    const b = backend();
+    upload(b, { name: 'a.pptx' });
+    upload(b, { idToken: 'tok-b1', name: 'b.odp' });
+    upload(b, { idToken: 'tok-op', as: '05', name: 'c.pdf' });
+    assert.deepEqual(b.run('pdfMissing'), { todo: 2, done: 2, bad: 0, left: 0 });
+    assert.deepEqual(b.run('pdfMissing'), { todo: 0, done: 0, bad: 0, left: 0 });
   });
 });
