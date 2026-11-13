@@ -644,5 +644,34 @@ await scenario('메뉴: 행사 페이지 네 곳이 같은 메뉴 · 메인과 �
   await m.context().close();
 });
 
+/* ---------------------------------------------------------------- */
+await scenario('화면 테마: 해 · 달 단추로 밝은 화면 ↔ 어두운 화면, 다른 페이지에서도 이어진다', async (w) => {
+  const page = await newPage(browser);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).color + ' / ' + getComputedStyle(document.documentElement).backgroundImage.slice(0, 40));
+  const state = () => page.evaluate(() => ({ theme: document.documentElement.getAttribute('data-theme') || 'dark',
+    label: document.querySelector('.theme-tg')?.getAttribute('aria-label'), meta: document.querySelector('meta[name="theme-color"]')?.content,
+    saved: (() => { try { return localStorage.getItem('ep-theme'); } catch (e) { return 'x'; } })() }));
+  await page.goto(SITE + '/submit/');
+  await page.waitForSelector('.theme-tg');
+  R.eq('처음에는 어두운 화면 (기본)', await state(), { theme: 'dark', label: '밝은 화면으로', meta: '#191919', saved: null });
+  const dark = await bg();
+  await page.click('.theme-tg');
+  R.eq('누르면 밝은 화면 · 단추는 달 · 기억한다', await state(), { theme: 'light', label: '어두운 화면으로', meta: '#F7F7F6', saved: 'light' });
+  R.check('글자 · 바탕 색이 바뀐다', (await bg()) !== dark, await bg());
+  for (const path of ['/judge/', '/judge/vote/', '/judge/score/', '/privacy/', '/?gate=after&submit=on']) {
+    await page.goto(SITE + path);
+    await page.waitForSelector('.theme-tg');
+    R.eq(path + ' 에서도 밝은 화면으로 열린다', (await state()).theme, 'light');
+  }
+  R.eq('메인: 단추는 EN 바로 옆', await page.evaluate(() => document.querySelector('#top-bar nav a.lang')?.nextElementSibling?.className), 'theme-tg');
+  await page.click('.theme-tg');
+  R.eq('다시 누르면 어두운 화면', await state(), { theme: 'dark', label: '밝은 화면으로', meta: '#191919', saved: 'dark' });
+  await page.goto(SITE + '/judge/vote/');
+  await page.waitForSelector('.theme-tg');
+  R.eq('어두운 화면도 이어진다', (await state()).theme, 'dark');
+  R.eq('화면 오류 없음', page.errs, []);
+  await page.context().close();
+});
+
 await browser.close();
 process.exit(R.done() ? 1 : 0);

@@ -16,8 +16,12 @@
     var root = me && me.src ? new URL('../', me.src).href : '/';          // 이 파일은 /assets/ 에 있다
     var a = document.createElement('a');
     a.href = root + 'judge/';
-    a.textContent = document.documentElement.lang === 'en' ? 'Submissions & votes' : '제출·투표 현황';
-    pill.parentNode.insertBefore(a, pill);
+    // 좁은 화면에서는 짧게 (메인 메뉴와 같은 이름): 제출·투표 현황 → 현황, Submissions & votes → Status
+    a.innerHTML = document.documentElement.lang === 'en'
+      ? '<span class="sm-hide">Submissions &amp; votes</span><span class="sm-only">Status</span>'
+      : '<span class="sm-hide">제출·투표 </span>현황';
+    var lang = pill.parentNode.querySelector('a.lang');                   // 메인 메뉴처럼 EN · KO 앞에
+    pill.parentNode.insertBefore(a, lang || pill);
     pill.hidden = true;
   })();
 
@@ -27,12 +31,16 @@
   // 헤더 색을 배경 그라데이션의 현재 밝기에 맞춘다 (23 -> 36)
   var root = document.documentElement;
   var lastTint = -1;
+  var lastT = 0;
   function tintHeader(t) {
-    var v = Math.round(23 + (36 - 23) * t);
+    lastT = t;
+    // 어두운 화면 23 → 36, 밝은 화면 250 → 241 (바탕 그라데이션의 그 자리 밝기)
+    var v = root.getAttribute('data-theme') === 'light' ? Math.round(250 - 9 * t) : Math.round(23 + (36 - 23) * t);
     if (v === lastTint) return;
     lastTint = v;
     root.style.setProperty('--hdr-rgb', v + ',' + v + ',' + v);
   }
+  window.addEventListener('ep-theme', function () { lastTint = -1; tintHeader(lastT); });
 
 
   function onScroll() {
