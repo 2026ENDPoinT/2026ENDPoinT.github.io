@@ -22,7 +22,8 @@
     grace: 5,
     up: { deck: null, program: null },     // 올리는 중인 것
     err: { deck: '', program: '' },
-    busy: false, built: false, loadedAt: 0, phase: ''
+    busy: false, built: false, loadedAt: 0, phase: '',
+    shown: {}              // 입력 칸에 마지막으로 채워 준 서버 값 — 사람이 고친 칸인지는 이것과 비교한다
   };
 
   /* ------------------------------ 시각 ------------------------------ */
@@ -185,13 +186,17 @@
     var v = values();
     return FIELDS.filter(function (k) { return v[k] !== (st.state[k] || ''); });
   }
-  /** 서버 값을 입력 칸에 채운다. force 가 아니면 고치던 칸은 건드리지 않는다. */
+  /**
+   * 서버 값을 입력 칸에 채운다. force 가 아니면 고치던 칸은 건드리지 않는다.
+   * '고치던 칸' 은 마지막으로 채워 준 값(st.shown)과 다른 칸이다 — 새로 받은 서버 값과 비교하면
+   * 처음 열 때 빈 칸이 저장된 값과 달라 모두 고치던 것으로 보이고, 저장한 글자가 채워지지 않는다.
+   */
   function fill(force) {
     if (!st.built || !st.state) return;
-    var dirty = force ? [] : dirtyKeys();
     FIELDS.forEach(function (k) {
-      var el = $('f-' + k);
-      if (force || (dirty.indexOf(k) === -1 && document.activeElement !== el)) el.value = st.state[k] || '';
+      var el = $('f-' + k), now = el.value.replace(/\r\n?/g, '\n').trim();
+      var edited = now !== (st.shown[k] || '');
+      if (force || (!edited && document.activeElement !== el)) { el.value = st.state[k] || ''; st.shown[k] = st.state[k] || ''; }
     });
     counts();
   }
@@ -544,6 +549,7 @@
       ['deck', 'program'].forEach(function (k) { var up = st.up[k]; st.up[k] = null; if (up && up.ctl) up.ctl.cancel(); });
       st.as = '';
       if (st.built) FIELDS.forEach(function (k) { $('f-' + k).value = ''; });
+      st.shown = {};
     }
     st.me = null; st.state = null; st.err = { deck: '', program: '' };
     if (!u) { $('h-team').textContent = '로그인을 해주세요'; gateLogin(why === 'expired'); return; }
