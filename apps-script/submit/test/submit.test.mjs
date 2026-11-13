@@ -773,7 +773,7 @@ describe('운영진 메뉴', () => {
     assert.equal(b.drive.childFolders(b.store.F_20, '옛날 자료').length, 1);
     assert.match(b.logs.at(-1), /준비됐습니다/);
     b.run('setup');                                          // 다시 실행해도 폴더가 늘지 않는다
-    assert.equal(b.drive.folders.size, 1 + 21 * 2);
+    assert.equal(b.drive.folders.size, 2 + 21 * 2 + 1);       // 운영 · 제출 폴더 + 팀 폴더 · 옛날 자료 + 심사위원 폴더
     assert.equal(b.store.VOTE_SALT, salt);                    // 비밀값도 바뀌지 않는다
   });
 
@@ -806,10 +806,10 @@ describe('운영진 메뉴', () => {
     b.hold(true);
     b.run('setup');
     assert.match(b.logs.at(-1), /다른 실행이 지금 처음 설정을 하고 있습니다/);
-    assert.equal(b.drive.folders.size, 1);                     // 제출 폴더만
+    assert.equal(b.drive.folders.size, 2);                     // 운영 · 제출 폴더만
     b.hold(false);
     b.run('setup');
-    assert.equal(b.drive.folders.size, 1 + 21 * 2);
+    assert.equal(b.drive.folders.size, 2 + 21 * 2 + 1);
   });
 
   test('명단 만들기: 신청서와 팀편성을 이름으로 잇는다', () => {
@@ -945,7 +945,8 @@ describe('운영진 메뉴', () => {
     const text = b.logs.at(-1);
     const keys = [...text.matchAll(/\/judge\/#k=([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
     assert.equal(keys.length, 2);
-    assert.ok(keys.every((k) => k.length === 40));
+    assert.ok(keys.every((k) => /^token_[A-Za-z0-9_-]{40}$/.test(k)), keys.join(','));
+    assert.ok(keys.every((k) => text.includes('토큰: ' + k)));      // 사람마다 토큰과 링크를 따로 보여 준다
     const sheetText = JSON.stringify(b.tab('열람').cells);
     assert.ok(keys.every((k) => !sheetText.includes(k)));
     assert.equal(b.post({ action: 'view.list', key: keys[0] }).role, '심사위원');
@@ -969,12 +970,14 @@ describe('운영진 메뉴', () => {
 
   test('설정 점검', () => {
     const b = backend();
+    b.run('scoreSheetFind_', true);                          // 처음 설정이 하는 일 중 심사 시트만
     b.run('doctor');
     assert.match(b.logs.at(-1), /모두 정상입니다/);
     const empty = loadBackend({});
     empty.drive.apiOff = true;
     empty.run('doctor');
-    assert.match(empty.logs.at(-1), /고칠 곳이 3군데/);
+    assert.match(empty.logs.at(-1), /고칠 곳이 4군데/);
+    assert.match(empty.logs.at(-1), /심사 시트 — SCORE_SHEET_MISSING/);
   });
 
   test('저장 공간: 점검에서 남은 공간을 알려 주고, 가득 차면 무슨 일인지 알려 준다', () => {
@@ -996,6 +999,7 @@ describe('운영진 메뉴', () => {
 
   test('설정 점검: 브라우저에서 Drive 로 직접 올릴 수 있는지 실제로 해 본다', () => {
     const b = backend();
+    b.run('scoreSheetFind_', true);
     b.run('doctor');
     assert.match(b.logs.at(-1), /직접 올리기: 됩니다/);
     assert.deepEqual(b.drive.inFolder('root'), []);                    // 점검용 파일은 남지 않는다
@@ -1225,6 +1229,164 @@ describe('참가자 인기투표', () => {
     open(b, 'A');
     assert.equal(vote(b, 'tok-a1', 'A', ['01', '02']).error, 'VOTE_TOO_MANY');
     assert.equal(vote(b, 'tok-a1', 'A', ['03']).ok, true);
+  });
+});
+
+describe('심사위원 평가', () => {
+  function sb() {
+    const b = backend();
+    b.run('setup');                                            // 심사위원 폴더 · 심사 시트 · `점수` 탭
+    return b;
+  }
+  const judge = (b, name) => b.viewer(name, '심사위원');
+  const save = (b, key, team, scores, comment = '') => b.post({ action: 'score.save', key, team, scores, comment });
+
+  test('처음 설정이 제출 폴더 옆 심사위원 폴더에 심사 시트를 만들고, 다시 해도 그것을 쓴다', () => {
+    const b = sb();
+    const id = b.store.SCORE_SHEET_ID;
+    assert.ok(id);
+    const folder = [...b.drive.folders.values()].find((f) => f.name === '심사위원');
+    assert.equal(folder.parent, 'ops');                        // 제출 폴더와 나란히
+    assert.equal(b.books.get(id).parent, folder.id);
+    assert.equal(b.books.get(id).name, 'ENDPoinT 2026 심사');
+    assert.deepEqual(b.scoreBook().getSheetByName('점수').cells[0],
+      ['심사위원', '심사위원 ID', '팀', '트랙', '문제 정의 · 아이디어', '완성도', '사용자 경험', '구조적 이해', '합계', '코멘트', '저장 시각']);
+    delete b.store.SCORE_SHEET_ID; b.cache.delete('props1');
+    b.run('setup');
+    assert.equal(b.store.SCORE_SHEET_ID, id);                  // 이름으로 다시 찾는다 (새로 만들지 않는다)
+    assert.match(b.logs.at(-1), /심사 시트: 심사위원 \/ ENDPoinT 2026 심사/);
+  });
+
+  test('교수님 토큰: 여러 명을 한꺼번에, token_ 꼴로, 사람마다 따로', () => {
+    const b = sb();
+    b.setUi({ ButtonSet: { OK_CANCEL: 1 }, Button: { OK: 'ok' }, prompt: () => ({ getSelectedButton: () => 'ok', getResponseText: () => '한 교수님, 김 교수님 , 강 교수님\n박운영=운영진' }),
+              alert() {}, showModalDialog: (h) => { b.lastModal = h.html; } });
+    const links = b.run('viewerNew');
+    assert.deepEqual(links.map((l) => [l.name, l.role]), [['한 교수님', '심사위원'], ['김 교수님', '심사위원'], ['강 교수님', '심사위원'], ['박운영', '운영진']]);
+    assert.ok(links.every((l) => /^token_[A-Za-z0-9_-]{40}$/.test(l.key) && l.url.endsWith('/judge/#k=' + l.key)));
+    assert.equal(new Set(links.map((l) => l.key)).size, 4);
+    const sheet = JSON.stringify(b.tab('열람').cells);
+    assert.ok(links.every((l) => !sheet.includes(l.key)));    // 시트에는 해시만
+    for (const l of links) assert.ok(b.lastModal.includes(l.key));
+    assert.equal(b.post({ action: 'view.list', key: links[0].key }).name, '한 교수님');
+    assert.equal(b.post({ action: 'view.list', key: links[3].key }).role, '운영진');
+  });
+
+  test('토큰은 이름을 넣어 만들고, 시트의 이름을 바꾸면 그 토큰은 더 통하지 않는다', () => {
+    const b = sb();
+    let modal = '';
+    b.setUi({ ButtonSet: { OK_CANCEL: 1 }, Button: { OK: 'ok' }, prompt: () => ({ getSelectedButton: () => 'ok', getResponseText: () => '한 교수님, 한 교수님' }),
+              alert() {}, showModalDialog: (h) => { modal = h.html; } });
+    const links = b.run('viewerNew');
+    assert.equal(links.length, 2);
+    assert.notEqual(links[0].key, links[1].key);              // 같은 이름이어도 토큰은 다르다 (무작위 값)
+    assert.ok(modal.includes('이름을 넣어 만들었기 때문에'));
+    const rows = b.rows('열람');
+    assert.ok(rows.every((r) => /^[0-9a-f]{32}$/.test(r['검증'])));
+    assert.equal(b.post({ action: 'view.list', key: links[0].key }).name, '한 교수님');
+    // 누가 시트에서 이름을 바꿨다 → 그 토큰은 통하지 않는다 (다른 사람인 척 못 하게)
+    b.tab('열람').cells[1][0] = '김 교수님';
+    b.cache.delete('views1');
+    assert.equal(b.post({ action: 'view.list', key: links[0].key }).error, 'KEY_INVALID');
+    assert.equal(b.post({ action: 'view.list', key: links[1].key }).name, '한 교수님');   // 다른 줄은 그대로
+    // 검증 칸을 지워도 이름 묶음이 없는 예전 줄처럼 받지는 않는다 — 검증 칸이 있는 줄만 묶음을 본다
+    b.tab('열람').cells[1][0] = '한 교수님';
+    b.cache.delete('views1');
+    assert.equal(b.post({ action: 'view.list', key: links[0].key }).name, '한 교수님');   // 되돌리면 다시 통한다
+  });
+
+  test('점수: 문항마다 0 – 25, 소수점 둘째 자리까지 · 비워 두고 나중에 채워도 된다 · 다시 저장하면 그 줄을 고친다', () => {
+    const b = sb();
+    const k = judge(b, '한 교수님');
+    let r = save(b, k, '03', { idea: 21.5, done: '18.25', ux: 20.125, arch: '' }, '아이디어가 좋다');
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual(r.saved.s, { idea: 21.5, done: 18.25, ux: 20.13, arch: '' });
+    assert.equal(r.saved.complete, false);
+    r = save(b, k, '03', { idea: 21.5, done: 18.25, ux: 20.13, arch: 22.75 }, '구조 설명이 분명하다');
+    assert.equal(r.saved.total, 82.63);
+    assert.equal(r.saved.complete, true);
+    const rows = b.scoreBook().getSheetByName('점수').objects();
+    assert.equal(rows.length, 1);                              // 같은 줄을 고쳤다
+    assert.deepEqual([rows[0]['심사위원'], rows[0]['팀'], rows[0]['트랙'], rows[0]['합계'], rows[0]['코멘트']], ['한 교수님', '03', '구현과제', 82.63, '구조 설명이 분명하다']);
+    assert.equal(typeof rows[0]['완성도'], 'number');
+    assert.equal(b.post({ action: 'view.list', key: k }).mine['03'].total, 82.63);   // 현황판에 내 점수
+    for (const [bad, item] of [[{ idea: 25.01 }, 'idea'], [{ done: -1 }, 'done'], [{ ux: 'abc' }, 'ux'], [{ arch: true }, 'arch']]) {
+      const e = save(b, k, '03', bad);
+      assert.equal(e.error, 'BAD_SCORE', JSON.stringify(bad));
+      assert.equal(e.item, item);
+    }
+    assert.equal(save(b, k, '00', { idea: 1 }).error, 'BAD_TEAM');
+    assert.equal(save(b, k, '33', { idea: 1 }).error, 'BAD_TEAM');
+    assert.equal(save(b, k, '03', { idea: 25 }, '=HYPERLINK("x")').ok, true);
+    assert.equal(b.scoreBook().getSheetByName('점수').objects()[0]['코멘트'], 'HYPERLINK("x")');   // 수식으로 들어가지 않는다
+  });
+
+  test('심사위원만 점수를 적고, 자기 점수만 본다 · 운영진은 종합을 본다', () => {
+    const b = sb();
+    const a = judge(b, '한 교수님'), c = judge(b, '김 교수님'), op = b.viewer('박운영', '운영진');
+    save(b, a, '03', { idea: 20, done: 20, ux: 20, arch: 20 });
+    assert.deepEqual(Object.keys(b.post({ action: 'view.list', key: c }).mine), []);      // 남의 점수는 안 보인다
+    assert.equal(save(b, op, '03', { idea: 1 }).error, 'NOT_JUDGE');
+    assert.equal(b.post({ action: 'score.summary', key: a }).error, 'NOT_STAFF');
+    assert.equal(b.post({ action: 'score.summary', key: 'x'.repeat(40) }).error, 'KEY_INVALID');
+    assert.equal(b.post({ action: 'score.summary', key: op }).ok, true);
+    assert.equal(b.post({ action: 'score.save', idToken: 'tok-a1', team: '03', scores: { idea: 1 } }).error, 'KEY_INVALID');   // 참가자 로그인으로는 안 된다
+  });
+
+  test('종합: J = 4문항을 다 채운 심사위원 평균 · P = 인기투표 · S = 0.85J + P · 순위와 동점 처리', () => {
+    const b = sb();
+    const A = judge(b, '가 교수님'), B = judge(b, '나 교수님'), C = judge(b, '다 교수님'), op = b.viewer('박운영', '운영진');
+    // 03: A 80 · B 90 → J 85      05: A 85 · B 85(구조 25) → J 85 (동점, 구조적 이해가 높다)      01: A 60, C 는 작성 중(문항 하나 빔)
+    save(b, A, '03', { idea: 20, done: 20, ux: 20, arch: 20 }, '좋다');
+    save(b, B, '03', { idea: 22.5, done: 22.5, ux: 22.5, arch: 22.5 }, '아주 좋다');
+    save(b, A, '05', { idea: 21.25, done: 21.25, ux: 21.25, arch: 21.25 });
+    save(b, B, '05', { idea: 20, done: 20, ux: 20, arch: 25 });
+    save(b, A, '01', { idea: 15, done: 15, ux: 15, arch: 15 });
+    save(b, C, '01', { idea: 25, done: 25, ux: 25 });
+    const s = b.post({ action: 'score.summary', key: op });
+    assert.equal(s.ok, true);
+    assert.deepEqual(s.judges.map((j) => j.name), ['가 교수님', '나 교수님', '다 교수님']);
+    const A_ = s.tracks.find((t) => t.key === 'A');
+    const row = (no) => A_.rows.find((r) => r.no === no);
+    assert.deepEqual([row('03').J, row('03').S, row('03').scored], [85, 72.25, 2]);
+    assert.deepEqual([row('05').J, row('05').avg.arch], [85, 23.13]);
+    assert.deepEqual([row('01').J, row('01').scored], [60, 1]);                 // 작성 중인 C 는 평균에서 뺀다
+    const cId = s.judges.find((j) => j.name === '다 교수님').id;
+    assert.deepEqual(row('01').judges[cId], { total: 75, complete: false, s: { idea: 25, done: 25, ux: 25, arch: '' } });
+    assert.deepEqual(A_.rows.slice(0, 3).map((r) => [r.no, r.rank]), [['05', 1], ['03', 2], ['01', 3]]);   // 같은 S 면 구조적 이해 평균 순
+    assert.equal(row('02').rank, null);                                          // 점수가 없는 팀은 순위 없음
+    assert.deepEqual(row('03').comments, [{ judge: '가 교수님', text: '좋다' }, { judge: '나 교수님', text: '아주 좋다' }]);
+    // 인기투표가 더해진다 (트랙 A 에서 03 이 혼자 표를 받으면 P = 15)
+    b.post({ action: 'vote.admin', idToken: 'tok-op', track: 'A', op: 'open' });
+    b.roster([['03', '가나다', 'a1@x.com', '101', '조장', ''], ['05', '차카타', 'c1@x.com', '601', '조장', '']]);
+    b.post({ action: 'vote.submit', idToken: 'tok-a1', track: 'A', teams: ['05'] });
+    b.cache.delete('scores1');
+    const s2 = b.post({ action: 'score.summary', key: op }).tracks.find((t) => t.key === 'A');
+    const r05 = s2.rows.find((r) => r.no === '05');
+    assert.deepEqual([r05.votes, r05.P, r05.S, r05.rank], [1, 15, 87.25, 1]);
+  });
+
+  test('운영진이 마감하면 더 고칠 수 없고, 다시 열 수 있다', () => {
+    const b = sb();
+    const k = judge(b, '한 교수님'), op = b.viewer('박운영', '운영진');
+    assert.equal(b.post({ action: 'score.state', key: k, op: 'close' }).error, 'NOT_STAFF');
+    assert.equal(b.post({ action: 'score.state', key: op, op: 'close' }).scoring, 'closed');
+    assert.equal(save(b, k, '03', { idea: 10 }).error, 'SCORE_CLOSED');
+    assert.equal(b.post({ action: 'view.list', key: k }).scoring, 'closed');
+    assert.equal(b.post({ action: 'score.state', key: op, op: 'open' }).scoring, 'open');
+    assert.equal(save(b, k, '03', { idea: 10 }).ok, true);
+  });
+
+  test('시트 메뉴 "심사 종합 만들기" 가 `종합` 탭을 쓴다', () => {
+    const b = sb();
+    const A = judge(b, '가 교수님');
+    save(b, A, '03', { idea: 20, done: 20, ux: 20, arch: 20 });
+    b.run('scoreReport');
+    const rows = b.scoreBook().getSheetByName('종합').cells;
+    assert.deepEqual(rows[0].slice(0, 5), ['트랙', '순위', '팀', '프로젝트', '가 교수님']);
+    const r03 = rows.find((r) => r[2] === '03');
+    assert.deepEqual([r03[0], r03[1], r03[4], r03[5]], ['구현과제', 1, 80, 80]);
+    assert.match(b.logs.at(-1), /`종합` 탭을 새로 썼습니다/);
   });
 });
 

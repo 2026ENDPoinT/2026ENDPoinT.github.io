@@ -95,6 +95,7 @@ EC · NL · 다락방 · Plum · TCP
 ├── submit/index.html     결과물 제출 (본 해커톤 · 팀별 제출)
 ├── judge/index.html      제출 현황판 (심사위원 · 운영진, 열람 링크로 입장)
 ├── judge/vote/index.html 참가자 인기투표 (트랙별 1인 3표, 구글 로그인)
+├── judge/score/index.html 심사 종합 (운영진 — 심사위원 평균 · 인기투표 · 최종 점수)
 ├── privacy/index.html    개인정보처리방침
 ├── terms/index.html      이용약관
 ├── assets/

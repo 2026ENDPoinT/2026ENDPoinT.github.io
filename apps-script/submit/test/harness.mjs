@@ -15,6 +15,7 @@ class FakeSheet {
   getLastRow() { let n = this.cells.length; while (n > 0 && (this.cells[n - 1] || []).join('') === '') n--; return n; }
   getLastColumn() { return this.cells.reduce((m, r) => Math.max(m, (r || []).length), 0); }
   setFrozenRows() {}
+  clearContents() { this.cells = []; return this; }
   getDataRange() {
     const rows = Math.max(this.getLastRow(), 1), cols = Math.max(this.getLastColumn(), 1);
     return this.getRange(1, 1, rows, cols);
@@ -60,8 +61,9 @@ class FakeSheet {
 }
 
 class FakeSpreadsheet {
-  constructor(id) { this.id = id; this.sheets = new Map(); }
+  constructor(id, name = id) { this.id = id; this.name = name; this.sheets = new Map(); }
   getId() { return this.id; }
+  getName() { return this.name; }
   getSheetByName(n) { return this.sheets.get(n) ?? null; }
   insertSheet(n) { const s = new FakeSheet(n); this.sheets.set(n, s); return s; }
   getSheets() { return [...this.sheets.values()]; }
@@ -176,11 +178,15 @@ function formatSeoul(date, pattern) {
  */
 export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:00+09:00' } = {}) {
   const clock = { t: typeof now === 'number' ? now : Date.parse(now) };
-  const ss = new FakeSpreadsheet('sheet-submit');
+  const ss = new FakeSpreadsheet('sheet-submit', 'ENDPoinT 2026 제출');
   const apply = new FakeSpreadsheet('sheet-apply');
   const extra = new FakeSpreadsheet('sheet-extra');
   const drive = new FakeDrive();
-  const rootId = drive.addFolder('결과물 제출', null, 'root');
+  drive.addFolder('컴공 동아리 연합 해커톤 (2026)', null, 'ops');
+  const rootId = drive.addFolder('결과물 제출', 'ops', 'root');
+  // Drive 안의 스프레드시트 파일: id → { ss, name, parent }
+  const books = new Map([['sheet-submit', { ss, name: 'ENDPoinT 2026 제출', parent: 'root' }]]);
+  let bookN = 0;
   const cache = new Map();
   const store = { ...props };
   const logs = [];
@@ -196,6 +202,7 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
       isTrashed: () => !!f.trashed, setTrashed: (v) => { f.trashed = !!v; },
       getDateCreated: () => new Date(Date.UTC(2026, 10, 13) + f.created * 1000),
       getFoldersByName: (name) => { const list = drive.childFolders(f.id, name); let i = 0; return { hasNext: () => i < list.length, next: () => folderObj(list[i++].id) }; },
+      getParents: () => { const list = f.parent ? [f.parent] : []; let i = 0; return { hasNext: () => i < list.length, next: () => folderObj(list[i++]) }; },
       getFolders: () => { const list = drive.childFolders(f.id); let i = 0; return { hasNext: () => i < list.length, next: () => folderObj(list[i++].id) }; },
       getFiles: () => { const list = [...drive.files.values()].filter((x) => !x.trashed && x.parents.includes(f.id)); let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; },
       createFolder: (name) => folderObj(drive.addFolder(name, f.id)),
@@ -203,6 +210,7 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
         const list = [];
         if (name === '팀원 추가 계정' && extra.sheets.size) list.push({ getId: () => 'sheet-extra', getMimeType: () => 'application/vnd.google-apps.spreadsheet' });
         if (drive.plain.has(name)) list.push({ getId: () => 'plain', getMimeType: () => 'text/csv', getBlob: () => ({ getDataAsString: () => drive.plain.get(name) }) });
+        for (const [id, m] of books) if (m.parent === f.id && m.name === name) list.push({ getId: () => id, getName: () => m.name, getMimeType: () => 'application/vnd.google-apps.spreadsheet', isTrashed: () => !!m.trashed });
         let i = 0;
         return { hasNext: () => i < list.length, next: () => list[i++] };
       },
@@ -230,7 +238,8 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
     }) },
     SpreadsheetApp: {
       getActiveSpreadsheet: () => ss,
-      openById: (id) => (id === 'sheet-apply' ? apply : id === 'sheet-extra' ? extra : ss),
+      openById: (id) => (id === 'sheet-apply' ? apply : id === 'sheet-extra' ? extra : books.has(id) ? books.get(id).ss : ss),
+      create: (name) => { const id = 'sheet-new' + (++bookN); const s = new FakeSpreadsheet(id, name); books.set(id, { ss: s, name, parent: null }); return s; },
       flush() {},
       getUi: () => { if (!ui) throw new Error('no ui'); return ui; },
       getActiveSheet: () => activeSheet,
@@ -276,7 +285,14 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
     ScriptApp: { getOAuthToken: () => 'tok-script', getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/test/exec' }) },
     DriveApp: {
       getFolderById: folderObj,
-      getFileById: () => ({ getParents: () => { let done = false; return { hasNext: () => !done, next: () => { done = true; return folderObj(rootId); } }; } }),
+      getFileById: (id) => {
+        const m = books.get(id) || books.get('sheet-submit');
+        return {
+          getId: () => id,
+          getParents: () => { const list = m.parent ? [m.parent] : []; let i = 0; return { hasNext: () => i < list.length, next: () => folderObj(list[i++]) }; },
+          moveTo: (folder) => { m.parent = folder.getId(); },
+        };
+      },
     },
     Session: { getActiveUser: () => ({ getEmail: () => 'op@example.com' }) },
     HtmlService: { createHtmlOutput: (h) => { const o = { html: h, setWidth: () => o, setHeight: () => o }; return o; } },
@@ -289,7 +305,9 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
 
   const call = (fn, arg) => JSON.parse(ctx[fn](arg).body);
   const api = {
-    ctx, ss, apply, extra, drive, cache, store, logs, fetched, counts, clock, rootId,
+    ctx, ss, apply, extra, drive, cache, store, logs, fetched, counts, clock, rootId, books,
+    /** 심사 시트 (처음 설정이 만들거나 찾은 것) */
+    scoreBook: () => { const id = store.SCORE_SHEET_ID; return id && books.has(id) ? books.get(id).ss : null; },
     /** 스크립트 속성을 고친다. 웹 앱에는 늦어도 1분 뒤에 보인다 — now 를 주면 캐시를 비워 바로 보이게 한다 */
     prop: (k, v, now = true) => { store[k] = String(v); if (now) cache.delete('props1'); },
     get: (params = {}) => call('doGet', { parameter: params }),
