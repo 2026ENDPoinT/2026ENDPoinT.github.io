@@ -816,6 +816,8 @@ p{text-wrap:pretty}
 .top-auth{order:3;margin-left:18px;justify-content:flex-end}
 .top-auth .qhint{display:none}
 @media (max-width:720px){ .top-auth{display:none} }
+/* 본 해커톤 기간(결과물 제출 안내 블록이 html.ep-event 를 붙인다): 좁은 화면에서도 머리에 로그인(G 아이콘)을 둔다 */
+@media (max-width:720px){ html.ep-event .top-auth{display:flex;margin-left:4px} }
 /* 탭: 좁은 화면에서 두 줄로 깨지지 않게 가로 스크롤 */
 .tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .tabs::-webkit-scrollbar{display:none}
@@ -1297,6 +1299,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <a href="#notice" class="sm-hide" id="nav-notice" hidden>Notices</a>
       <a href="#/teams" data-nav="/teams">Team board</a>
       <a href="#/apply" data-nav="/apply">How to apply</a>
+      <a href="../judge/" id="nav-judge">Submissions &amp; votes</a>
       <a class="lang" href="../" hreflang="ko" lang="ko" title="한국어">KO</a>
       <a class="apply" href="#/apply" data-gate="apply" data-gate-label="Oct 7">Apply</a>
     </nav>
@@ -1510,20 +1513,20 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
           <span class="lab">Judging weights</span>
           <div class="pie" id="pie">
             <div class="pie-fig">
-              <svg class="donut" viewBox="0 0 160 160" role="img" aria-label="Judging weights pie chart: judges score 75%, participant vote 25%">
+              <svg class="donut" viewBox="0 0 160 160" role="img" aria-label="Judging weights pie chart: judges score 85%, participant vote 15%">
                 <g transform="rotate(-90 80 80)">
-                  <circle class="seg" data-k="j" cx="80" cy="80" r="62" fill="none" stroke="#1655AD" stroke-width="20" stroke-dasharray="289.57 389.56" stroke-dashoffset="-1.30" style="--len:289.57px"/>
-                  <circle class="seg" data-k="v" cx="80" cy="80" r="62" fill="none" stroke="#BA000C" stroke-width="20" stroke-dasharray="94.79 389.56" stroke-dashoffset="-293.47" style="--len:94.79px;--d:.55s"/>
+                  <circle class="seg" data-k="j" cx="80" cy="80" r="62" fill="none" stroke="#1655AD" stroke-width="20" stroke-dasharray="328.52 389.56" stroke-dashoffset="-1.30" style="--len:328.52px"/>
+                  <circle class="seg" data-k="v" cx="80" cy="80" r="62" fill="none" stroke="#BA000C" stroke-width="20" stroke-dasharray="55.83 389.56" stroke-dashoffset="-332.42" style="--len:55.83px;--d:.55s"/>
                 </g>
               </svg>
-              <div class="pie-c" aria-hidden="true"><b>75 : 25</b><span>Judges : Vote</span></div>
+              <div class="pie-c" aria-hidden="true"><b>85 : 15</b><span>Judges : Vote</span></div>
             </div>
             <ul class="pie-lg">
-              <li data-k="j"><i style="background:#1655AD"></i><span class="n">Judges score</span><b>75%</b></li>
-              <li data-k="v"><i style="background:#BA000C"></i><span class="n">Participant vote</span><b>25%</b></li>
+              <li data-k="j"><i style="background:#1655AD"></i><span class="n">Judges score</span><b>85%</b></li>
+              <li data-k="v"><i style="background:#BA000C"></i><span class="n">Participant vote</span><b>15%</b></li>
             </ul>
           </div>
-          <p class="foot crit"><strong>Hackathon</strong> — Service completeness, creativity in using AI<br><strong>Implementation</strong> — Feature implementation, code understanding, extra features</p>
+          <p class="foot crit"><strong>Hackathon</strong> — Service completeness, creativity in using AI<br><strong>Implementation</strong> — Feature implementation, structural understanding, extra features</p>
         </div>
 
         <div class="trk" style="display:flex;flex-direction:column;gap:clamp(12px,1.6vw,20px)" data-anim>
@@ -2459,7 +2462,13 @@ window.EPUI = {
     a.removeAttribute('data-gate');
     a.innerHTML = html;
   }
-  revive(document.querySelector('#top-bar nav a.apply'), 'Submit');
+  // 머리 오른쪽 알약은 감추고 그 자리에 구글 로그인을 둔다 (아래 '헤더 로그인 위젯' 이 EPEVENT 를 보고 연다)
+  var pill = document.querySelector('#top-bar nav a.apply');
+  if (pill) pill.hidden = true;
+  var board = document.querySelector('#top-bar nav a[data-nav="/teams"]');
+  if (board) board.classList.add('sm-hide');            // 좁은 화면에서는 메뉴 자리가 모자라다
+  window.EPEVENT = { on: true };
+  document.documentElement.classList.add('ep-event');
   revive(document.querySelector('#v-home .hero-cta a[data-gate="apply"]'), '<span>Submit your project</span>');
 
   var cta = document.querySelector('#v-home .cta');
@@ -2487,7 +2496,8 @@ window.EPUI = {
   if (!el) return;
   // 모집 기간이 아니면 로그인 버튼을 내놓지 않는다. 로그인해도 할 수 있는 일이 없고,
   // 버튼만 보이면 눌러 보고 아무 일도 안 일어나는 것처럼 느껴진다.
-  if (!window.EPGATE.open) { el.hidden = true; return; }
+  // 본 해커톤 기간(EPEVENT)에는 결과물 제출 · 투표 로그인을 위해 연다 — 여기서 로그인하면 제출 · 투표 화면에서도 이어진다
+  if (!window.EPGATE.open && !(window.EPEVENT && window.EPEVENT.on)) { el.hidden = true; return; }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -4197,10 +4207,10 @@ window.EPUI = {
 (function () {
   var pie = document.getElementById('pie'); if (!pie) return;
   var c = pie.querySelector('.pie-c'), b = c.querySelector('b'), t = c.querySelector('span');
-  var D = { j: ['75%', 'Judges score'], v: ['25%', 'Participant vote'] };
+  var D = { j: ['85%', 'Judges score'], v: ['15%', 'Participant vote'] };
   function set(k) {
     if (k && D[k]) { pie.setAttribute('data-h', k); b.textContent = D[k][0]; t.textContent = D[k][1]; }
-    else { pie.removeAttribute('data-h'); b.textContent = '75 : 25'; t.textContent = 'Judges : Vote'; }
+    else { pie.removeAttribute('data-h'); b.textContent = '85 : 15'; t.textContent = 'Judges : Vote'; }
   }
   pie.querySelectorAll('[data-k]').forEach(function (el) {
     el.addEventListener('pointerenter', function (e) { if (e.pointerType !== 'touch') set(el.getAttribute('data-k')); });

@@ -445,7 +445,7 @@ await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3�
   await page.waitForSelector('#fake-gsi');
   await login(page, w.account('a1@x.com', '101', '가나다'));
   await page.waitForSelector('.vcard');
-  R.match('열기 전에는 안내만 보인다', await text(page, '#ballot'), /발표가 모두 끝나면 투표가 열립니다/);
+  R.match('열기 전에는 안내만 보인다', await text(page, '#ballot'), /발표가 끝나면 투표가 열립니다/);
   R.eq('열기 전에는 고르기 단추가 없다', await page.locator('.vcard .pick').count(), 0);
 
   op.once('dialog', (d) => d.accept());

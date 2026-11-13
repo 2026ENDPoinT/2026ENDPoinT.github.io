@@ -48,14 +48,19 @@
 
   /* ------------------------------ 안내 패널 ------------------------------ */
   function showGate(html) { gate.innerHTML = html; gate.hidden = false; app.hidden = true; }
+  /** 열람 링크 없이 들어온 사람 (메인 메뉴 '제출·투표 현황'): 참가자는 제출 · 투표로, 심사위원 · 운영진은 열람 코드로 */
   function gateKey(why) {
-    showGate('<div class="t"><span class="lab ' + (why ? 'red' : 'blue') + '">Viewer</span>' +
-      '<b>' + (why ? esc(why) : '받으신 열람 링크로 들어와 주세요') + '</b>' +
-      '<span>심사위원 · 운영진께 보내 드린 링크를 그대로 열면 됩니다. 링크 대신 열람 코드를 받으셨다면 아래에 붙여 넣어 주세요.' +
-      (why ? ' 링크가 만료됐다면 운영진에게 새 링크를 요청해 주세요.' : '') + '</span></div>' +
-      '<form class="act" id="key-form" autocomplete="off">' +
-        '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="열람 코드" placeholder="열람 코드" style="min-width:min(320px,70vw)">' +
-        '<button class="btn btn-o" type="submit"><span>열기</span></button></form>');
+    showGate('<div class="hub">' +
+      '<div class="row"><div class="t"><span class="lab blue">Participants</span><b>결과물 제출 · 참가자 투표</b></div>' +
+        '<div class="act rowy"><a class="btn" href="../submit/"><span>결과물 제출</span></a>' +
+        '<a class="btn btn-o" href="./vote/"><span>참가자 투표</span></a></div></div>' +
+      '<div class="row"><div class="t"><span class="lab' + (why ? ' red' : '') + '">Judges</span>' +
+        '<b>' + (why ? esc(why) : '심사위원 · 운영진은 받으신 열람 링크로 들어와 주세요') + '</b>' +
+        (why ? '<span>링크가 만료됐다면 운영진에게 새 링크를 요청해 주세요.</span>' : '') + '</div>' +
+        '<form class="act rowy" id="key-form" autocomplete="off">' +
+          '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="열람 코드" placeholder="열람 코드" style="min-width:min(260px,70vw)">' +
+          '<button class="btn btn-o" type="submit"><span>열기</span></button></form></div>' +
+      '</div>');
     $('key-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var v = $('key-in').value.trim(), m = /k=([A-Za-z0-9_\-]{24,128})/.exec(v);   // 링크를 통째로 붙여 넣어도 된다

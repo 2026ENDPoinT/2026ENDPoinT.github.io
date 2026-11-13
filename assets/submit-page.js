@@ -60,7 +60,7 @@
                                : '적어 두고 저장하지 않은 내용은 그대로 남아 있습니다. 같은 계정으로 다시 로그인하면 이어서 쓸 수 있습니다.') + '</span></div>' +
         '<div class="act" id="gate-btn"></div>'
       : '<div class="t"><span class="lab blue">Sign in</span><b>참가 신청에 쓴 구글 계정으로 로그인해 주세요</b>' +
-        '<span>로그인한 계정으로 어느 팀인지 확인합니다. 팀원이면 누구나 낼 수 있고, 같은 팀이 낸 내용은 함께 보입니다.</span></div>' +
+        '</div>' +
         '<div class="act" id="gate-btn"></div>');
     S.mountButton($('gate-btn'));
   }
@@ -113,9 +113,10 @@
   }
 
   /* ------------------------------ 뼈대 ------------------------------ */
-  function step(key, no, name, req, body) {
+  function step(key, no, name, req, body, tag) {
     return '<div class="step" id="st-' + key + '"><div class="step-hd"><span class="step-no">' + no + '</span>' +
-      '<span class="step-name">' + name + (req ? '<span class="req">*</span>' : '<span class="opt">선택</span>') + '</span>' +
+      '<span class="step-name">' + name + (req ? '<span class="req">*</span>' : '<span class="opt">선택</span>') +
+        (tag ? '<span class="opt">' + tag + '</span>' : '') + '</span>' +
       '<span class="step-val" id="v-' + key + '"></span><span class="step-mark"></span></div>' +
       '<div class="step-bd">' + body + '</div></div>';
   }
@@ -123,7 +124,7 @@
     app.innerHTML =
       '<div class="sb">' +
         '<div class="sb-pick" id="pick" hidden><span class="lab ko">운영진</span>' +
-          '<select class="tin" id="pick-team" aria-label="대신 제출할 팀"></select><span class="t" id="pick-note"></span></div>' +
+          '<select class="tin" id="pick-team" aria-label="대신 제출할 팀"></select></div>' +
         '<div class="sb-state" id="state" hidden></div>' +
         '<div id="steps" hidden>' +
           step('info', '01', '프로젝트', true,
@@ -134,14 +135,12 @@
                 '<textarea class="tar" id="f-desc" maxlength="300" rows="2" placeholder="무엇을 하는 서비스인지 한두 문장으로"></textarea></label>' +
             '</div>') +
           step('product', '02', '결과물', true,
-            '<p class="hint">웹 서비스라면 <b>배포 주소</b>를, 내려받아 실행하는 프로그램이라면 <b>파일</b>을 내 주세요. 둘 중 하나는 꼭 있어야 하고, 둘 다 내도 됩니다.</p>' +
             '<div><label class="q"><span class="lab">배포 주소</span>' +
               '<input class="tin" id="f-url" type="text" inputmode="url" maxlength="500" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://"></label>' +
               '<p class="err" id="e-url" hidden></p></div>' +
             '<div class="q"><span class="lab">프로그램 파일</span><div id="slot-program" data-slot="program" style="margin-top:6px"></div></div>') +
           step('deck', '03', '발표 자료', true,
-            '<p class="hint">심사위원이 바로 열어 볼 수 있게 <b>PDF</b> 로 내는 것을 권합니다.</p>' +
-            '<div id="slot-deck" data-slot="deck"></div>') +
+            '<div id="slot-deck" data-slot="deck"></div>', 'PDF 권장') +
           step('video', '04', '데모 영상', false,
             '<div><label class="q"><span class="lab">영상 주소</span>' +
               '<input class="tin" id="f-video" type="text" inputmode="url" maxlength="500" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://youtu.be/…"></label>' +
@@ -151,9 +150,7 @@
           '<button class="btn" type="button" id="save" disabled><span>저장</span></button></div>' +
         '<div class="msg" id="msg" hidden role="status"></div>' +
       '</div>' +
-      '<div id="hist-wrap" hidden><div class="sechd">옛날 자료 <small id="hist-n"></small></div><div class="hist" id="hist"></div></div>' +
-      '<p class="note" id="note" hidden>낸 파일은 운영진의 저장소에 팀별로 보관되고, 심사위원과 운영진만 봅니다. 다른 팀에게는 보이지 않습니다. ' +
-        '다시 올리면 먼젓번 파일은 <b>옛날 자료</b>로 옮겨지고, 심사에는 마지막에 낸 것이 쓰입니다.</p>';
+      '<div id="hist-wrap" hidden><div class="sechd">옛날 자료 <small id="hist-n"></small></div><div class="hist" id="hist"></div></div>';
 
     app.addEventListener('click', onClick);
     app.addEventListener('change', onChange);
@@ -261,7 +258,7 @@
     $('h-team').textContent = team ? team.no + '팀 · ' + team.track + (team.proxy ? ' (대리)' : '')
       : (d && d.admin ? '팀을 골라 주세요' : '—');
     paintPick();
-    ['state', 'steps', 'note'].forEach(function (id) { $(id).hidden = !has; });
+    ['state', 'steps'].forEach(function (id) { $(id).hidden = !has; });
     if (!has) { $('send').hidden = true; $('hist-wrap').hidden = true; return; }
 
     // 상태 띠
@@ -305,9 +302,6 @@
     }
     sel.value = st.as;
     sel.disabled = uploading();
-    $('pick-note').textContent = st.as
-      ? '이 팀 대신 제출합니다. 마감 뒤에도 올릴 수 있고, 기록에는 운영진 대리로 남습니다.'
-      : '팀을 고르면 그 팀 대신 제출할 수 있습니다.';
   }
 
   function paintSlot(kind) {
@@ -360,7 +354,7 @@
     var list = st.state.history || [];
     $('hist-wrap').hidden = !list.length;
     if (!list.length) return;
-    $('hist-n').textContent = list.length + '개 · 다시 올리기 전의 파일입니다';
+    $('hist-n').textContent = list.length + '개';
     $('hist').innerHTML = list.map(function (f) {
       return '<div class="r"><div><div class="nm">' + esc(f.name) + '</div><div class="meta">' + EP.fmtSize(f.size) + ' · ' +
         EP.fmtTime(f.at) + (f.by ? ' · ' + esc(f.by) : '') + '</div></div>' +
@@ -376,9 +370,8 @@
     $('save').disabled = !keys.length || st.busy;
     $('save').innerHTML = '<span>' + (st.busy ? EP.spin('sm ink') + '저장하는 중' : '저장') + '</span>';
     $('send-t').innerHTML = keys.length
-      ? '<b>저장하지 않은 내용이 있습니다.</b> 이름 · 설명 · 주소는 저장을 눌러야 반영됩니다.'
-      : (s.at ? '마지막 제출 ' + EP.fmtTime(s.at) + (s.by ? ' · ' + esc(s.by) : '') + '. ' : '') +
-        '이름 · 설명 · 주소는 저장을 눌러야 반영되고, 파일은 올리는 즉시 반영됩니다.';
+      ? '<b>저장하지 않은 내용이 있습니다.</b>'
+      : (s.at ? '마지막 제출 ' + EP.fmtTime(s.at) + (s.by ? ' · ' + esc(s.by) : '') : '');
   }
 
   /* ------------------------------ 파일 ------------------------------ */

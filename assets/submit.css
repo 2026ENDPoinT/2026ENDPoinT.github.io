@@ -143,6 +143,10 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .gate .t code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;color:#fff;background:rgba(255,255,255,.07);padding:2px 7px;word-break:break-all}
 .gate .act{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
 .gate .act.rowy{flex-direction:row;flex-wrap:wrap;align-items:center}
+/* 현황판 첫 화면: 참가자 줄 · 심사위원 줄 */
+.gate .hub{display:flex;flex-direction:column;width:100%}
+.gate .hub .row{display:flex;align-items:center;justify-content:space-between;gap:clamp(16px,2.4vw,32px);flex-wrap:wrap}
+.gate .hub .row+.row{border-top:1px solid var(--line);margin-top:clamp(20px,2.8vw,30px);padding-top:clamp(20px,2.8vw,30px)}
 
 /* ================= 제출 폼 ================= */
 .sb{border:1px solid var(--line)}
