@@ -94,11 +94,12 @@ EC · NL · 다락방 · Plum · TCP
 ├── index.html            메인 · 공지 · 참가 신청 폼 · 팀 모집 게시판 · 운영진 페이지(#/admin) (단일 파일 SPA)
 ├── submit/index.html     결과물 제출 (본 해커톤 · 팀별 제출)
 ├── judge/index.html      제출 현황판 (심사위원 · 운영진, 열람 링크로 입장)
+├── judge/vote/index.html 참가자 인기투표 (트랙별 1인 3표, 구글 로그인)
 ├── privacy/index.html    개인정보처리방침
 ├── terms/index.html      이용약관
 ├── assets/
 │   ├── img/              동아리 로고 · 히어로 이미지
-│   ├── submit-*.js · judge-page.js · submit.css   제출 · 현황판 화면
+│   ├── submit-*.js · judge-page.js · vote-page.js · submit.css   제출 · 현황판 · 투표 화면
 │   ├── legal.css         약관 페이지 스타일
 │   └── legal.js
 ├── apps-script/
@@ -119,6 +120,7 @@ Apps Script 의 `CONFIG.ADMINS` 에 적힌 구글 계정만 통과합니다 ([BA
 
 **결과물 제출** 은 본 해커톤 기간에 열립니다. 참가자는 구글 로그인으로 자기 팀의 배포 주소 · 프로그램 파일 · 발표 자료를 내고,
 파일은 운영진의 Google Drive 에 팀별로 쌓입니다. 심사위원은 열람 링크로 전체 팀의 제출물을 한 화면에서 봅니다.
+발표가 끝나면 참가자가 같은 구글 로그인으로 트랙별 인기투표(1인 3표)를 합니다.
 신청서와는 별도의 Apps Script 프로젝트이며, 설치와 당일 운영은 [SUBMIT.md](SUBMIT.md) 에 정리되어 있습니다.
 
 ## 로컬에서 보기

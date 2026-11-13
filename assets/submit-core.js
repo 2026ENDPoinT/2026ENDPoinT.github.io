@@ -93,6 +93,15 @@
     DRIVE_FULL: '저장소가 가득 차서 올릴 수 없습니다. 운영진에게 바로 알려 주세요.',
     TEAM_FULL: '이 팀이 올려 둘 수 있는 전체 용량을 넘었습니다. 운영진에게 알려 주세요.',
     AUTH_BUSY: '지금 로그인 확인이 몰려 있습니다. 잠시 뒤에 다시 시도해 주세요.',
+    VOTE_NOT_OPEN: '아직 이 트랙의 투표가 열리지 않았습니다.',
+    VOTE_CLOSED: '이 트랙의 투표가 마감되었습니다.',
+    VOTE_TOO_MANY: '한 사람이 낼 수 있는 표보다 많이 골랐습니다.',
+    VOTE_DUP: '같은 팀을 두 번 고를 수 없습니다.',
+    VOTE_SELF: '우리 팀에는 투표할 수 없습니다.',
+    VOTE_BAD_TEAM: '이 트랙의 팀만 고를 수 있습니다.',
+    VOTE_EMPTY: '팀을 한 곳 이상 골라 주세요.',
+    NOT_ADMIN: '운영진만 할 수 있습니다.',
+    BAD_TRACK: '트랙을 다시 골라 주세요.',
     KEY_INVALID: '열람 링크가 만료됐거나 올바르지 않습니다.',
     NOT_FOUND: '파일을 찾지 못했습니다. 새로 고쳐 확인해 주세요.',
     FILE_GONE: '파일이 저장소에 없습니다. 운영진에게 알려 주세요.',
@@ -672,6 +681,40 @@
     });
     var mine = teams['03'];
 
+    // ---- 투표 (미리보기). 로컬에서 ?admin=1 을 붙이면 운영진 화면도 보인다 ----
+    var VS = { A: 'open', H: 'ready' }, VM = { A: [], H: [] }, VC = { A: {}, H: {} };
+    var vadmin = LOCAL && /[?&]admin=1/.test(loc.search || '');
+    function tk(no) { return Number(no) <= 10 ? 'A' : 'H'; }
+    function trackTeams(key) { return Object.keys(teams).filter(function (no) { return tk(no) === key; }).sort(); }
+    var others = (function () {                // 다른 참가자 41명이 이미 낸 표 (볼 때마다 같은 모양이 되게)
+      var n = {}, seed = 7;
+      function rnd(k) { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % k; }
+      ['A', 'H'].forEach(function (key) {
+        for (var p = 0; p < 41; p++) {
+          var pool = trackTeams(key).filter(function (no) { return no !== (key === 'A' ? '0' + (1 + p % 10) : String(11 + p % 10)); });
+          for (var k = 0; k < 3; k++) { var no = pool.splice(rnd(pool.length), 1)[0]; n[no] = (n[no] || 0) + 1; }
+        }
+      });
+      return n;
+    })();
+    function vtally() {
+      return [['A', '구현과제'], ['H', '해커톤']].map(function (x) {
+        var key = x[0], nos = trackTeams(key), cnt = {}, V = 0;
+        if (VS[key] !== 'ready') nos.forEach(function (no) { cnt[no] = others[no] || 0; });
+        VM[key].forEach(function (no) { cnt[no] = (cnt[no] || 0) + 1; });
+        nos.forEach(function (no) { V += cnt[no] || 0; });
+        var mean = V / nos.length;
+        return {
+          key: key, name: x[1], state: VS[key], votes: V, teams: nos.length, mean: Math.round(mean * 100) / 100, full: Math.round(2 * mean * 100) / 100,
+          voters: (VS[key] !== 'ready' ? 41 : 0) + (VM[key].length ? 1 : 0), eligible: 66, bad: 0,
+          rows: nos.map(function (no) {
+            var v = cnt[no] || 0;
+            return { no: no, title: teams[no].title, votes: v, p: mean > 0 ? Math.round(15 * Math.sqrt(Math.min(1, v / (2 * mean))) * 100) / 100 : 0 };
+          })
+        };
+      });
+    }
+
     function out(s, aud) {
       var o = JSON.parse(JSON.stringify(s));
       o.complete = complete(s);
@@ -758,6 +801,35 @@
           r.role = '심사위원'; r.name = '미리보기'; r.summary = sum; r.tracks = tracks;
           return r;
         }
+        case 'vote.me':
+          r.email = 'member@demo'; r.admin = vadmin; r.max = 3; r.self = false;
+          r.me = { team: '03', track: '구현과제', trackKey: 'A', name: '이서연' };
+          r.tracks = [['A', '구현과제'], ['H', '해커톤']].map(function (x) {
+            return {
+              key: x[0], name: x[1], state: VS[x[0]], mine: VM[x[0]].slice(), codes: JSON.parse(JSON.stringify(VC[x[0]])),
+              teams: trackTeams(x[0]).map(function (no) { var s = teams[no]; return { no: no, title: s.title, desc: s.desc, url: s.url }; })
+            };
+          });
+          if (vadmin) r.tally = vtally();
+          return r;
+        case 'vote.submit': {
+          var key = b.track, pick = (b.teams || []).map(String);
+          if (!VS[key]) return { ok: false, error: 'BAD_TRACK' };
+          if (VS[key] !== 'open') return { ok: false, error: VS[key] === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN' };
+          if (!pick.length) return { ok: false, error: 'VOTE_EMPTY' };
+          if (pick.length > 3) return { ok: false, error: 'VOTE_TOO_MANY' };
+          if (pick.indexOf('03') !== -1) return { ok: false, error: 'VOTE_SELF' };
+          VM[key] = pick.slice().sort(); VC[key] = {};
+          VM[key].forEach(function (no) { VC[key][no] = hex(6).toUpperCase(); });
+          r.track = key; r.mine = VM[key].slice(); r.codes = JSON.parse(JSON.stringify(VC[key]));
+          return r;
+        }
+        case 'vote.admin':
+          if (!vadmin) return { ok: false, error: 'NOT_ADMIN' };
+          if (!VS[b.track]) return { ok: false, error: 'BAD_TRACK' };
+          VS[b.track] = b.op === 'open' ? 'open' : 'closed';
+          r.track = b.track; r.state = VS[b.track]; r.tally = vtally();
+          return r;
         default:
           return { ok: false, error: 'UNKNOWN_ACTION' };
       }

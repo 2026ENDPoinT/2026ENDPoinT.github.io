@@ -15,6 +15,7 @@
  *   - 파일 하나가 `파일` 탭 한 줄이다 (색인). 어느 폴더에 어떤 이름으로 있는지 이 탭이 기준이다.
  *     다시 올리면 먼젓번 파일은 팀 폴더 안의 '옛날 자료' 로 옮기고 그 줄의 상태·경로를 바꾼다. 지우지 않는다.
  *   - 심사위원·운영진은 열람 토큰으로 전체 팀의 제출 현황을 보고 파일을 받는다 (Drive 권한이 없어도 된다).
+ *   - 발표가 끝나면 참가자가 구글 로그인으로 인기투표를 한다 (/judge/vote/, 트랙별 1인 3표). 아래 '참가자 인기투표' 절.
  *
  * 누가 무엇을 보나
  *   참가자   자기 팀 것만. 다른 팀 자료는 응답에 아예 담기지 않는다.
@@ -47,10 +48,16 @@ var CONFIG = {
   REPO: 'team{no}',
 
   // 팀 번호 → 트랙
+  // key 는 투표를 열고 닫는 스크립트 속성 이름에 쓴다 (VOTE_A · VOTE_H)
   TRACKS: [
-    { name: '구현과제', from: 1, to: 10 },
-    { name: '해커톤', from: 11, to: 20 }
+    { key: 'A', name: '구현과제', from: 1, to: 10 },
+    { key: 'H', name: '해커톤', from: 11, to: 20 }
   ],
+
+  // 참가자 인기투표: 트랙마다 1인 VOTE_MAX 표, 한 팀에 1표. VOTE_SELF 가 false 면 자기 팀에는 못 준다.
+  // (스크립트 속성 VOTE_MAX · VOTE_SELF 로 바꿀 수 있다. 트랙별로 여닫는 것은 투표 페이지의 운영진 버튼으로)
+  VOTE_MAX: 3,
+  VOTE_SELF: false,
 
   // 제출을 여는 시각. 비우면 처음부터 열려 있다.
   OPEN_AT: '',
@@ -125,7 +132,9 @@ var TABS = {
   file:   { name: '파일', head: ['번호', '팀', '종류', '버전', '상태', '경로', '이름', '원래 이름', '크기', 'md5', '형식', '올린 시각', '올린 사람', 'Drive ID', '링크'] },
   member: { name: '팀원', head: ['팀', '이름', '이메일', '계정 식별자', '역할', '상태', '비고', '출처'] },
   view:   { name: '열람', head: ['이름', '역할', '토큰 해시', '만든 시각', '만료', '사용', '마지막 접속'] },
-  log:    { name: '기록', head: ['시각', '누가', '팀', '동작', '대상', '메모'] }
+  log:    { name: '기록', head: ['시각', '누가', '팀', '동작', '대상', '메모'] },
+  // 표 한 장이 한 줄. 누가 냈는지 대신 익명 표시만, 대상 팀과 함께 검증값(비밀 솔트를 섞은 SHA-256)을 남긴다.
+  vote:   { name: '투표', head: ['번호', '시각', '트랙', '투표지', '투표자(익명)', '투표자 팀', '대상 팀', '검증', '상태'] }
 };
 var NUMERIC = { '번호': 1, '버전': 1, '크기': 1 };
 
@@ -179,6 +188,9 @@ function route_(action, body) {
     case 'file.withdraw': return actWithdraw_(body);
     case 'file.get':      return actFileGet_(body);
     case 'view.list':     return actViewList_(body);
+    case 'vote.me':       return actVoteMe_(body);
+    case 'vote.submit':   return actVoteSubmit_(body);
+    case 'vote.admin':    return actVoteAdmin_(body);
     default:              return fail_('UNKNOWN_ACTION');
   }
 }
@@ -578,10 +590,244 @@ function actViewList_(body) {
     tr.teams.sort(function (x, y) { return ((x.order || 999) - (y.order || 999)) || (x.no < y.no ? -1 : 1); });
   });
   seen_(v);
-  return {
+  var res = {
     ok: true, api: API_VERSION, now: nowMs_(), deadline: deadlineMs_(), graceMin: graceMin_(), phase: phase_(),
     role: v.role, name: v.name, summary: sum, tracks: tracks
   };
+  if (aud === 'staff') res.votes = voteTally_();          // 인기투표 결과는 운영진에게만
+  return res;
+}
+
+/* ================================================================
+   참가자 인기투표 — /judge/vote/
+   ----------------------------------------------------------------
+   트랙마다 발표가 끝나면 운영진이 투표 페이지에서 연다(VOTE_A · VOTE_H). 명단(`팀원` 탭)에 있는 참가자만 낸다 —
+   신청서와 맞지 않는 계정은 로그인부터 거절한다(NOT_MEMBER).
+   1인 VOTE_MAX 표 · 한 팀에 1표 · 자기 팀은 안 된다. 열려 있는 동안은 다시 골라 낼 수 있고 마지막에 낸 투표지만 센다.
+   표는 사람 단위다 — 같은 사람이 계정을 둘 갖고 있어도(명단에 두 줄) 투표지 한 장을 함께 쓴다.
+
+   `투표` 탭 한 줄 = 표 한 장. 누가 냈는지는 남기지 않는다(익명 표시만). 대신 줄마다 '검증' 값을 둔다:
+     SHA-256( 비밀 솔트 | 투표지 | 트랙 | 투표자 | 투표자 팀 | 대상 팀 | 시각 )
+   솔트는 스크립트 속성(VOTE_SALT)에만 있어서, 시트를 고칠 수 있는 사람도 대상 팀을 바꾸고 맞는 검증값을 만들 수 없다.
+   셀 때는 검증값이 맞는 줄만, 그중에서도 투표자마다 가장 나중에 낸 투표지만 센다. 규칙(표 수 · 중복 · 자기 팀 · 트랙)을
+   어긴 투표지와 검증이 안 맞는 줄은 세지 않고 운영진 결과에 '검증 실패'로 알린다.
+   참가자는 자기 표마다 확인 코드(검증값 앞 6자리)를 받는다. 운영진은 `투표` 탭의 같은 값으로 그 표가 들어갔는지 확인할 수 있다.
+
+   참가자 점수(조직 소개의 심사 기준): P = 15 × √min(1, v / 2v̄), v̄ = 그 트랙의 전체 표 / 그 트랙의 팀 수
+   ================================================================ */
+
+function voteTracks_() { return CONFIG.TRACKS.filter(function (tr) { return tr.key; }); }
+function voteTrack_(key) {
+  var hit = null;
+  voteTracks_().forEach(function (tr) { if (tr.key === String(key || '')) hit = tr; });
+  return hit;
+}
+function trackKeyOf_(no) {
+  var n = Number(no), k = '';
+  if (no === TEST_TEAM) return '';
+  voteTracks_().forEach(function (tr) { if (n >= tr.from && n <= tr.to) k = tr.key; });
+  return k;
+}
+function trackKeyByName_(name) {
+  var k = '';
+  voteTracks_().forEach(function (tr) { if (tr.name === str_(name) || tr.key === str_(name)) k = tr.key; });
+  return k;
+}
+/** 'ready' 열기 전 · 'open' 받는 중 · 'closed' 마감 */
+function voteState_(key) {
+  var v = String(props_()['VOTE_' + key] || '').toLowerCase();
+  return v === 'open' || v === 'closed' ? v : 'ready';
+}
+function voteMax_() { var n = Number(conf_('VOTE_MAX')); return n >= 1 && n <= 10 ? Math.floor(n) : 3; }
+function voteSelf_() { return /^(1|true|yes|o|on)$/i.test(String(conf_('VOTE_SELF'))); }
+function voteTeams_(key) { return teamNos_().filter(function (no) { return trackKeyOf_(no) === key; }); }
+
+/** 비밀 솔트. 처음 한 번 만들고 스크립트 속성에 둔다 (처음 설정에서 미리 만든다). 잠금 안에서 부르지 않는다. */
+function voteSalt_() {
+  var s = props_().VOTE_SALT;
+  if (s) return s;
+  return withLock_(function () {
+    propsDrop_();
+    var cur = props_().VOTE_SALT;
+    if (cur) return cur;
+    var v = secret_();
+    PropertiesService.getScriptProperties().setProperty('VOTE_SALT', v);
+    propsDrop_();
+    return v;
+  });
+}
+/** 투표자 = 사람: 팀 + 이름(띄어쓰기 · 대소문자 무시). 이름이 빈 줄이면 계정으로. 솔트를 섞어 남이 거꾸로 알아내지 못하게. */
+function voterKey_(a, salt) {
+  var who = nameKey_(a.name) || ('acct:' + (a.sub || a.email));
+  return sha256hex_(salt + '|voter|' + a.team + '|' + who).slice(0, 16);
+}
+function voteSig_(salt, ballot, key, voter, voterTeam, team, at) {
+  return sha256hex_([salt, 'v1', ballot, key, voter, voterTeam, team, at].join('|')).slice(0, 32);
+}
+
+/**
+ * `투표` 탭을 검증하며 센다. 결과는 1분 캐시에 두고, 쓸 때마다 새로 만든다.
+ *   { by: {투표자: {트랙: {teams:[…], codes:{팀: 코드}}}}, n: {팀: 표}, voters: {트랙: 사람 수}, bad: {트랙: 세지 않은 줄 수} }
+ */
+function votes_() {
+  if (MEMO.votes) return MEMO.votes;
+  var hit = cacheGet_('votes1');
+  if (hit) return (MEMO.votes = hit);
+  return voteCount_(table_('vote'), voteSalt_());
+}
+function voteCount_(t, salt) {
+  var c = t.col, ballots = {}, bad = {};
+  t.rows.forEach(function (row) {
+    var key = trackKeyByName_(row[c['트랙']]), ballot = str_(row[c['투표지']]), voter = str_(row[c['투표자(익명)']]);
+    var vt = teamNo_(row[c['투표자 팀']]), team = teamNo_(row[c['대상 팀']]), at = str_(row[c['시각']]);
+    if (!key && !ballot && !voter && !team) return;                       // 빈 줄
+    var sig = str_(row[c['검증']]).toLowerCase();
+    if (!key || !ballot || !voter || !team || sig !== voteSig_(salt, ballot, key, voter, vt, team, at)) {
+      if (key) bad[key] = (bad[key] || 0) + 1;
+      return;
+    }
+    var id = voter + '|' + key;
+    var b = ballots[id] = ballots[id] || {};
+    (b[ballot] = b[ballot] || { voter: voter, key: key, vt: vt, seq: Number(ballot.replace(/\D/g, '')) || 0, rows: [] }).rows.push({ team: team, sig: sig });
+  });
+  var out = { by: {}, n: {}, voters: {}, bad: bad }, max = voteMax_(), self = voteSelf_();
+  Object.keys(ballots).forEach(function (id) {
+    // 투표자마다 가장 나중에 낸 투표지만
+    var last = null;
+    Object.keys(ballots[id]).forEach(function (bid) { var b = ballots[id][bid]; if (!last || b.seq > last.seq) last = b; });
+    var seen = {}, ok = last.rows.length >= 1 && last.rows.length <= max;
+    last.rows.forEach(function (r) {
+      if (seen[r.team] || trackKeyOf_(r.team) !== last.key || (!self && r.team === last.vt)) ok = false;
+      seen[r.team] = 1;
+    });
+    if (!ok) { out.bad[last.key] = (out.bad[last.key] || 0) + last.rows.length; return; }
+    var mine = (out.by[last.voter] = out.by[last.voter] || {})[last.key] = { teams: [], codes: {} };
+    last.rows.forEach(function (r) {
+      mine.teams.push(r.team);
+      mine.codes[r.team] = r.sig.slice(0, 6).toUpperCase();
+      out.n[r.team] = (out.n[r.team] || 0) + 1;
+    });
+    out.voters[last.key] = (out.voters[last.key] || 0) + 1;
+  });
+  cachePut_('votes1', out, 60);
+  return (MEMO.votes = out);
+}
+
+/** 참가자 점수 P (15점 만점). mean 은 그 트랙의 팀당 평균 득표. */
+function popScore_(v, mean) {
+  if (!(mean > 0)) return 0;
+  return Math.round(15 * Math.sqrt(Math.min(1, v / (2 * mean))) * 100) / 100;
+}
+/** 트랙별 결과 — 운영진에게만 준다 */
+function voteTally_() {
+  var v = votes_(), all = states_(), people = roster_().people || 0;
+  return voteTracks_().map(function (tr) {
+    var nos = voteTeams_(tr.key), V = 0;
+    nos.forEach(function (no) { V += v.n[no] || 0; });
+    var mean = nos.length ? V / nos.length : 0;
+    return {
+      key: tr.key, name: tr.name, state: voteState_(tr.key), votes: V, teams: nos.length,
+      mean: Math.round(mean * 100) / 100, full: Math.round(2 * mean * 100) / 100,
+      voters: v.voters[tr.key] || 0, eligible: people, bad: (v.bad || {})[tr.key] || 0,
+      rows: nos.map(function (no) {
+        var n = v.n[no] || 0;
+        return { no: no, title: (all[no] || {}).title || '', votes: n, p: popScore_(n, mean) };
+      })
+    };
+  });
+}
+
+/** 투표 페이지가 처음 · 가끔 부른다: 트랙별 상태, 팀 목록, 내 투표지 (운영진이면 결과까지) */
+function actVoteMe_(body) {
+  var a = actor_(body);
+  if (a.error) return fail_(a.error);
+  var member = !!(a.team && !a.proxy && a.team !== TEST_TEAM);
+  if (!member && !a.admin) return { ok: false, error: 'NOT_MEMBER', email: a.email, now: nowMs_() };
+  var out = { ok: true, api: API_VERSION, now: nowMs_(), email: a.email, admin: a.admin, max: voteMax_(), self: voteSelf_() };
+  var ses = sessionOpen_(a.claims);
+  if (ses) { out.sid = ses.sid; out.sidLeft = ses.left; }
+  var salt = voteSalt_(), all = states_();
+  var mine = member ? (votes_().by[voterKey_(a, salt)] || {}) : {};
+  out.me = member ? { team: a.team, track: trackOf_(a.team), trackKey: trackKeyOf_(a.team), name: a.name } : null;
+  out.tracks = voteTracks_().map(function (tr) {
+    var m = mine[tr.key] || { teams: [], codes: {} };
+    return {
+      key: tr.key, name: tr.name, state: voteState_(tr.key), mine: m.teams, codes: m.codes,
+      teams: voteTeams_(tr.key).map(function (no) {
+        var s = all[no] || blank_(no);
+        return { no: no, title: s.title, desc: s.desc, url: s.url };
+      })
+    };
+  });
+  if (a.admin) out.tally = voteTally_();
+  return out;
+}
+
+/** 투표지를 낸다: { track:'A', teams:['01','04','07'] }. 다시 내면 먼젓번 투표지는 세지 않는다. */
+function actVoteSubmit_(body) {
+  var a = actor_(body);
+  if (a.error) return fail_(a.error);
+  if (!a.team || a.proxy || a.team === TEST_TEAM) return fail_('NOT_MEMBER', { email: a.email });
+  var tr = voteTrack_(body.track);
+  if (!tr) return fail_('BAD_TRACK');
+  var st = voteState_(tr.key);
+  if (st !== 'open') return fail_(st === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN');
+  var max = voteMax_(), self = voteSelf_(), seen = {};
+  var pick = Array.isArray(body.teams) ? body.teams.slice(0, 20).map(function (x) { return teamNo_(x); }) : [];
+  if (!pick.length) return fail_('VOTE_EMPTY');
+  if (pick.length > max) return fail_('VOTE_TOO_MANY', { max: max });
+  for (var i = 0; i < pick.length; i++) {
+    var no = pick[i];
+    if (!no || trackKeyOf_(no) !== tr.key || voteTeams_(tr.key).indexOf(no) === -1) return fail_('VOTE_BAD_TEAM', { team: no });
+    if (seen[no]) return fail_('VOTE_DUP', { team: no });
+    if (!self && no === a.team) return fail_('VOTE_SELF');
+    seen[no] = 1;
+  }
+  if (!hit_('vote:' + a.sub, 20, 600)) return fail_('TOO_MANY');
+  var salt = voteSalt_(), voter = voterKey_(a, salt);          // 잠그기 전에 (솔트를 처음 만들 때 잠근다)
+
+  return withLock_(function () {
+    return once_(a, body.nonce, function () {
+      // 잠근 뒤 다시 본다 — 운영진이 방금 닫았을 수 있다 (캐시가 아니라 지금 값으로)
+      var now = String(PropertiesService.getScriptProperties().getProperty('VOTE_' + tr.key) || '').toLowerCase();
+      if (now !== 'open') return fail_(now === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN');
+      var t = table_('vote', true), c = t.col, at = kst_(nowMs_()), n0 = nextId_(t);
+      var ballot = 'B' + n0;
+      // 먼젓번 투표지는 '바꿈' 으로 표시만 한다 (셀 때는 어차피 가장 나중 투표지만 센다)
+      t.rows.forEach(function (row, j) {
+        if (str_(row[c['투표자(익명)']]) === voter && trackKeyByName_(row[c['트랙']]) === tr.key && str_(row[c['상태']]) === '유효') {
+          put_(t, j + 2, { '상태': '바꿈' });
+        }
+      });
+      pick.forEach(function (no, k) {
+        put_(t, 0, {
+          '번호': n0 + k, '시각': at, '트랙': tr.name, '투표지': ballot, '투표자(익명)': voter, '투표자 팀': a.team,
+          '대상 팀': no, '검증': voteSig_(salt, ballot, tr.key, voter, a.team, no, at), '상태': '유효'
+        });
+      });
+      var v = voteCount_(t, salt), m = (v.by[voter] || {})[tr.key] || { teams: [], codes: {} };
+      log_(a, 'vote.submit', tr.name, pick.length + '표');           // 누구에게 줬는지는 기록하지 않는다
+      return { ok: true, track: tr.key, mine: m.teams, codes: m.codes };
+    });
+  });
+}
+
+/** 운영진: 트랙별로 투표를 열고 닫는다 { track:'A', op:'open'|'close' } */
+function actVoteAdmin_(body) {
+  var a = actor_(body);
+  if (a.error) return fail_(a.error);
+  if (!a.admin) return fail_('NOT_ADMIN');
+  var tr = voteTrack_(body.track);
+  if (!tr) return fail_('BAD_TRACK');
+  var op = String(body.op || '');
+  if (op !== 'open' && op !== 'close') return fail_('BAD_OP');
+  voteSalt_();
+  withLock_(function () {
+    PropertiesService.getScriptProperties().setProperty('VOTE_' + tr.key, op === 'open' ? 'open' : 'closed');
+  });
+  propsDrop_();                                                  // 다른 실행도 바로 새 값을 보게
+  log_(a, 'vote.' + op, tr.name, '');
+  return { ok: true, track: tr.key, state: voteState_(tr.key), tally: voteTally_() };
 }
 
 /* ================================================================
@@ -699,8 +945,8 @@ function roster_() {
   var hit = cacheGet_('roster1');
   if (hit) return (MEMO.roster = hit);
   var t = table_('member'), c = t.col;
-  var r = { sub: {}, mail: {}, teams: {} };
-  t.rows.forEach(function (row) {
+  var r = { sub: {}, mail: {}, teams: {}, people: 0 }, seenP = {};
+  t.rows.forEach(function (row, i) {
     var no = teamNo_(row[c['팀']]);
     if (!no) return;
     if (/불참|제외|탈퇴|미배정/.test(str_(row[c['상태']]))) return;
@@ -709,6 +955,9 @@ function roster_() {
     if (sub && !r.sub[sub]) r.sub[sub] = rec;
     if (mail && !r.mail[mail]) r.mail[mail] = rec;
     r.teams[no] = (r.teams[no] || 0) + 1;
+    // 사람 수 (같은 사람의 계정 여러 줄은 한 명). 연습용 팀은 빼고 센다
+    var pk = no + '|' + (nameKey_(rec.name) || '#' + i);
+    if (no !== TEST_TEAM && !seenP[pk]) { seenP[pk] = 1; r.people++; }
   });
   cachePut_('roster1', r, 90);
   return (MEMO.roster = r);
@@ -719,6 +968,13 @@ function member_(claims) {
   var r = roster_();
   var sub = String(claims.sub || ''), mail = mailKey_(claims.email);
   return (sub && r.sub[sub]) || (mail && r.mail[mail]) || null;
+}
+
+/** 이름 비교용: 빈칸을 없애고 소문자로. '홍 길동' 과 '홍길동' 을 같은 사람으로 본다. */
+function nameKey_(v) {
+  var s = str_(v);
+  try { s = s.normalize('NFC'); } catch (e) {}
+  return s.replace(/\s+/g, '').toLowerCase();
 }
 
 /**

@@ -766,12 +766,15 @@ describe('운영진 메뉴', () => {
     const b = loadBackend({ tokens: TOKENS });
     b.ss.insertSheet('시트1');
     b.run('setup');
-    assert.deepEqual([...b.ss.sheets.keys()].sort(), ['기록', '열람', '팀', '팀원', '파일']);
+    assert.deepEqual([...b.ss.sheets.keys()].sort(), ['기록', '열람', '투표', '팀', '팀원', '파일']);
+    assert.match(b.store.VOTE_SALT, /^[A-Za-z0-9_-]{43}$/);           // 투표 검증용 비밀값을 미리 만든다
+    const salt = b.store.VOTE_SALT;
     assert.equal(b.drive.childFolders(b.rootId, 'team01').length, 1);
     assert.equal(b.drive.childFolders(b.store.F_20, '옛날 자료').length, 1);
     assert.match(b.logs.at(-1), /준비됐습니다/);
     b.run('setup');                                          // 다시 실행해도 폴더가 늘지 않는다
     assert.equal(b.drive.folders.size, 1 + 21 * 2);
+    assert.equal(b.store.VOTE_SALT, salt);                    // 비밀값도 바뀌지 않는다
   });
 
   test('명단 만들기: 신청서와 팀편성을 이름으로 잇는다', () => {
@@ -991,3 +994,200 @@ describe('기록', () => {
     assert.equal(b.isLocked(), false);
   });
 });
+
+describe('참가자 인기투표', () => {
+  // 03 · 05 팀은 구현과제(A), 12 · 15 팀은 해커톤(H)
+  const VT = {
+    ...TOKENS,
+    'tok-c1': token('c1@x.com', '601'), 'tok-c2': token('c2@x.com', '602'),
+    'tok-d1': token('d1@x.com', '701'), 'tok-a1alt': token('a1.alt@x.com', '109'),
+  };
+  function vb(extra = {}) {
+    const b = loadBackend({ props: { ADMINS: 'op@x.com' }, tokens: VT, ...extra });
+    b.roster([
+      ['03', '가나다', 'a1@x.com', '101', '조장', ''],
+      ['03', '가나다', 'a1.alt@x.com', '109', '', ''],          // 같은 사람의 다른 계정
+      ['03', '라마바', 'a2@x.com', '102', '', ''],
+      ['05', '차카타', 'c1@x.com', '601', '조장', ''],
+      ['05', '파하', 'c2@x.com', '602', '', ''],
+      ['12', '사아자', 'b1@x.com', '201', '조장', ''],
+      ['12', '불참자', 'out@x.com', '301', '', '불참'],
+      ['15', '마바사', 'd1@x.com', '701', '조장', ''],
+    ]);
+    return b;
+  }
+  const open = (b, track) => assert.equal(b.post({ action: 'vote.admin', idToken: 'tok-op', track, op: 'open' }).ok, true);
+  const close = (b, track) => assert.equal(b.post({ action: 'vote.admin', idToken: 'tok-op', track, op: 'close' }).ok, true);
+  const vote = (b, idToken, track, teams, extra = {}) => b.post({ action: 'vote.submit', idToken, track, teams, ...extra });
+
+  test('명단에 없는 계정 · 불참자는 로그인부터 거절한다 (신청서와 맞지 않으면 못 들어온다)', () => {
+    const b = vb();
+    for (const t of ['tok-none', 'tok-out']) assert.equal(b.post({ action: 'vote.me', idToken: t }).error, 'NOT_MEMBER', t);
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-none' }).email, 'none@x.com');
+    assert.equal(b.post({ action: 'vote.me', idToken: 'nope' }).error, 'AUTH_FAILED');
+    assert.equal(vote(b, 'tok-none', 'A', ['01']).error, 'NOT_MEMBER');
+  });
+
+  test('참가자: 트랙마다 팀 목록과 내 투표지 · 열기 전에는 낼 수 없다', () => {
+    const b = vb();
+    const me = b.post({ action: 'vote.me', idToken: 'tok-a1' });
+    assert.equal(me.ok, true);
+    assert.equal(me.admin, false);
+    assert.equal(me.tally, undefined);                         // 결과는 운영진만
+    assert.deepEqual(me.me, { team: '03', track: '구현과제', trackKey: 'A', name: '가나다' });
+    assert.deepEqual(me.tracks.map((t) => [t.key, t.name, t.state, t.teams.length, t.mine.length]), [['A', '구현과제', 'ready', 10, 0], ['H', '해커톤', 'ready', 10, 0]]);
+    assert.ok(!me.tracks.some((t) => t.teams.some((x) => x.no === '00')));   // 연습 팀은 없다
+    assert.match(me.sid, /^[A-Za-z0-9_-]{43}$/);                // 발표가 길어도 로그인이 이어지게
+    assert.equal(me.max, 3);
+    assert.equal(vote(b, 'tok-a1', 'A', ['01']).error, 'VOTE_NOT_OPEN');
+  });
+
+  test('운영진만 열고 닫는다 · 닫힌 뒤에는 낼 수 없다', () => {
+    const b = vb();
+    assert.equal(b.post({ action: 'vote.admin', idToken: 'tok-a1', track: 'A', op: 'open' }).error, 'NOT_ADMIN');
+    assert.equal(b.post({ action: 'vote.admin', idToken: 'tok-op', track: 'X', op: 'open' }).error, 'BAD_TRACK');
+    assert.equal(b.post({ action: 'vote.admin', idToken: 'tok-op', track: 'A', op: 'wipe' }).error, 'BAD_OP');
+    open(b, 'A');
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks[0].state, 'open');     // 캐시가 있어도 바로 보인다
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks[1].state, 'ready');
+    assert.equal(vote(b, 'tok-a1', 'A', ['01', '02']).ok, true);
+    close(b, 'A');
+    assert.equal(vote(b, 'tok-a2', 'A', ['01']).error, 'VOTE_CLOSED');
+    assert.deepEqual(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks[0].mine, ['01', '02']);   // 낸 것은 남는다
+    const op = b.post({ action: 'vote.me', idToken: 'tok-op' });
+    assert.equal(op.ok, true);                                   // 운영진은 팀원이 아니어도 들어온다 (투표는 못 함)
+    assert.equal(op.me, null);
+    assert.equal(vote(b, 'tok-op', 'A', ['01']).error, 'NOT_MEMBER');
+    assert.ok(b.rows('기록').some((r) => r['동작'] === 'vote.open' && r['누가'] === 'op@x.com'));
+  });
+
+  test('1인 3표 · 한 팀에 1표 · 자기 팀 안 됨 · 그 트랙 팀만', () => {
+    const b = vb();
+    open(b, 'A'); open(b, 'H');
+    assert.equal(vote(b, 'tok-a1', 'A', ['01', '02', '04', '06']).error, 'VOTE_TOO_MANY');
+    assert.equal(vote(b, 'tok-a1', 'A', ['01', '01']).error, 'VOTE_DUP');
+    assert.equal(vote(b, 'tok-a1', 'A', ['03']).error, 'VOTE_SELF');
+    assert.equal(vote(b, 'tok-a1', 'A', ['12']).error, 'VOTE_BAD_TEAM');      // 해커톤 팀을 구현과제 투표지에
+    assert.equal(vote(b, 'tok-a1', 'A', ['00']).error, 'VOTE_BAD_TEAM');
+    assert.equal(vote(b, 'tok-a1', 'A', ['30']).error, 'VOTE_BAD_TEAM');
+    assert.equal(vote(b, 'tok-a1', 'A', []).error, 'VOTE_EMPTY');
+    assert.equal(vote(b, 'tok-a1', 'A', 'nope').error, 'VOTE_EMPTY');
+    assert.equal(vote(b, 'tok-a1', 'Q', ['01']).error, 'BAD_TRACK');
+    const ok = vote(b, 'tok-a1', 'A', ['1', 'team 2', '04']);                // 번호 꼴은 아무렇게나
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ok.mine, ['01', '02', '04']);
+    assert.deepEqual(Object.keys(ok.codes), ['01', '02', '04']);
+    assert.match(ok.codes['01'], /^[0-9A-F]{6}$/);                         // 확인 코드
+    assert.equal(vote(b, 'tok-a1', 'H', ['12', '15']).ok, true);           // 다른 트랙에는 따로 3표
+    assert.equal(vote(b, 'tok-d1', 'H', ['12']).ok, true);
+    assert.equal(vote(b, 'tok-d1', 'H', ['15']).error, 'VOTE_SELF');
+  });
+
+  test('다시 내면 마지막 투표지만 센다 · 같은 사람의 다른 계정도 한 장을 함께 쓴다', () => {
+    const b = vb();
+    open(b, 'A');
+    assert.equal(vote(b, 'tok-a1', 'A', ['01', '02', '04']).ok, true);
+    assert.equal(vote(b, 'tok-a1alt', 'A', ['05', '06']).ok, true);         // 같은 사람(가나다)의 다른 계정
+    const me = b.post({ action: 'vote.me', idToken: 'tok-a1' });
+    assert.deepEqual(me.tracks[0].mine, ['05', '06']);
+    const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    assert.equal(t.voters, 1);                                              // 한 사람
+    assert.deepEqual(t.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['05', 1], ['06', 1]]);
+    assert.deepEqual(b.rows('투표').map((r) => r['상태']), ['바꿈', '바꿈', '바꿈', '유효', '유효']);
+    assert.equal(vote(b, 'tok-a2', 'A', ['05']).ok, true);                  // 같은 팀의 다른 사람은 따로
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0].voters, 2);
+  });
+
+  test('시트에는 누가 냈는지 남지 않고, 표마다 검증값이 있다 — 대상 팀을 몰래 바꾸면 세지 않는다', () => {
+    const b = vb();
+    open(b, 'A');
+    vote(b, 'tok-a1', 'A', ['01', '02']);
+    vote(b, 'tok-c1', 'A', ['01']);
+    const sheet = JSON.stringify(b.tab('투표').cells);
+    for (const s of ['a1@x.com', 'c1@x.com', '가나다', '차카타', '101', '601']) assert.ok(!sheet.includes(s), s);
+    assert.ok(!JSON.stringify(b.rows('기록').filter((r) => r['동작'] === 'vote.submit')).match(/0[12]팀|"01"|"02"/));   // 기록에도 대상 팀은 없다
+    const rows = b.rows('투표');
+    assert.ok(rows.every((r) => /^[0-9a-f]{32}$/.test(r['검증'])));
+    let t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    assert.deepEqual([t.rows[0].votes, t.rows[1].votes, t.bad], [2, 1, 0]);
+    // 누군가 시트에서 02 를 04 로 바꿨다
+    const sh = b.tab('투표'), head = sh.cells[0];
+    const r2 = sh.cells.findIndex((row) => row[head.indexOf('대상 팀')] === '02');
+    sh.cells[r2][head.indexOf('대상 팀')] = '04';
+    b.cache.delete('votes1');
+    t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    assert.deepEqual([t.rows[1].votes, t.rows[3].votes, t.bad], [0, 0, 1]);   // 02 도 04 도 세지 않고, 검증 실패 1
+    assert.equal(t.rows[0].votes, 2);                                          // 나머지는 그대로
+    // 줄을 통째로 베껴 한 표를 더 만들어도 (같은 투표지에 같은 팀 두 장) 그 투표지는 세지 않는다
+    const copy = [...sh.cells[1]];
+    sh.cells.push(copy);
+    b.cache.delete('votes1');
+    t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    assert.equal(t.rows[0].votes, 1);
+    assert.ok(t.bad >= 3);
+  });
+
+  test('참가자 점수 P = 15 × √min(1, v / 2v̄) — 트랙별로', () => {
+    const b = vb();
+    b.ctx.popScore_ && assert.equal(b.ctx.popScore_(36, 18), 15);
+    assert.equal(b.ctx.popScore_(80, 18), 15);
+    assert.equal(b.ctx.popScore_(27, 18), 12.99);
+    assert.equal(b.ctx.popScore_(18, 18), 10.61);
+    assert.equal(b.ctx.popScore_(9, 18), 7.5);
+    assert.equal(b.ctx.popScore_(3, 18), 4.33);
+    assert.equal(b.ctx.popScore_(0, 18), 0);
+    assert.equal(b.ctx.popScore_(0, 0), 0);
+    open(b, 'A');
+    vote(b, 'tok-a1', 'A', ['01', '02', '04']);
+    vote(b, 'tok-a2', 'A', ['01', '05']);
+    vote(b, 'tok-c1', 'A', ['01']);
+    const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];   // 6표 / 10팀 → 평균 0.6, 만점 기준 1.2표
+    assert.deepEqual([t.votes, t.teams, t.mean, t.full, t.voters, t.eligible], [6, 10, 0.6, 1.2, 3, 6]);
+    const p = Object.fromEntries(t.rows.map((r) => [r.no, r.p]));
+    assert.deepEqual([p['01'], p['02'], p['04'], p['05'], p['06']], [15, 13.69, 13.69, 13.69, 0]);   // 1표: 15 × √(1 / 1.2)
+    const h = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[1];
+    assert.deepEqual([h.votes, h.mean, h.rows.every((r) => r.p === 0)], [0, 0, true]);    // 표가 없으면 모두 0
+  });
+
+  test('운영진 열람 링크(현황판)에는 결과가 보이고, 심사위원 링크에는 없다', () => {
+    const b = vb();
+    open(b, 'A');
+    vote(b, 'tok-a1', 'A', ['01']);
+    const staff = b.post({ action: 'view.list', key: b.viewer('운영', '운영진') });
+    assert.equal(staff.votes[0].rows[0].votes, 1);
+    const judge = b.post({ action: 'view.list', key: b.viewer('심사') });
+    assert.equal(judge.votes, undefined);
+  });
+
+  test('끊겨서 다시 보낸 투표는 한 번만 들어가고, 여럿이 몰려도 표가 섞이지 않는다', () => {
+    const b = vb();
+    open(b, 'A');
+    const n = 'n-' + Math.random();
+    const r1 = vote(b, 'tok-a1', 'A', ['01', '02'], { nonce: n });
+    const r2 = vote(b, 'tok-a1', 'A', ['01', '02'], { nonce: n });
+    assert.equal(r2.replay, true);
+    assert.deepEqual(r1.mine, r2.mine);
+    assert.equal(b.rows('투표').length, 2);
+    for (const [t, teams] of [['tok-a2', ['01']], ['tok-c1', ['02']], ['tok-c2', ['01', '02', '04']]]) assert.equal(vote(b, t, 'A', teams).ok, true);
+    const tl = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    assert.deepEqual(tl.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['01', 3], ['02', 3], ['04', 1]]);
+    assert.equal(b.isLocked(), false);
+    assert.equal(new Set(b.rows('투표').map((r) => r['번호'])).size, b.rows('투표').length);   // 번호가 겹치지 않는다
+  });
+
+  test('운영진이 닫는 순간과 겹친 투표는 잠근 뒤 다시 보고 거절한다', () => {
+    const b = vb();
+    open(b, 'A');
+    b.prop('VOTE_A', 'closed', false);                       // 다른 실행이 방금 닫았다 (이 실행의 캐시는 아직 open)
+    assert.equal(vote(b, 'tok-a1', 'A', ['01']).error, 'VOTE_CLOSED');
+    assert.equal(b.rows('투표').length, 0);
+  });
+
+  test('설정으로 표 수와 자기 팀 투표를 바꿀 수 있다', () => {
+    const b = vb({ props: { ADMINS: 'op@x.com', VOTE_MAX: '1', VOTE_SELF: 'true' } });
+    open(b, 'A');
+    assert.equal(vote(b, 'tok-a1', 'A', ['01', '02']).error, 'VOTE_TOO_MANY');
+    assert.equal(vote(b, 'tok-a1', 'A', ['03']).ok, true);
+  });
+});
+

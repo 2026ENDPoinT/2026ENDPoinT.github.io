@@ -194,7 +194,14 @@
     if (t.deck) meta.push('발표 v' + t.deck.v + ' · ' + EP.extOf(t.deck.name) + ' ' + EP.fmtSize(t.deck.size));
     if (t.program) meta.push('프로그램 v' + t.program.v + ' · ' + EP.extOf(t.program.name) + ' ' + EP.fmtSize(t.program.size));
     var old = t.history || [], open = !!st.open[t.no];
-    var drive = '';
+    var drive = '', vline = '';
+    if (staff() && st.data.votes) {
+      st.data.votes.forEach(function (x) {
+        x.rows.forEach(function (r) {
+          if (r.no === t.no && x.state !== 'ready') vline = '<div class="vline">인기투표 ' + r.votes + '표 · 참가자 점수 ' + r.p.toFixed(2) + (x.state === 'open' ? ' (투표 중)' : '') + '</div>';
+        });
+      });
+    }
     if (staff()) {
       if (t.deck && t.deck.driveUrl) drive += '<a class="lnk" href="' + esc(t.deck.driveUrl) + '" target="_blank" rel="noopener noreferrer">발표 Drive ↗</a> ';
       if (t.program && t.program.driveUrl) drive += '<a class="lnk" href="' + esc(t.program.driveUrl) + '" target="_blank" rel="noopener noreferrer">프로그램 Drive ↗</a> ';
@@ -211,6 +218,7 @@
       '<div class="ft"><small>' + meta.join(' · ') + '</small>' +
         (old.length ? '<button class="lnk" type="button" data-act="hist" data-no="' + esc(t.no) + '" aria-expanded="' + open + '">이전 자료 ' + old.length + '개 ' + (open ? '접기' : '보기') + '</button>' : '') +
       '</div>' +
+      vline +
       (drive ? '<div class="where" style="margin-top:0">' + drive + '</div>' : '') +
       (old.length && open ? '<div class="old">' + old.map(function (f) {
         return '<div class="r"><span>' + esc(f.name) + '<br><span class="dl">' + EP.fmtSize(f.size) + ' · ' + EP.fmtTime(f.at) + '</span></span>' +

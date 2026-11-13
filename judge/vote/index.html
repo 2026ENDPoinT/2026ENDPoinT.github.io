@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#191919">
+<meta name="robots" content="noindex">
+<title>참가자 투표 · ENDPoinT</title>
+<meta name="description" content="ENDPoinT 해커톤 참가자 인기투표. 트랙별로 좋았던 팀 3곳에 1표씩 줍니다.">
+<link rel="icon" href="../../assets/img/icon-192.png" sizes="192x192" type="image/png">
+<link rel="icon" href="../../assets/img/icon-512.png" sizes="512x512" type="image/png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ENDPoinT">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="참가자 투표 — ENDPoinT">
+<meta property="og:description" content="트랙별로 좋았던 팀 3곳에 1표씩. 참가 신청에 쓴 구글 계정으로 로그인해 주세요.">
+<meta property="og:url" content="https://2026endpoint.github.io/judge/vote/">
+<meta property="og:image" content="https://2026endpoint.github.io/assets/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@100;200;300;400;500;600&display=swap">
+<link rel="preconnect" href="https://accounts.google.com">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="stylesheet" href="../../assets/submit.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a class="mark" href="../../"><b>ENDPoinT</b><span>SeoulTech CSE Hackathon</span></a>
+    <nav>
+      <a href="../../" class="sm-hide">홈</a>
+      <a href="../../#prize" class="sm-hide">심사 기준</a>
+      <a href="../../submit/" class="sm-hide">제출</a>
+      <a href="./" class="on" aria-current="page">투표</a>
+    </nav>
+    <div class="top-auth" id="top-auth" aria-live="polite"></div>
+  </div>
+</header>
+
+<div class="inapp" id="inapp" hidden>
+  <div class="wrap">
+    <p><b>앱 안의 브라우저에서는 구글 로그인이 막혀 있어요.</b> 투표는 Chrome이나 Safari에서 열어 주세요.</p>
+    <a class="btn" id="inapp-open" href="#"><span>외부 브라우저로 열기</span></a>
+    <button class="x" type="button" id="inapp-x" aria-label="안내 닫기">×</button>
+  </div>
+</div>
+
+<main>
+  <div class="phead">
+    <div class="wrap">
+      <div class="pagehead">
+        <div>
+          <span class="lab blue">Vote</span>
+          <h1 class="ptitle">참가자 투표</h1>
+          <p class="sub">트랙별 발표가 모두 끝나면 그 트랙의 투표가 열립니다. 좋았던 팀 <b id="h-max">3</b>곳에 1표씩 주세요. 한 팀에 1표, 우리 팀은 고를 수 없고, 마감 전까지는 다시 낼 수 있습니다.</p>
+        </div>
+        <div class="stack">
+          <div><span class="lab ko">구현과제 트랙</span><b id="h-A" class="num">—</b></div>
+          <div><span class="lab ko">해커톤 트랙</span><b id="h-H" class="num">—</b></div>
+          <div><span class="lab ko">내 팀</span><b id="h-team">로그인하면 보입니다</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="wrap">
+      <div class="demo-note" id="demo-note" hidden><b>미리보기 모드</b>서버에 연결하지 않은 화면입니다. 팀 이름은 예시이고, 여기서 한 투표는 저장되지 않습니다.</div>
+      <div class="gate" id="gate"></div>
+      <div id="app" hidden>
+        <section class="vadmin" id="admin" hidden aria-label="운영진"></section>
+        <div class="bar">
+          <div class="tabs" id="tabs" role="tablist" aria-label="트랙"></div>
+          <div class="tools"><span class="when" id="when"></span></div>
+        </div>
+        <div id="ballot"></div>
+      </div>
+      <noscript><p class="sub">투표에는 자바스크립트가 필요합니다. 브라우저 설정을 확인한 뒤 다시 열어 주세요.</p></noscript>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="f-in">
+      <div>
+        <div class="mark" style="margin-bottom:12px"><b>ENDPoinT</b><span>SeoulTech CSE Hackathon</span></div>
+        <div>서울과학기술대학교 컴퓨터공학과 해커톤<br>EC · NL · 다락방 · Plum · TCP</div>
+      </div>
+      <div class="f-links">
+        <a href="../../">대회 안내</a>
+        <a href="../../privacy/">개인정보처리방침</a>
+        <a href="../../terms/">이용약관</a>
+        <a href="mailto:recognize@seoultech.ac.kr">문의</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="../../assets/submit-config.js"></script>
+<script src="../../assets/submit-core.js"></script>
+<script src="../../assets/vote-page.js"></script>
+</body>
+</html>

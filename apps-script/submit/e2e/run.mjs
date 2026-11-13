@@ -421,5 +421,76 @@ await scenario('휴대폰 화면', async (w) => {
   await page.context().close();
 });
 
+/* ---------------------------------------------------------------- */
+await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3표 · 운영진이 열고 닫는다', async (w) => {
+  const opTok = w.account('op@x.com', '900', '운영진');
+  const op = await newPage(browser);
+  await op.goto(SITE + '/judge/vote/');
+  await op.waitForSelector('#fake-gsi');
+  await login(op, opTok);
+  await op.waitForSelector('#admin:not([hidden])');
+  R.match('운영진에게는 트랙별 열기 버튼이 보인다', await text(op, '#admin'), /구현과제[\s\S]*투표 열기[\s\S]*해커톤[\s\S]*투표 열기/);
+
+  const out = await newPage(browser);
+  await out.goto(SITE + '/judge/vote/');
+  await out.waitForSelector('#fake-gsi');
+  await login(out, w.account('none@x.com', '999', '외부인'));
+  await out.waitForSelector('#gate-out');
+  R.match('신청서(명단)와 맞지 않는 계정은 들어오지 못한다', await text(out, '#gate'), /참가자 명단에 없습니다[\s\S]*none@x\.com/);
+  R.eq('그 화면에는 투표지가 없다', await out.locator('#app').isHidden(), true);
+  await out.context().close();
+
+  const page = await newPage(browser);
+  await page.goto(SITE + '/judge/vote/');
+  await page.waitForSelector('#fake-gsi');
+  await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForSelector('.vcard');
+  R.match('열기 전에는 안내만 보인다', await text(page, '#ballot'), /발표가 모두 끝나면 투표가 열립니다/);
+  R.eq('열기 전에는 고르기 단추가 없다', await page.locator('.vcard .pick').count(), 0);
+
+  op.once('dialog', (d) => d.accept());
+  await op.click('[data-act="admin"][data-op="open"][data-track="A"]');
+  await op.waitForFunction(() => /투표 중/.test(document.querySelector('#h-A')?.textContent || ''));
+  await page.waitForSelector('.vcard .pick', { timeout: 45000 });
+  R.check('운영진이 열면 참가자 화면이 저절로 바뀐다 (새로 고치지 않아도)', true);
+  R.eq('우리 팀(03)은 고를 수 없다', await page.locator('.vcard[data-no="03"] .pick').count(), 0);
+  for (const no of ['01', '02', '04']) await page.click(`.vcard[data-no="${no}"] .pick`);
+  R.eq('3팀을 고르면 나머지는 막힌다', await page.locator('.vcard[data-no="05"] .pick[disabled]').count(), 1);
+  await page.click('[data-act="submit"]');
+  await page.waitForSelector('.vcard .code');
+  const codes = await page.$$eval('.vcard .code b', (l) => l.map((e) => e.textContent).sort());
+  const rows = w.b.rows('투표');
+  R.eq('시트 `투표` 탭에 표 3장', rows.length, 3);
+  R.check('시트에는 누가 냈는지(이메일 · 이름)가 없다', !/a1@x\.com|가나다/.test(JSON.stringify(w.b.tab('투표').cells)));
+  R.eq('확인 코드 = 그 표의 검증값 앞 6자리', codes, rows.map((r) => String(r['검증']).slice(0, 6).toUpperCase()).sort());
+  await shot(page, 'e2e-vote-1-done');
+
+  await page.click('[data-act="edit"]');
+  await page.click('.vcard[data-no="04"] .pick');
+  page.once('dialog', (d) => d.accept());                    // 2팀만 골랐다는 확인
+  await page.click('[data-act="submit"]');
+  await page.waitForFunction(() => document.querySelectorAll('.vcard .code').length === 2);
+  const tally = () => w.b.post({ action: 'vote.me', idToken: opTok }).tally[0];
+  R.eq('다시 내면 마지막 투표지만 센다', tally().rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['01', 1], ['02', 1]]);
+  R.eq('한 사람으로 센다', tally().voters, 1);
+
+  await op.waitForFunction(() => /투표한 사람 1/.test(document.querySelector('#admin')?.textContent || ''), null, { timeout: 20000 });
+  await op.click('[data-act="res"][data-track="A"]');
+  R.match('운영진은 결과(표 · 참가자 점수)를 펼쳐 본다', await text(op, '.vres'), /01[\s\S]*1[\s\S]*15\.00/);
+  await shot(op, 'e2e-vote-2-admin');
+
+  op.once('dialog', (d) => d.accept());
+  await op.click('[data-act="admin"][data-op="close"][data-track="A"]');
+  await page.waitForFunction(() => /마감되었습니다/.test(document.querySelector('#ballot')?.textContent || ''), null, { timeout: 45000 });
+  R.check('마감하면 참가자 화면도 닫힌다', true);
+  const late = await page.evaluate(async () => (await EP.api('vote.submit', { track: 'A', teams: ['05'] })).error);
+  R.eq('마감 뒤에 보내도 서버가 거절한다', late, 'VOTE_CLOSED');
+  const forged = await page.evaluate(async () => (await EP.api('vote.admin', { track: 'A', op: 'open' })).error);
+  R.eq('참가자가 화면을 고쳐 열려고 해도 거절한다', forged, 'NOT_ADMIN');
+  R.eq('화면 오류 없음', [...page.errs, ...op.errs], []);
+  await page.context().close();
+  await op.context().close();
+});
+
 await browser.close();
 process.exit(R.done() ? 1 : 0);

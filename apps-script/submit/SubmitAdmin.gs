@@ -20,6 +20,8 @@ function onOpen() {
     .addItem('현황 새로 읽기 (캐시 비우기)', 'cacheClear')
     .addItem('끊긴 업로드 정리', 'sweepUploads')
     .addItem('선택한 줄을 제출로 인정 (늦게 도착한 파일)', 'acceptSelected')
+    .addSeparator()
+    .addItem('인기투표 결과 보기', 'voteReport')
     .addToUi();
 }
 
@@ -49,6 +51,7 @@ function setup() {
   if (Object.keys(set).length) PropertiesService.getScriptProperties().setProperties(set, false);
   propsDrop_();
 
+  voteSalt_();                                 // 투표 검증에 쓰는 비밀 솔트 (한 번만 만든다)
   var who = driveCheck_();
   say_('준비됐습니다.\n\n' +
     '· 탭: ' + Object.keys(TABS).map(function (k) { return TABS[k].name; }).join(', ') + '\n' +
@@ -292,13 +295,6 @@ function extraAccounts_() {
   return out;
 }
 
-/** 이름 비교용: 빈칸을 없애고 소문자로. '홍 길동' 과 '홍길동' 을 같은 사람으로 본다. */
-function nameKey_(v) {
-  var s = str_(v);
-  try { s = s.normalize('NFC'); } catch (e) {}
-  return s.replace(/\s+/g, '').toLowerCase();
-}
-
 /* ================================================================
    ③ 열람 링크 — 심사위원 · 운영진
    ----------------------------------------------------------------
@@ -398,6 +394,12 @@ function doctor() {
   var d = deadlineMs_();
   ok(d > 0, '마감: ' + (d ? kst_(d) + ' (서울), 유예 ' + graceMin_() + '분' : '없음') + ' · 지금 단계: ' + phase_());
   lines.push('· 팀당 저장 한도: ' + (teamCap_() ? (teamCap_() / (1024 * MB)) + 'GB (스크립트 속성 TEAM_MAX_GB)' : '없음'));
+  try {
+    voteSalt_();                               // 없으면 지금 만든다 (투표 검증에 쓰는 비밀값)
+    lines.push('· 인기투표: ' + voteTally_().map(function (x) {
+      return x.name + ' ' + ({ ready: '열기 전', open: '받는 중', closed: '마감' }[x.state]) + ' (' + x.voters + '명 · ' + x.votes + '표' + (x.bad ? ' · 검증 실패 ' + x.bad : '') + ')';
+    }).join(' / ') + ' · 1인 ' + voteMax_() + '표' + (voteSelf_() ? ' · 자기 팀 가능' : ''));
+  } catch (e6) {}
   var url = '';
   try { url = ScriptApp.getService().getUrl() || ''; } catch (e3) {}
   ok(!!url, '웹 앱 주소: ' + (url || '아직 배포하지 않았습니다 (배포 → 새 배포 → 웹 앱)'));
@@ -436,7 +438,7 @@ function directProbe_() {
 /** 시트를 손으로 고친 뒤 바로 반영하고 싶을 때. (그냥 두어도 명단은 90초, 열람은 60초, 현황은 5분 안에 반영된다) */
 function cacheClear() {
   fresh_();
-  var keys = ['roster1', 'views1', 'props1'].concat(teamList_(true).map(function (tm) { return 'st1:' + tm.no; }));
+  var keys = ['roster1', 'views1', 'props1', 'votes1'].concat(teamList_(true).map(function (tm) { return 'st1:' + tm.no; }));
   try { CacheService.getScriptCache().removeAll(keys); } catch (e) {}
   say_('캐시를 비웠습니다. 다음 요청부터 시트를 새로 읽습니다.');
 }
@@ -488,6 +490,22 @@ function acceptSelected() {
 
 /** 메뉴에서 실행할 때는 메모와 속성 캐시를 비우고 시작한다 — 방금 고친 속성이 바로 보이게 */
 function fresh_() { MEMO = {}; cacheDrop_('props1'); }
+
+/** 인기투표 결과를 창으로 (트랙별 득표 · 참가자 점수 P). 시트를 연 운영진만 볼 수 있다. */
+function voteReport() {
+  fresh_();
+  var res = voteTally_();
+  var text = res.map(function (x) {
+    var head = '[' + x.name + '] ' + ({ ready: '열기 전', open: '받는 중', closed: '마감' }[x.state]) +
+      ' · 투표한 사람 ' + x.voters + ' / ' + x.eligible + '명 · 전체 ' + x.votes + '표 · 팀당 평균 ' + x.mean + '표 (만점 기준 ' + x.full + '표)' +
+      (x.bad ? '\n  ! 검증이 맞지 않아 세지 않은 표 ' + x.bad + '장 — `투표` 탭이 손으로 고쳐졌을 수 있습니다' : '');
+    var rows = x.rows.slice().sort(function (p, q) { return q.votes - p.votes || (p.no < q.no ? -1 : 1); }).map(function (r) {
+      return '  ' + r.no + '팀  ' + ('   ' + r.votes).slice(-3) + '표  P ' + r.p.toFixed(2) + (r.title ? '  ' + r.title : '');
+    });
+    return head + '\n' + rows.join('\n');
+  }).join('\n\n');
+  say_('인기투표 결과\n\nP = 15 × √min(1, 득표 / (2 × 트랙 평균))\n\n' + text);
+}
 
 function ui_() { try { return SpreadsheetApp.getUi(); } catch (e) { return null; } }
 function say_(text) {
