@@ -19,6 +19,7 @@ function onOpen() {
     .addItem('설정 점검', 'doctor')
     .addItem('현황 새로 읽기 (캐시 비우기)', 'cacheClear')
     .addItem('끊긴 업로드 정리', 'sweepUploads')
+    .addItem('발표 자료 PDF 만들기 (빠진 것)', 'pdfMissing')
     .addItem('선택한 줄을 제출로 인정 (늦게 도착한 파일)', 'acceptSelected')
     .addSeparator()
     .addItem('인기투표 결과 보기', 'voteReport')
@@ -594,6 +595,30 @@ function acceptSelected() {
 
 /** 메뉴에서 실행할 때는 메모와 속성 캐시를 비우고 시작한다 — 방금 고친 속성이 바로 보이게 */
 function fresh_() { MEMO = {}; cacheDrop_('props1'); }
+
+/**
+ * 지금 제출된 발표 자료 가운데 PowerPoint · odp 인데 보기용 PDF 가 없는 것을 한꺼번에 만든다.
+ * 한 번에 5분까지만 하고, 남으면 다시 누르라고 알린다 (Apps Script 한 번 실행은 6분까지).
+ */
+function pdfMissing() {
+  fresh_();
+  var t = table_('file', true), c = t.col, todo = [], t0 = Date.now();
+  t.rows.forEach(function (row) {
+    if (kindOf_(row[c['종류']]) !== 'deck' || str_(row[c['상태']]) !== '현재') return;
+    if (!convertible_(str_(row[c['이름']])) || (c['PDF ID'] !== undefined && str_(row[c['PDF ID']]))) return;
+    todo.push(Number(row[c['번호']]));
+  });
+  var done = 0, bad = [];
+  for (var i = 0; i < todo.length; i++) {
+    if (Date.now() - t0 > 300000) break;
+    var r = deckPdf_(todo[i]);
+    if (r && r.ok) done++; else bad.push('#' + todo[i] + ' ' + ((r && r.error) || ''));
+  }
+  var left = todo.length - done - bad.length;
+  say_('보기용 PDF: 빠진 ' + todo.length + '개 중 ' + done + '개를 만들었습니다.' + (bad.length ? '\n못 만든 것: ' + bad.join(', ') : '') +
+       (left > 0 ? '\n남은 ' + left + '개는 이 메뉴를 한 번 더 눌러 주세요.' : ''));
+  return { todo: todo.length, done: done, bad: bad.length, left: left };
+}
 
 /** 심사 시트에 `종합` 탭을 새로 쓴다 (트랙별 순위 · 심사위원별 합계 · 평균 J · 참가자 점수 P · 최종 S) */
 function scoreReport() {
