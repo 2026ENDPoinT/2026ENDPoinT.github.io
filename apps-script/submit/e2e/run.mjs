@@ -342,6 +342,12 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   await page.goto(SITE + '/judge/#k=' + judgeKey);
   await page.waitForSelector('#list .post');
   R.check('열어 둔 창에 링크를 붙여 넣어도 열린다', true);
+  const firsts = await page.$$eval('#list .trk', (secs) => secs.map((x) => {
+    const p = x.querySelector('.post');
+    return [p?.querySelector('.no')?.textContent, p?.querySelector('.pord')?.textContent || ''];
+  }));
+  R.eq('발표 순서대로 — 트랙마다 낸 팀이 맨 앞 · 발표 1', firsts, [['12', '발표 1'], ['03', '발표 1']]);
+  R.match('트랙 머리에 발표 순서 안내', await text(page, '#list .trk-hd'), /발표 순서대로 · 마지막 제출이 늦은 팀부터 · 마감 때 확정/);
   R.eq('주소창에서 토큰을 지운다', await page.evaluate(() => location.hash), '');
   R.eq('열람 링크로 들어오면 공개 현황판은 감춘다', await page.locator('#pub').isHidden(), true);
   R.eq('팀 카드 20장', await page.locator('#list .post').count(), 20);
@@ -369,11 +375,11 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   R.match('보는 창에 팀과 파일 이름', await text(page, '.rv-bar'), /03팀 · 분실물 찾기 지도[\s\S]*team03_발표_v2_/);
   await shot(page, 'e2e-judge-2-viewer');
   await page.keyboard.press('ArrowRight');
-  await page.waitForFunction(() => /^04팀/.test(document.getElementById('rv-title').textContent));
-  R.eq('→ 로 다음 팀 (평가 칸도 그 팀 것으로)', await page.evaluate(() => [!!document.querySelector('#rv-side form.jscore[data-no="04"]'), !!document.querySelector('#card-03 form.jscore')]), [true, true]);
+  await page.waitForFunction(() => /^01팀/.test(document.getElementById('rv-title').textContent));   // 발표 순서: 03(낸 팀) → 01 → 02 → 04 …
+  R.eq('→ 로 발표 순서상 다음 팀 (평가 칸도 그 팀 것으로)', await page.evaluate(() => [!!document.querySelector('#rv-side form.jscore[data-no="01"]'), !!document.querySelector('#card-03 form.jscore')]), [true, true]);
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.getElementById('review').hidden);
-  R.eq('Esc 로 닫히고 평가 칸은 제자리로', await page.evaluate(() => [!!document.querySelector('#card-04 form.jscore'), document.querySelectorAll('.jghost').length]), [true, 0]);
+  R.eq('Esc 로 닫히고 평가 칸은 제자리로', await page.evaluate(() => [!!document.querySelector('#card-01 form.jscore'), document.querySelectorAll('.jghost').length]), [true, 0]);
 
   // 프로그램 받기
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#card-12 [data-act="get"]')]);
@@ -424,6 +430,18 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   await shot(st, 'e2e-judge-3-staff');
   R.eq('화면 오류 없음', st.errs, []);
   await st.context().close();
+
+  // 제출 마감(10:00) + 유예(5분)가 지나면 공개 현황판 맨 위에 발표 순서 (확정)
+  w.at('2026-11-14T10:06:00+09:00');
+  const pb = await newPage(browser);
+  await pb.goto(SITE + '/judge/');
+  await pb.waitForSelector('#pub-order .porder li');
+  R.match('공개 현황판: 마감 뒤 발표 순서 · 확정', await text(pb, '#pub-order'), /발표 순서[\s\S]*마지막 제출이 늦은 팀부터 · 확정[\s\S]*해커톤[\s\S]*1\s*12팀[\s\S]*구현과제[\s\S]*1\s*03팀/);
+  R.eq('안 낸 팀은 맨 뒤에 흐리게 · 제출 없음', await pb.locator('#pub-order li.none').count(), 18);
+  R.eq('발표 순서가 제출 · 투표 현황보다 위', await pb.$eval('#pub', (el) => el.firstElementChild.id), 'pub-order');
+  await shot(pb, 'e2e-judge-4-order');
+  R.eq('화면 오류 없음 (공개 현황판)', pb.errs, []);
+  await pb.context().close();
 });
 
 /* ---------------------------------------------------------------- */
@@ -562,6 +580,22 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
   await page.waitForSelector('form.jscore');
   R.eq('다시 열어도 내가 낸 점수가 채워져 있다', await page.inputValue(`${f} input[name="arch"]`), '22.75');
   await shot(page, 'e2e-score-1-judge');
+
+  // 마감 전에는 다른 팀이 낼 때마다 발표 순서가 바뀐다 — 입력 중이던(저장 전) 점수는 그대로 남아야 한다
+  const h = 'form.jscore[data-no="12"]';
+  await page.fill(`${h} input[name="idea"]`, '19');
+  await page.fill(`${h} textarea[name="comment"]`, '적는 중');
+  await page.focus(`${h} input[name="idea"]`);
+  w.b.post({ action: 'info.save', idToken: w.account('b1@x.com', '201', '사아자'), data: { title: '순서를 바꾸는 팀' } });
+  await page.evaluate(() => document.getElementById('reload').click());   // 저절로 새로 읽는 것처럼 (커서를 옮기지 않고)
+  await page.waitForFunction(() => document.querySelector('#list .trk .jrow')?.getAttribute('data-no') === '12');
+  R.eq('순서가 바뀌어 12팀이 해커톤 맨 앞 (발표 1)', await text(page, '#card-12 .pord'), '발표 1');
+  R.eq('입력 중이던 점수 · 코멘트가 그대로 · 커서도 그 칸에',
+    [await page.inputValue(`${h} input[name="idea"]`), await page.inputValue(`${h} textarea[name="comment"]`), await page.evaluate(() => document.activeElement?.closest('form')?.getAttribute('data-no'))],
+    ['19', '적는 중', '12']);
+  R.match('저장하지 않았다는 표시도 그대로', await text(page, `${h} [data-state]`), /저장하지 않은 내용/);
+  await page.fill(`${h} input[name="idea"]`, '');
+  await page.fill(`${h} textarea[name="comment"]`, '');
 
   // 제출 마감(10:00)이 지나면 그 자리에 심사 마감(14:25)이 보이고, 14:25 가 지나면 입력 칸이 저절로 닫힌다
   w.at('2026-11-14T14:24:50+09:00');
