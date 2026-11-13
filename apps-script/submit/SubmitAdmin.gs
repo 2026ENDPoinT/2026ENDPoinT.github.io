@@ -371,13 +371,14 @@ function extraAccounts_() {
 function viewerNew() {
   fresh_();
   var ui = ui_();
+  // 토큰은 시트 메뉴의 창에서만 보여 준다. 편집기에서 실행하면 실행 기록(스크립트 편집자 모두가 볼 수 있다)에 남으므로 만들지 않는다
+  if (!ui) return say_('시트의 메뉴 "제출 관리 → ③ 열람 토큰 만들기" 에서 실행해 주세요. 토큰은 그 창에서만 보여 줍니다.');
   var salt = voteSalt_();                       // 토큰 · 검증값에 섞는 비밀값 (잠그기 전에)
   var t = table_('view', true), c = t.col, todo = [];
   t.rows.forEach(function (row, i) {
     if (str_(row[c['이름']]) && !str_(row[c['토큰 해시']])) todo.push(i);
   });
   if (!todo.length) {
-    if (!ui) return say_('`열람` 탭에 이름을 적은 뒤 다시 실행해 주세요.');
     var r = ui.prompt('열람 토큰 만들기',
       '받을 사람의 이름을 쉼표로 적어 주세요. 사람마다 그 이름을 넣어 만든 토큰이 하나씩 나옵니다.\n' +
       '예) 홍길동 교수님, 김철수 교수님\n\n' +
@@ -414,7 +415,6 @@ function viewerNew() {
 
   var esc = function (s) { return String(s).replace(/[&<>"']/g, function (ch) { return '&#' + ch.charCodeAt(0) + ';'; }); };
   var text = links.map(function (l) { return l.name + ' (' + l.role + ')\n토큰: ' + l.key + '\n링크: ' + l.url; }).join('\n\n');
-  if (!ui) { Logger.log(text); return links; }
   // 사람마다 따로 복사할 수 있게 한 칸씩
   var boxes = links.map(function (l, i) {
     return '<div style="border:1px solid #ddd;padding:10px 12px;margin:0 0 10px">' +
@@ -493,7 +493,7 @@ function doctor() {
   ok(admins_().length > 0, '운영진 계정(스크립트 속성 ADMINS): ' + admins_().length + '명' + (admins_().length ? '' : ' — 없으면 대신 올리기를 쓸 수 없습니다'));
   var vs = viewers_(), judgeN = Object.keys(vs).filter(function (h) { return vs[h].role === '심사위원'; }).length;
   ok(true, '열람 토큰: ' + Object.keys(vs).length + '개 사용 중 (심사위원 ' + judgeN + '명)');
-  try { ok(true, '심사 시트: ' + scoreSs_().getName() + ' · 심사 ' + (scoreState_() === 'closed' ? '마감됨' : '받는 중')); }
+  try { ok(true, '심사 시트: ' + scoreSs_().getName() + ' · 심사 ' + (scoreState_() === 'closed' ? '마감됨' : '받는 중') + (scoreUntil_() ? ' (마감 ' + kst_(scoreUntil_()).slice(5, 16) + ')' : '')); }
   catch (e9) { ok(false, '심사 시트 — ' + String(e9.message || e9)); }
   var d = deadlineMs_();
   ok(d > 0, '마감: ' + (d ? kst_(d) + ' (서울), 유예 ' + graceMin_() + '분' : '없음') + ' · 지금 단계: ' + phase_());
@@ -501,7 +501,7 @@ function doctor() {
   try {
     voteSalt_();                               // 없으면 지금 만든다 (투표 검증에 쓰는 비밀값)
     lines.push('· 인기투표: ' + voteTally_().map(function (x) {
-      return x.name + ' ' + ({ ready: '열기 전', open: '받는 중', closed: '마감' }[x.state]) + ' (' + x.voters + '명 · ' + x.votes + '표' + (x.bad ? ' · 검증 실패 ' + x.bad : '') + ')';
+      return x.name + ' ' + ({ ready: '열기 전', open: '받는 중', closed: '마감' }[x.state]) + ' ' + winText_(x) + ' (' + x.voters + '명 · ' + x.votes + '표' + (x.bad ? ' · 검증 실패 ' + x.bad : '') + ')';
     }).join(' / ') + ' · 1인 ' + voteMax_() + '표' + (voteSelf_() ? ' · 자기 팀 가능' : ''));
   } catch (e6) {}
   var url = '';
@@ -626,7 +626,7 @@ function voteReport() {
   fresh_();
   var res = voteTally_();
   var text = res.map(function (x) {
-    var head = '[' + x.name + '] ' + ({ ready: '열기 전', open: '받는 중', closed: '마감' }[x.state]) +
+    var head = '[' + x.name + '] ' + ({ ready: '열기 전', open: '받는 중', closed: '마감' }[x.state]) + ' ' + winText_(x) +
       ' · 투표한 사람 ' + x.voters + ' / ' + x.eligible + '명 · 전체 ' + x.votes + '표 · 팀당 평균 ' + x.mean + '표 (만점 기준 ' + x.full + '표)' +
       (x.bad ? '\n  ! 검증이 맞지 않아 세지 않은 표 ' + x.bad + '장 — `투표` 탭이 손으로 고쳐졌을 수 있습니다' : '');
     var rows = x.rows.slice().sort(function (p, q) { return q.votes - p.votes || (p.no < q.no ? -1 : 1); }).map(function (r) {
@@ -634,7 +634,13 @@ function voteReport() {
     });
     return head + '\n' + rows.join('\n');
   }).join('\n\n');
-  say_('인기투표 결과\n\nP = 15 × √min(1, 득표 / (2 × 트랙 평균))\n\n' + text);
+  say_('인기투표 결과\n\nP = ' + popMax_() + ' × √min(1, 득표 / (' + popFull_() + ' × 트랙 평균))\n\n' + text);
+}
+
+/** 투표 시간 '11-14 12:12 – 12:27' (운영진이 옮겼으면 '· 바꿈') */
+function winText_(x) {
+  var f = x.from ? kst_(x.from).slice(5, 16) : '…', u = x.until ? kst_(x.until).slice(11, 16) : '…';
+  return f + ' – ' + u + (x.custom ? ' · 바꿈' : '');
 }
 
 function ui_() { try { return SpreadsheetApp.getUi(); } catch (e) { return null; } }

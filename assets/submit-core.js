@@ -24,6 +24,7 @@
   // (로컬에서는 ?pending=1 로 그 모습을 볼 수 있다)
   var PENDING = LOCAL ? /[?&]pending=1/.test(loc.search || '') : (!CFG.ENDPOINT || !CFG.CLIENT_ID);
   var MB = 1024 * 1024;
+  var SAFE_MIME = /^(application\/pdf|video\/(mp4|quicktime|webm))$/i;
 
   /* ------------------------------ 작은 도구 ------------------------------ */
   function esc(s) {
@@ -94,6 +95,7 @@
     TEAM_FULL: '이 팀이 올려 둘 수 있는 전체 용량을 넘었습니다. 운영진에게 알려 주세요.',
     AUTH_BUSY: '지금 로그인 확인이 몰려 있습니다. 잠시 뒤에 다시 시도해 주세요.',
     VOTE_NOT_OPEN: '아직 이 트랙의 투표가 열리지 않았습니다.',
+    VOTE_NOT_READY: '이미 열렸거나 시작 시각이 정해지지 않은 트랙입니다.',
     VOTE_CLOSED: '이 트랙의 투표가 마감되었습니다.',
     VOTE_TOO_MANY: '한 사람이 낼 수 있는 표보다 많이 골랐습니다.',
     VOTE_DUP: '같은 팀을 두 번 고를 수 없습니다.',
@@ -581,7 +583,10 @@
         });
       }
       return Promise.all([worker(), worker()]).then(function () {
-        return { blob: new Blob(parts, { type: first.mime || 'application/octet-stream' }), name: first.name, size: size, md5: first.md5 };
+        // 화면 안에서 여는 것은 PDF · 영상뿐이다. 그 밖의 형식(특히 HTML · SVG)은 이 사이트 주소로 열리면 스크립트가 돌 수 있으므로
+        // 형식을 지워 내려받기로만 다룬다 — 참가자가 올린 파일이 심사위원 화면의 토큰을 읽지 못하게.
+        var type = SAFE_MIME.test(String(first.mime || '')) ? first.mime : 'application/octet-stream';
+        return { blob: new Blob(parts, { type: type }), name: first.name, size: size, md5: first.md5 };
       });
     });
   }
@@ -691,6 +696,7 @@
     var CRIT = [{ key: 'idea', name: '문제 정의 · 아이디어', max: 25 }, { key: 'done', name: '완성도', max: 25 },
                 { key: 'ux', name: '사용자 경험', max: 25 }, { key: 'arch', name: '구조적 이해', max: 25 }];
     var SM = {}, SCORING = 'open', STAFF = LOCAL && /[?&]staff=1/.test(loc.search || '');
+    var SCORE_UNTIL0 = Date.now() + 3 * 3600000, SCORE_UNTIL = SCORE_UNTIL0;
     function scoreRec(s, comment, at) {
       var total = 0, filled = 0;
       CRIT.forEach(function (c) { if (s[c.key] !== '' && s[c.key] !== undefined) { total += s[c.key]; filled++; } });
@@ -701,7 +707,7 @@
       var seed = 11, rnd = function () { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
       var votes = {};
       vtally().forEach(function (x) { x.rows.forEach(function (r) { votes[r.no] = r; }); });
-      var tracks = [['A', '구현과제'], ['H', '해커톤']].map(function (x) {
+      var tracks = [['H', '해커톤'], ['A', '구현과제']].map(function (x) {
         var rows = trackTeams(x[0]).map(function (no) {
           var t = teams[no], per = {}, sum = 0, n = 0, cs = {}, comments = [];
           judges.forEach(function (j, ji) {
@@ -721,20 +727,29 @@
         });
         rows.sort(function (a, b) { return ((b.S === null ? -1 : b.S) - (a.S === null ? -1 : a.S)) || (a.no < b.no ? -1 : 1); });
         rows.forEach(function (r, i) { r.rank = r.J === null ? null : i + 1; });
-        return { key: x[0], name: x[1], vote: VS[x[0]], rows: rows };
+        return { key: x[0], name: x[1], vote: vs(x[0]), rows: rows };
       });
       return { judges: judges, tracks: tracks };
     }
 
     // ---- 투표 (미리보기). 로컬에서 ?admin=1 을 붙이면 운영진 화면도 보인다 ----
-    var VS = { A: 'open', H: 'ready' }, VM = { A: [], H: [] }, VC = { A: {}, H: {} };
+    // 해커톤은 지금 열려 있고(10분 뒤 마감), 구현과제는 두 시간 뒤에 열린다 — 실제 서버처럼 시각으로 여닫는다
+    var MIN = 60000, T0 = Date.now();
+    var VW = { H: { from: T0 - 5 * MIN, until: T0 + 10 * MIN }, A: { from: T0 + 120 * MIN, until: T0 + 130 * MIN } };
+    var VW0 = JSON.parse(JSON.stringify(VW)), VM = { A: [], H: [] }, VC = { A: {}, H: {} };
+    function vs(key) {
+      var w = VW[key], n = Date.now();
+      if (!w) return '';
+      if (w.from && n >= w.from && (!w.until || n < w.until)) return 'open';
+      return w.from && w.until && n >= w.until ? 'closed' : 'ready';
+    }
     var vadmin = LOCAL && /[?&]admin=1/.test(loc.search || '');
     function tk(no) { return Number(no) <= 10 ? 'A' : 'H'; }
     function trackTeams(key) { return Object.keys(teams).filter(function (no) { return tk(no) === key; }).sort(); }
     var others = (function () {                // 다른 참가자 41명이 이미 낸 표 (볼 때마다 같은 모양이 되게)
       var n = {}, seed = 7;
       function rnd(k) { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % k; }
-      ['A', 'H'].forEach(function (key) {
+      ['H', 'A'].forEach(function (key) {
         for (var p = 0; p < 41; p++) {
           var pool = trackTeams(key).filter(function (no) { return no !== (key === 'A' ? '0' + (1 + p % 10) : String(11 + p % 10)); });
           for (var k = 0; k < 3; k++) { var no = pool.splice(rnd(pool.length), 1)[0]; n[no] = (n[no] || 0) + 1; }
@@ -743,15 +758,17 @@
       return n;
     })();
     function vtally() {
-      return [['A', '구현과제'], ['H', '해커톤']].map(function (x) {
+      return [['H', '해커톤'], ['A', '구현과제']].map(function (x) {
         var key = x[0], nos = trackTeams(key), cnt = {}, V = 0;
-        if (VS[key] !== 'ready') nos.forEach(function (no) { cnt[no] = others[no] || 0; });
+        if (vs(key) !== 'ready') nos.forEach(function (no) { cnt[no] = others[no] || 0; });
         VM[key].forEach(function (no) { cnt[no] = (cnt[no] || 0) + 1; });
         nos.forEach(function (no) { V += cnt[no] || 0; });
         var mean = V / nos.length;
         return {
-          key: key, name: x[1], state: VS[key], votes: V, teams: nos.length, mean: Math.round(mean * 100) / 100, full: Math.round(2 * mean * 100) / 100,
-          voters: (VS[key] !== 'ready' ? 41 : 0) + (VM[key].length ? 1 : 0), eligible: 66, bad: 0,
+          key: key, name: x[1], state: vs(key), from: VW[key].from, until: VW[key].until,
+          custom: VW[key].from !== VW0[key].from || VW[key].until !== VW0[key].until, popMax: 15, popFull: 2,
+          votes: V, teams: nos.length, mean: Math.round(mean * 100) / 100, full: Math.round(2 * mean * 100) / 100,
+          voters: (vs(key) !== 'ready' ? 41 : 0) + (VM[key].length ? 1 : 0), eligible: 66, bad: 0,
           rows: nos.map(function (no) {
             var v = cnt[no] || 0;
             return { no: no, title: teams[no].title, votes: v, p: mean > 0 ? Math.round(15 * Math.sqrt(Math.min(1, v / (2 * mean))) * 100) / 100 : 0 };
@@ -832,7 +849,7 @@
           return r;
         }
         case 'view.list': {
-          var tracks = [{ name: '구현과제', teams: [] }, { name: '해커톤', teams: [] }];
+          var tracks = [{ name: '해커톤', teams: [] }, { name: '구현과제', teams: [] }];
           var sum = { teams: 0, complete: 0, deck: 0, product: 0, title: 0 };
           Object.keys(teams).sort().forEach(function (no) {
             var s = teams[no];
@@ -841,10 +858,10 @@
             if (s.deck) sum.deck++;
             if (s.url || s.program) sum.product++;
             if (complete(s)) sum.complete++;
-            tracks[s.track === '해커톤' ? 1 : 0].teams.push(out(s, 'judge'));
+            tracks[s.track === '해커톤' ? 0 : 1].teams.push(out(s, 'judge'));
           });
           r.role = STAFF ? '운영진' : '심사위원'; r.name = '미리보기'; r.summary = sum; r.tracks = tracks;
-          r.criteria = CRIT; r.scoring = SCORING; r.mine = JSON.parse(JSON.stringify(SM));
+          r.criteria = CRIT; r.scoring = SCORING; r.scoreUntil = SCORE_UNTIL; r.mine = JSON.parse(JSON.stringify(SM));
           return r;
         }
         case 'score.save': {
@@ -864,19 +881,23 @@
         }
         case 'score.summary': {
           var ds = demoSummary();
-          r.name = '미리보기'; r.role = '운영진'; r.criteria = CRIT; r.weight = 0.85; r.scoring = SCORING; r.judges = ds.judges; r.tracks = ds.tracks;
+          r.name = '미리보기'; r.role = '운영진'; r.criteria = CRIT; r.weight = 0.85; r.popMax = 15; r.scoring = SCORING; r.judges = ds.judges; r.tracks = ds.tracks;
+          r.scoreUntil = SCORE_UNTIL; r.scoreCustom = SCORE_UNTIL !== SCORE_UNTIL0;
           return r;
         }
         case 'score.state':
-          SCORING = b.op === 'close' ? 'closed' : 'open';
-          r.scoring = SCORING;
+          if (b.op === 'close') { SCORING = 'closed'; SCORE_UNTIL = Date.now(); }
+          else if (b.op === 'open') { SCORING = 'open'; SCORE_UNTIL = Date.now() + 10 * 60000; }
+          else { SCORING = 'open'; SCORE_UNTIL = SCORE_UNTIL0; }
+          r.scoring = SCORING; r.scoreUntil = SCORE_UNTIL; r.scoreCustom = SCORE_UNTIL !== SCORE_UNTIL0;
           return r;
         case 'vote.me':
           r.email = 'member@demo'; r.admin = vadmin; r.max = 3; r.self = false;
           r.me = { team: '03', track: '구현과제', trackKey: 'A', name: '이서연' };
-          r.tracks = [['A', '구현과제'], ['H', '해커톤']].map(function (x) {
+          r.tracks = [['H', '해커톤'], ['A', '구현과제']].map(function (x) {
             return {
-              key: x[0], name: x[1], state: VS[x[0]], mine: VM[x[0]].slice(), codes: JSON.parse(JSON.stringify(VC[x[0]])),
+              key: x[0], name: x[1], state: vs(x[0]), from: VW[x[0]].from, until: VW[x[0]].until,
+              mine: VM[x[0]].slice(), codes: JSON.parse(JSON.stringify(VC[x[0]])),
               teams: trackTeams(x[0]).map(function (no) { var s = teams[no]; return { no: no, title: s.title, desc: s.desc, url: s.url }; })
             };
           });
@@ -884,8 +905,8 @@
           return r;
         case 'vote.submit': {
           var key = b.track, pick = (b.teams || []).map(String);
-          if (!VS[key]) return { ok: false, error: 'BAD_TRACK' };
-          if (VS[key] !== 'open') return { ok: false, error: VS[key] === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN' };
+          if (!vs(key)) return { ok: false, error: 'BAD_TRACK' };
+          if (vs(key) !== 'open') return { ok: false, error: vs(key) === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN' };
           if (!pick.length) return { ok: false, error: 'VOTE_EMPTY' };
           if (pick.length > 3) return { ok: false, error: 'VOTE_TOO_MANY' };
           if (pick.indexOf('03') !== -1) return { ok: false, error: 'VOTE_SELF' };
@@ -894,12 +915,18 @@
           r.track = key; r.mine = VM[key].slice(); r.codes = JSON.parse(JSON.stringify(VC[key]));
           return r;
         }
-        case 'vote.admin':
+        case 'vote.admin': {
           if (!vadmin) return { ok: false, error: 'NOT_ADMIN' };
-          if (!VS[b.track]) return { ok: false, error: 'BAD_TRACK' };
-          VS[b.track] = b.op === 'open' ? 'open' : 'closed';
-          r.track = b.track; r.state = VS[b.track]; r.tally = vtally();
+          var w = VW[b.track], now = Date.now();
+          if (!w) return { ok: false, error: 'BAD_TRACK' };
+          if (b.op === 'open') { if (!w.from || w.from > now) w.from = now; if (w.until && w.until <= now + MIN) w.until = now + 10 * MIN; }
+          else if (b.op === 'close') w.until = now;
+          else if (b.op === 'extend') w.until += 5 * MIN;
+          else if (b.op === 'delay') { w.from += 5 * MIN; w.until += 5 * MIN; }
+          else if (b.op === 'auto') VW[b.track] = JSON.parse(JSON.stringify(VW0[b.track]));
+          r.track = b.track; r.state = vs(b.track); r.tally = vtally();
           return r;
+        }
         default:
           return { ok: false, error: 'UNKNOWN_ACTION' };
       }

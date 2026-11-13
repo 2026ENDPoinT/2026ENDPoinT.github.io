@@ -312,7 +312,7 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   w.b.post({ action: 'info.save', idToken: a1, data: { title: '분실물 찾기 지도', desc: '<b>굵게</b> & "따옴표"', url: 'https://team03.example.app', video: 'https://youtu.be/abc' } });
   up(a1, 'deck', 'old.pdf', pdf(1000, 1)); up(a1, 'deck', 'final.pdf', deck);
   w.b.post({ action: 'info.save', idToken: b1, data: { title: '코드 리뷰 도우미' } });
-  up(b1, 'program', 'app.zip', zip);
+  const zipId = up(b1, 'program', 'app.zip', zip).state.program.id;
   const judgeKey = w.b.viewer('김교수', '심사위원'), staffKey = w.b.viewer('운영 담당', '운영진');
 
   const page = await newPage(browser);
@@ -358,6 +358,12 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   // 프로그램 받기
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#card-12 [data-act="get"]')]);
   R.eq('프로그램 파일을 받는다', md5hex(readFileSync(await dl.path())), md5hex(zip));
+  // 색인의 형식이 HTML 로 바뀌어 있어도(누가 시트를 고쳤거나) 이 사이트 주소에서 HTML 로 열리지 않는다 — 토큰을 읽는 스크립트가 돌 수 없게
+  const ft = w.b.tab('파일'), fh = ft.cells[0];
+  ft.cells.forEach((row, i) => { if (i && Number(row[fh.indexOf('번호')]) === zipId) row[fh.indexOf('형식')] = 'text/html'; });
+  w.b.run('cacheClear');
+  const type = await page.evaluate(async ([k, id]) => (await EP.download(id, { key: k })).blob.type, [judgeKey, zipId]);
+  R.eq('받은 파일의 형식은 PDF · 영상이 아니면 내려받기 전용(octet-stream)', type, 'application/octet-stream');
   // 이전 자료
   await page.click('#card-03 [data-act="hist"]');
   R.match('이전 자료를 펼쳐 볼 수 있다', await text(page, '#card-03 .old'), /team03_발표_v1_/);
@@ -422,14 +428,16 @@ await scenario('휴대폰 화면', async (w) => {
 });
 
 /* ---------------------------------------------------------------- */
-await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3표 · 운영진이 열고 닫는다', async (w) => {
+await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3표 · 시간표대로 · 운영진이 열고 닫는다', async (w) => {
   const opTok = w.account('op@x.com', '900', '운영진');
   const op = await newPage(browser);
   await op.goto(SITE + '/judge/vote/');
   await op.waitForSelector('#fake-gsi');
   await login(op, opTok);
   await op.waitForSelector('#admin:not([hidden])');
-  R.match('운영진에게는 트랙별 열기 버튼이 보인다', await text(op, '#admin'), /구현과제[\s\S]*투표 열기[\s\S]*해커톤[\s\S]*투표 열기/);
+  R.match('운영진에게는 발표 순서(해커톤 → 구현과제)로 시간표의 투표 시간과 버튼이 보인다', await text(op, '#admin'),
+    /해커톤[\s\S]*12:12 – 12:27[\s\S]*지금 열기[\s\S]*5분 늦추기[\s\S]*구현과제[\s\S]*14:15 – 14:25[\s\S]*지금 열기/);
+  R.match('머리에는 해커톤이 먼저, 여는 시각과 함께', await text(op, '#h-H'), /12:12 시작/);
 
   const out = await newPage(browser);
   await out.goto(SITE + '/judge/vote/');
@@ -445,12 +453,13 @@ await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3�
   await page.waitForSelector('#fake-gsi');
   await login(page, w.account('a1@x.com', '101', '가나다'));
   await page.waitForSelector('.vcard');
-  R.match('열기 전에는 안내만 보인다', await text(page, '#ballot'), /발표가 끝나면 투표가 열립니다/);
+  await page.click('[data-tab="A"]');
+  R.match('열기 전에는 여는 시각만 보인다', await text(page, '#ballot'), /구현과제 투표는 14:15에 열립니다/);
   R.eq('열기 전에는 고르기 단추가 없다', await page.locator('.vcard .pick').count(), 0);
 
   op.once('dialog', (d) => d.accept());
   await op.click('[data-act="admin"][data-op="open"][data-track="A"]');
-  await op.waitForFunction(() => /투표 중/.test(document.querySelector('#h-A')?.textContent || ''));
+  await op.waitForFunction(() => /투표 중 · 14:25까지/.test(document.querySelector('#h-A')?.textContent || ''));
   await page.waitForSelector('.vcard .pick', { timeout: 45000 });
   R.check('운영진이 열면 참가자 화면이 저절로 바뀐다 (새로 고치지 않아도)', true);
   R.eq('우리 팀(03)은 고를 수 없다', await page.locator('.vcard[data-no="03"] .pick').count(), 0);
@@ -470,7 +479,7 @@ await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3�
   page.once('dialog', (d) => d.accept());                    // 2팀만 골랐다는 확인
   await page.click('[data-act="submit"]');
   await page.waitForFunction(() => document.querySelectorAll('.vcard .code').length === 2);
-  const tally = () => w.b.post({ action: 'vote.me', idToken: opTok }).tally[0];
+  const tally = () => w.b.post({ action: 'vote.me', idToken: opTok }).tally.find((t) => t.key === 'A');
   R.eq('다시 내면 마지막 투표지만 센다', tally().rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['01', 1], ['02', 1]]);
   R.eq('한 사람으로 센다', tally().voters, 1);
 
@@ -487,6 +496,16 @@ await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3�
   R.eq('마감 뒤에 보내도 서버가 거절한다', late, 'VOTE_CLOSED');
   const forged = await page.evaluate(async () => (await EP.api('vote.admin', { track: 'A', op: 'open' })).error);
   R.eq('참가자가 화면을 고쳐 열려고 해도 거절한다', forged, 'NOT_ADMIN');
+
+  // 시간표의 투표 시간이 되면 운영진이 누르지 않아도 열린다 (화면도 그 시각에 저절로 새로 읽는다)
+  w.at('2026-11-14T12:11:56+09:00');
+  await page.reload();
+  await page.waitForSelector('.vcard');
+  await page.click('[data-tab="H"]');
+  R.match('해커톤은 12:12 에 열린다고 보인다', await text(page, '#ballot'), /해커톤 투표는 12:12에 열립니다/);
+  await page.waitForSelector('.vcard .pick', { timeout: 25000 });
+  R.match('12:12 가 되면 저절로 열린다', await text(page, '#h-H'), /투표 중 · 12:27까지/);
+  R.eq('다른 트랙의 팀은 우리 팀이 아니므로 모두 고를 수 있다', await page.locator('.vcard .pick').count(), 10);
   R.eq('화면 오류 없음', [...page.errs, ...op.errs], []);
   await page.context().close();
   await op.context().close();
@@ -521,6 +540,19 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
   R.eq('다시 열어도 내가 낸 점수가 채워져 있다', await page.inputValue(`${f} input[name="arch"]`), '22.75');
   await shot(page, 'e2e-score-1-judge');
 
+  // 제출 마감(10:00)이 지나면 그 자리에 심사 마감(14:25)이 보이고, 14:25 가 지나면 입력 칸이 저절로 닫힌다
+  w.at('2026-11-14T14:24:50+09:00');
+  await page.reload();
+  await page.waitForSelector('form.jscore');
+  R.match('심사 마감 시각과 남은 시간', await page.locator('#s-deadline').locator('xpath=..').innerText(), /심사 마감[\s\S]*14:25 · 0:00:\d\d 남음/);
+  await page.evaluate(() => { window.__t0 = Date.now(); });
+  w.at('2026-11-14T14:25:00+09:00');
+  await page.waitForFunction(() => document.querySelector('form.jscore input[name="idea"]')?.disabled, null, { timeout: 30000 });
+  R.match('14:25 가 지나면 새로 고치지 않아도 닫힌다', await text(page, `${f} [data-state]`), /심사가 마감되었습니다/);
+  w.at('2026-11-14T13:00:00+09:00');                         // 아래 종합 화면은 마감 전 시각으로
+  await page.reload();
+  await page.waitForSelector('form.jscore');
+
   // 다른 교수님 한 분 더 (서버로 바로)
   w.b.post({ action: 'score.save', key: prof2, team: '03', scores: { idea: 20, done: 20, ux: 20, arch: 20 }, comment: '데모가 좋았습니다' });
 
@@ -533,6 +565,8 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
   const sp = await newPage(browser);
   await sp.goto(SITE + '/judge/score/#k=' + staffKey);
   await sp.waitForSelector('tr.row');
+  R.match('종합도 발표 순서대로 해커톤 탭이 먼저', await text(sp, '#tabs'), /^해커톤[\s\S]*구현과제/);
+  await sp.click('[data-tab="A"]');
   const r03 = sp.locator('tr.row[data-no="03"]');
   R.match('종합: 교수님별 합계(이름순) · 평균 J · 최종 S', await r03.innerText(), /82\.50[\s\S]*80\.00[\s\S]*81\.25[\s\S]*69\.06/);
   R.match('1등', await r03.innerText(), /^1/);

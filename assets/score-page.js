@@ -73,8 +73,18 @@
     d.tracks.forEach(function (tr) { tr.rows.forEach(function (r) { teams++; Object.keys(r.judges).forEach(function (id) { if (r.judges[id].complete) done++; }); }); });
     $('s-judges').textContent = d.judges.length + '명';
     $('s-prog').textContent = done + ' / ' + (d.judges.length * teams) + '건';
-    $('s-state').innerHTML = d.scoring === 'closed' ? '마감됨' : '<span style="color:var(--blue)">받는 중</span>';
+    var until = d.scoreUntil ? EP.fmtTime(d.scoreUntil).slice(6) : '';
+    $('s-state').innerHTML = d.scoring === 'closed' ? '마감됨' + (until ? ' · ' + until : '')
+      : '<span style="color:var(--blue)">받는 중</span>' + (until ? ' · ' + until + '까지' : '');
     $('lock').textContent = d.scoring === 'closed' ? '심사 다시 열기' : '심사 마감';
+    var auto = $('lock-auto');
+    if (d.scoreCustom && !auto) {
+      auto = document.createElement('button');
+      auto.id = 'lock-auto'; auto.type = 'button'; auto.className = 'chipbtn'; auto.textContent = '시간표대로';
+      $('lock').parentNode.insertBefore(auto, $('reload'));
+      auto.addEventListener('click', function () { lockOp('auto'); });
+    }
+    if (auto) auto.hidden = !d.scoreCustom;
 
     if (!st.tab || !d.tracks.some(function (t) { return t.key === st.tab; })) st.tab = d.tracks[0] ? d.tracks[0].key : '';
     $('tabs').innerHTML = d.tracks.map(function (tr) {
@@ -83,7 +93,7 @@
         '<span class="cnt">' + n + '/' + tr.rows.length + '</span></button>';
     }).join('');
     $('when').textContent = EP.fmtTime(d.now).slice(6) + ' 기준';
-    $('formula').innerHTML = '최종 <b>S = ' + d.weight + ' × J + P</b> · J = 4문항을 모두 채운 심사위원 점수의 평균 (100점) · P = 인기투표 참가자 점수 (15점) · 동점이면 J → 구조적 이해 평균 순';
+    $('formula').innerHTML = '최종 <b>S = ' + d.weight + ' × J + P</b> · J = 4문항을 모두 채운 심사위원 점수의 평균 (100점) · P = 인기투표 참가자 점수 (' + (d.popMax || 15) + '점) · 동점이면 J → 구조적 이해 평균 순';
     paint();
   }
 
@@ -159,17 +169,20 @@
   });
   $('reload').addEventListener('click', function () { if (st.d) load(true); });
   $('csv').addEventListener('click', function () { if (st.d) csv(); });
-  $('lock').addEventListener('click', function () {
+  // 마감 · 다시 열기(10분 뒤 저절로 마감) · 시간표대로. 서버는 SCORE_UNTIL 속성에 시각을 적는다
+  function lockOp(op) {
     if (!st.d || st.busy) return;
-    var close = st.d.scoring !== 'closed';
-    if (!window.confirm(close ? '심사를 마감할까요?\n심사위원이 더 고칠 수 없게 됩니다 (다시 열 수 있습니다).' : '심사를 다시 열까요?')) return;
+    var ask = { close: '심사를 지금 마감할까요?\n심사위원이 더 고칠 수 없게 됩니다 (다시 열 수 있습니다).',
+                open: '심사를 다시 열까요?\n10분 뒤 저절로 마감됩니다.', auto: '심사 마감 시각을 시간표대로 되돌릴까요?' }[op];
+    if (!window.confirm(ask)) return;
     st.busy = true;
-    EP.api('score.state', { op: close ? 'close' : 'open' }, { key: st.key, tries: 2 }).then(function (r) {
+    EP.api('score.state', { op: op }, { key: st.key, tries: 2 }).then(function (r) {
       st.busy = false;
-      if (r && r.ok) { EP.toast(close ? '심사를 마감했습니다' : '심사를 다시 열었습니다'); load(true); }
+      if (r && r.ok) { EP.toast({ close: '심사를 마감했습니다', open: '심사를 다시 열었습니다', auto: '시간표대로 되돌렸습니다' }[op]); load(true); }
       else EP.toast(EP.say(r));
     }, function (e) { st.busy = false; EP.toast(EP.say(e)); });
-  });
+  }
+  $('lock').addEventListener('click', function () { if (st.d) lockOp(st.d.scoring !== 'closed' ? 'close' : 'open'); });
 
   setInterval(function () { if (!document.hidden && st.d && Date.now() - st.loadedAt > 30000) load(true); }, 5000);
 

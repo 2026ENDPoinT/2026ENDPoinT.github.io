@@ -234,6 +234,7 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
       getProperties: () => { counts.props++; return { ...store }; },
       getProperty: (k) => { counts.props++; return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
       setProperty: (k, v) => { store[k] = String(v); },
+      deleteProperty: (k) => { delete store[k]; },
       setProperties: (o) => { Object.assign(store, o); },
     }) },
     SpreadsheetApp: {

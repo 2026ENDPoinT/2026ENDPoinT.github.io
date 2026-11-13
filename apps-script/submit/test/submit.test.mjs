@@ -683,9 +683,9 @@ describe('심사위원 · 운영진 현황판', () => {
     assert.equal(r.ok, true);
     assert.equal(r.role, '심사위원');
     assert.equal(r.name, '홍길동 교수님');
-    assert.deepEqual(r.tracks.map((t) => [t.name, t.teams.length]), [['구현과제', 10], ['해커톤', 10]]);
+    assert.deepEqual(r.tracks.map((t) => [t.name, t.teams.length]), [['해커톤', 10], ['구현과제', 10]]);
     assert.deepEqual(r.summary, { teams: 20, complete: 1, deck: 1, product: 1, title: 2 });
-    const t3 = r.tracks[0].teams.find((t) => t.no === '03');
+    const t3 = r.tracks.find((t) => t.name === '구현과제').teams.find((t) => t.no === '03');
     assert.equal(t3.title, '삼팀 서비스');
     assert.equal(t3.complete, true);
     assert.equal(t3.repo, 'https://github.com/2026ENDPoinT/team03');
@@ -702,7 +702,7 @@ describe('심사위원 · 운영진 현황판', () => {
     const b = filled();
     const key = b.viewer('박운영', '운영진');
     const r = b.post({ action: 'view.list', key });
-    const t3 = r.tracks[0].teams.find((t) => t.no === '03');
+    const t3 = r.tracks.find((t) => t.name === '구현과제').teams.find((t) => t.no === '03');
     assert.match(t3.deck.driveUrl, /^https:\/\/drive\.google\.com\/file\/d\//);
     assert.match(t3.folderUrl, /^https:\/\/drive\.google\.com\/drive\/folders\//);
     assert.equal(t3.deck.by, 'a1@x.com');
@@ -732,7 +732,7 @@ describe('심사위원 · 운영진 현황판', () => {
     b.tab('팀').cells.forEach((row, i) => { if (i && row[0] === '03') row[head.indexOf('순서')] = 1; });
     b.run('cacheClear');
     const key = b.viewer('심사');
-    const teams = b.post({ action: 'view.list', key }).tracks[0].teams.map((t) => t.no);
+    const teams = b.post({ action: 'view.list', key }).tracks.find((t) => t.name === '구현과제').teams.map((t) => t.no);
     assert.equal(teams[0], '03');
     assert.equal(teams[1], '01');
   });
@@ -757,7 +757,7 @@ describe('심사위원 · 운영진 현황판', () => {
     assert.deepEqual(['팀', '파일'].map((n) => b.tab(n).reads), before);
     // 새 제출이 생기면 바로 보인다
     upload(b, { idToken: 'tok-b1' });
-    assert.ok(b.post({ action: 'view.list', key }).tracks[1].teams.find((t) => t.no === '12').deck);
+    assert.ok(b.post({ action: 'view.list', key }).tracks.find((t) => t.name === '해커톤').teams.find((t) => t.no === '12').deck);
   });
 });
 
@@ -941,9 +941,16 @@ describe('운영진 메뉴', () => {
   test('열람 링크: 이름을 적어 둔 줄마다 만들고, 시트에는 해시만 남긴다', () => {
     const b = backend();
     b.ss.fill('열람', [['이름', '역할', '토큰 해시', '만든 시각', '만료', '사용', '마지막 접속'], ['홍 교수님', '', '', '', '', '', ''], ['박운영', '운영진', '', '', '', '', '']]);
+    // 편집기에서 실행하면(창이 없으면) 만들지 않는다 — 실행 기록에 토큰이 남지 않게
     b.run('viewerNew');
-    const text = b.logs.at(-1);
-    const keys = [...text.matchAll(/\/judge\/#k=([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
+    assert.match(b.logs.at(-1), /시트의 메뉴/);
+    assert.ok(!b.logs.some((l) => /token_/.test(l)));
+    assert.equal(b.rows('열람')[0]['토큰 해시'], '');
+    let text = '';
+    b.setUi({ ButtonSet: { OK_CANCEL: 1 }, Button: { OK: 'ok' }, alert() {}, showModalDialog: (h) => { text = h.html; },
+              prompt: () => ({ getSelectedButton: () => 'cancel' }) });
+    b.run('viewerNew');
+    const keys = [...text.matchAll(/\/judge\/#k=([A-Za-z0-9_-]+)/g)].map((m) => m[1]).filter((k, i, all) => all.indexOf(k) === i);
     assert.equal(keys.length, 2);
     assert.ok(keys.every((k) => /^token_[A-Za-z0-9_-]{40}$/.test(k)), keys.join(','));
     assert.ok(keys.every((k) => text.includes('토큰: ' + k)));      // 사람마다 토큰과 링크를 따로 보여 준다
@@ -1074,7 +1081,7 @@ describe('참가자 인기투표', () => {
     assert.equal(me.admin, false);
     assert.equal(me.tally, undefined);                         // 결과는 운영진만
     assert.deepEqual(me.me, { team: '03', track: '구현과제', trackKey: 'A', name: '가나다' });
-    assert.deepEqual(me.tracks.map((t) => [t.key, t.name, t.state, t.teams.length, t.mine.length]), [['A', '구현과제', 'ready', 10, 0], ['H', '해커톤', 'ready', 10, 0]]);
+    assert.deepEqual(me.tracks.map((t) => [t.key, t.name, t.state, t.teams.length, t.mine.length]), [['H', '해커톤', 'ready', 10, 0], ['A', '구현과제', 'ready', 10, 0]]);
     assert.ok(!me.tracks.some((t) => t.teams.some((x) => x.no === '00')));   // 연습 팀은 없다
     assert.match(me.sid, /^[A-Za-z0-9_-]{43}$/);                // 발표가 길어도 로그인이 이어지게
     assert.equal(me.max, 3);
@@ -1087,12 +1094,12 @@ describe('참가자 인기투표', () => {
     assert.equal(b.post({ action: 'vote.admin', idToken: 'tok-op', track: 'X', op: 'open' }).error, 'BAD_TRACK');
     assert.equal(b.post({ action: 'vote.admin', idToken: 'tok-op', track: 'A', op: 'wipe' }).error, 'BAD_OP');
     open(b, 'A');
-    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks[0].state, 'open');     // 캐시가 있어도 바로 보인다
-    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks[1].state, 'ready');
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks.find((t) => t.key === 'A').state, 'open');     // 캐시가 있어도 바로 보인다
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks.find((t) => t.key === 'H').state, 'ready');
     assert.equal(vote(b, 'tok-a1', 'A', ['01', '02']).ok, true);
     close(b, 'A');
     assert.equal(vote(b, 'tok-a2', 'A', ['01']).error, 'VOTE_CLOSED');
-    assert.deepEqual(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks[0].mine, ['01', '02']);   // 낸 것은 남는다
+    assert.deepEqual(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks.find((t) => t.key === 'A').mine, ['01', '02']);   // 낸 것은 남는다
     const op = b.post({ action: 'vote.me', idToken: 'tok-op' });
     assert.equal(op.ok, true);                                   // 운영진은 팀원이 아니어도 들어온다 (투표는 못 함)
     assert.equal(op.me, null);
@@ -1128,13 +1135,13 @@ describe('참가자 인기투표', () => {
     assert.equal(vote(b, 'tok-a1', 'A', ['01', '02', '04']).ok, true);
     assert.equal(vote(b, 'tok-a1alt', 'A', ['05', '06']).ok, true);         // 같은 사람(가나다)의 다른 계정
     const me = b.post({ action: 'vote.me', idToken: 'tok-a1' });
-    assert.deepEqual(me.tracks[0].mine, ['05', '06']);
-    const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    assert.deepEqual(me.tracks.find((t) => t.key === 'A').mine, ['05', '06']);
+    const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
     assert.equal(t.voters, 1);                                              // 한 사람
     assert.deepEqual(t.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['05', 1], ['06', 1]]);
     assert.deepEqual(b.rows('투표').map((r) => r['상태']), ['바꿈', '바꿈', '바꿈', '유효', '유효']);
     assert.equal(vote(b, 'tok-a2', 'A', ['05']).ok, true);                  // 같은 팀의 다른 사람은 따로
-    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0].voters, 2);
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A').voters, 2);
   });
 
   test('시트에는 누가 냈는지 남지 않고, 표마다 검증값이 있다 — 대상 팀을 몰래 바꾸면 세지 않는다', () => {
@@ -1149,21 +1156,21 @@ describe('참가자 인기투표', () => {
     assert.ok(!JSON.stringify(b.rows('기록').filter((r) => r['동작'] === 'vote.submit')).match(/0[12]팀|"01"|"02"/));   // 기록에도 대상 팀은 없다
     const rows = b.rows('투표');
     assert.ok(rows.every((r) => /^[0-9a-f]{32}$/.test(r['검증'])));
-    let t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    let t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
     assert.deepEqual([t.rows[0].votes, t.rows[1].votes, t.bad], [2, 1, 0]);
     // 누군가 시트에서 02 를 04 로 바꿨다
     const sh = b.tab('투표'), head = sh.cells[0];
     const r2 = sh.cells.findIndex((row) => row[head.indexOf('대상 팀')] === '02');
     sh.cells[r2][head.indexOf('대상 팀')] = '04';
     b.cache.delete('votes1');
-    t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
     assert.deepEqual([t.rows[1].votes, t.rows[3].votes, t.bad], [0, 0, 1]);   // 02 도 04 도 세지 않고, 검증 실패 1
     assert.equal(t.rows[0].votes, 2);                                          // 나머지는 그대로
     // 줄을 통째로 베껴 한 표를 더 만들어도 (같은 투표지에 같은 팀 두 장) 그 투표지는 세지 않는다
     const copy = [...sh.cells[1]];
     sh.cells.push(copy);
     b.cache.delete('votes1');
-    t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
     assert.equal(t.rows[0].votes, 1);
     assert.ok(t.bad >= 3);
   });
@@ -1182,11 +1189,11 @@ describe('참가자 인기투표', () => {
     vote(b, 'tok-a1', 'A', ['01', '02', '04']);
     vote(b, 'tok-a2', 'A', ['01', '05']);
     vote(b, 'tok-c1', 'A', ['01']);
-    const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];   // 6표 / 10팀 → 평균 0.6, 만점 기준 1.2표
+    const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');   // 6표 / 10팀 → 평균 0.6, 만점 기준 1.2표
     assert.deepEqual([t.votes, t.teams, t.mean, t.full, t.voters, t.eligible], [6, 10, 0.6, 1.2, 3, 6]);
     const p = Object.fromEntries(t.rows.map((r) => [r.no, r.p]));
     assert.deepEqual([p['01'], p['02'], p['04'], p['05'], p['06']], [15, 13.69, 13.69, 13.69, 0]);   // 1표: 15 × √(1 / 1.2)
-    const h = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[1];
+    const h = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'H');
     assert.deepEqual([h.votes, h.mean, h.rows.every((r) => r.p === 0)], [0, 0, true]);    // 표가 없으면 모두 0
   });
 
@@ -1195,7 +1202,7 @@ describe('참가자 인기투표', () => {
     open(b, 'A');
     vote(b, 'tok-a1', 'A', ['01']);
     const staff = b.post({ action: 'view.list', key: b.viewer('운영', '운영진') });
-    assert.equal(staff.votes[0].rows[0].votes, 1);
+    assert.equal(staff.votes.find((t) => t.key === 'A').rows[0].votes, 1);
     const judge = b.post({ action: 'view.list', key: b.viewer('심사') });
     assert.equal(judge.votes, undefined);
   });
@@ -1210,7 +1217,7 @@ describe('참가자 인기투표', () => {
     assert.deepEqual(r1.mine, r2.mine);
     assert.equal(b.rows('투표').length, 2);
     for (const [t, teams] of [['tok-a2', ['01']], ['tok-c1', ['02']], ['tok-c2', ['01', '02', '04']]]) assert.equal(vote(b, t, 'A', teams).ok, true);
-    const tl = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally[0];
+    const tl = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
     assert.deepEqual(tl.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['01', 3], ['02', 3], ['04', 1]]);
     assert.equal(b.isLocked(), false);
     assert.equal(new Set(b.rows('투표').map((r) => r['번호'])).size, b.rows('투표').length);   // 번호가 겹치지 않는다
@@ -1219,7 +1226,7 @@ describe('참가자 인기투표', () => {
   test('운영진이 닫는 순간과 겹친 투표는 잠근 뒤 다시 보고 거절한다', () => {
     const b = vb();
     open(b, 'A');
-    b.prop('VOTE_A', 'closed', false);                       // 다른 실행이 방금 닫았다 (이 실행의 캐시는 아직 open)
+    b.prop('VOTE_A_UNTIL', '2026-11-14T08:00:00+09:00', false);   // 다른 실행이 방금 닫았다 (이 실행의 캐시는 아직 open)
     assert.equal(vote(b, 'tok-a1', 'A', ['01']).error, 'VOTE_CLOSED');
     assert.equal(b.rows('투표').length, 0);
   });
@@ -1390,3 +1397,147 @@ describe('심사위원 평가', () => {
   });
 });
 
+
+describe('시각 컷 (본선 시간표)', () => {
+  const T = { ...TOKENS, 'tok-d1': token('d1@x.com', '701') };
+  function cb(extra = {}) {
+    const b = loadBackend({ props: { ADMINS: 'op@x.com' }, tokens: T, ...extra });
+    b.roster([
+      ['03', '가나다', 'a1@x.com', '101', '조장', ''],
+      ['12', '사아자', 'b1@x.com', '201', '조장', ''],
+      ['15', '마바사', 'd1@x.com', '701', '조장', ''],
+    ]);
+    return b;
+  }
+  const st = (b, key) => b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks.find((t) => t.key === key);
+  const vote = (b, idToken, track, teams) => b.post({ action: 'vote.submit', idToken, track, teams });
+  const admin = (b, track, op) => b.post({ action: 'vote.admin', idToken: 'tok-op', track, op });
+  const ms = (iso) => Date.parse(iso);
+
+  test('화면 순서는 발표 순서대로 해커톤 → 구현과제 (팀 번호는 그대로)', () => {
+    const b = cb();
+    const me = b.post({ action: 'vote.me', idToken: 'tok-a1' });
+    assert.deepEqual(me.tracks.map((t) => [t.key, t.name, t.teams[0].no, t.teams.at(-1).no]), [['H', '해커톤', '11', '20'], ['A', '구현과제', '01', '10']]);
+    assert.deepEqual(me.me, { team: '03', track: '구현과제', trackKey: 'A', name: '가나다' });
+  });
+
+  test('투표는 시간표대로 저절로 열리고 닫힌다 — 해커톤 12:12–12:27, 구현과제 14:15–14:25', () => {
+    const b = cb();
+    b.at('2026-11-14T12:11:59+09:00');
+    assert.deepEqual([st(b, 'H').state, st(b, 'A').state], ['ready', 'ready']);
+    assert.deepEqual([st(b, 'H').from, st(b, 'H').until], [ms('2026-11-14T12:12:00+09:00'), ms('2026-11-14T12:27:00+09:00')]);
+    assert.equal(vote(b, 'tok-a1', 'H', ['12']).error, 'VOTE_NOT_OPEN');
+    b.at('2026-11-14T12:12:00+09:00');
+    assert.equal(st(b, 'H').state, 'open');
+    assert.equal(vote(b, 'tok-a1', 'H', ['12']).ok, true);
+    assert.equal(vote(b, 'tok-a1', 'A', ['01']).error, 'VOTE_NOT_OPEN');     // 구현과제는 아직
+    assert.equal(vote(b, 'tok-b1', 'H', ['12']).error, 'VOTE_SELF');          // 자기 팀에는 못 준다
+    b.at('2026-11-14T12:27:00+09:00');
+    assert.equal(st(b, 'H').state, 'closed');
+    assert.equal(vote(b, 'tok-b1', 'H', ['15']).error, 'VOTE_CLOSED');
+    b.at('2026-11-14T14:15:00+09:00');
+    assert.deepEqual([st(b, 'H').state, st(b, 'A').state], ['closed', 'open']);
+    assert.equal(vote(b, 'tok-b1', 'A', ['03']).ok, true);
+    assert.equal(vote(b, 'tok-a1', 'A', ['03']).error, 'VOTE_SELF');
+    b.at('2026-11-14T14:25:00+09:00');
+    assert.equal(vote(b, 'tok-d1', 'A', ['03']).error, 'VOTE_CLOSED');
+    const tl = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally;      // 낸 표는 그대로 센다
+    assert.deepEqual(tl.map((t) => [t.key, t.votes, t.state]), [['H', 1, 'closed'], ['A', 1, 'closed']]);
+  });
+
+  test('잠금을 기다리는 사이에 마감 시각이 지나도, 마감 전에 들어온 표는 받는다', () => {
+    const b = cb();
+    const at = ms('2026-11-14T12:26:59+09:00');
+    b.at('2026-11-14T12:27:05+09:00');
+    assert.equal(b.ctx.voteState_('H', at), 'open');
+    assert.equal(b.ctx.voteState_('H'), 'closed');
+  });
+
+  test('운영진: 5분 늦추기 · 지금 열기 · 5분 연장 · 마감 · 다시 열기(10분) · 시간표대로', () => {
+    const b = cb();
+    b.at('2026-11-14T12:05:00+09:00');
+    assert.equal(admin(b, 'H', 'extend').error, 'VOTE_NOT_OPEN');            // 열리기 전에는 연장이 없다
+    let r = admin(b, 'H', 'delay');                                           // 발표가 밀린다
+    assert.deepEqual([r.ok, r.from, r.until], [true, ms('2026-11-14T12:17:00+09:00'), ms('2026-11-14T12:32:00+09:00')]);
+    assert.equal(b.store.VOTE_H_FROM, '2026-11-14T12:17:00+09:00');           // 스크립트 속성에 적는다
+    assert.equal(st(b, 'H').state, 'ready');
+    r = admin(b, 'H', 'open');                                                // 일찍 끝났다 — 지금 연다
+    assert.deepEqual([r.state, r.from, r.until], ['open', ms('2026-11-14T12:05:00+09:00'), ms('2026-11-14T12:32:00+09:00')]);
+    assert.equal(admin(b, 'H', 'delay').error, 'VOTE_NOT_READY');
+    assert.equal(admin(b, 'H', 'extend').until, ms('2026-11-14T12:37:00+09:00'));
+    b.at('2026-11-14T12:20:00+09:00');
+    r = admin(b, 'H', 'close');
+    assert.deepEqual([r.state, r.until], ['closed', ms('2026-11-14T12:20:00+09:00')]);
+    assert.equal(vote(b, 'tok-a1', 'H', ['12']).error, 'VOTE_CLOSED');
+    assert.equal(admin(b, 'H', 'close').error, 'VOTE_NOT_OPEN');
+    r = admin(b, 'H', 'open');                                                // 다시 열기 → 10분 뒤 저절로 닫힘
+    assert.deepEqual([r.state, r.until], ['open', ms('2026-11-14T12:30:00+09:00')]);
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'H').custom, true);
+    r = admin(b, 'H', 'auto');                                                // 시간표대로
+    assert.deepEqual([r.from, r.until], [ms('2026-11-14T12:12:00+09:00'), ms('2026-11-14T12:27:00+09:00')]);
+    assert.equal(b.store.VOTE_H_FROM, undefined);
+    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'H').custom, false);
+    assert.ok(b.rows('기록').some((l) => l['동작'] === 'vote.delay' && l['메모'] === '12:17–12:32'));
+    assert.equal(b.post({ action: 'vote.admin', idToken: 'tok-a1', track: 'H', op: 'open' }).error, 'NOT_ADMIN');
+    assert.equal(admin(b, 'H', 'wipe').error, 'BAD_OP');
+  });
+
+  test('스크립트 속성에 손으로 적어도 된다 (서울 시각) · none 이면 그쪽 끝이 없다', () => {
+    const b = cb({ props: { ADMINS: 'op@x.com', VOTE_H_FROM: '2026-11-14 11:00', VOTE_H_UNTIL: 'none' } });
+    b.at('2026-11-14T10:59:00+09:00');
+    assert.equal(st(b, 'H').state, 'ready');
+    b.at('2026-11-14T11:00:00+09:00');
+    assert.equal(st(b, 'H').state, 'open');
+    b.at('2026-11-14T20:00:00+09:00');
+    assert.deepEqual([st(b, 'H').state, st(b, 'H').until], ['open', 0]);    // 마감 시각이 없으면 운영진이 닫을 때까지
+  });
+
+  test('심사 점수는 14:25 에 저절로 마감 · 운영진 다시 열기(10분) · 시간표대로 · 지금 마감', () => {
+    const b = cb();
+    b.run('setup');
+    const k = b.viewer('한 교수님', '심사위원'), op = b.viewer('박운영', '운영진');
+    const save = (team) => b.post({ action: 'score.save', key: k, team, scores: { idea: 20 } });
+    b.at('2026-11-14T14:24:59+09:00');
+    assert.equal(save('03').ok, true);
+    const v = b.post({ action: 'view.list', key: k });
+    assert.deepEqual([v.scoring, v.scoreUntil], ['open', ms('2026-11-14T14:25:00+09:00')]);
+    b.at('2026-11-14T14:25:00+09:00');
+    assert.equal(save('03').error, 'SCORE_CLOSED');
+    assert.equal(b.post({ action: 'view.list', key: k }).scoring, 'closed');
+    assert.equal(b.post({ action: 'score.state', key: k, op: 'open' }).error, 'NOT_STAFF');
+    let r = b.post({ action: 'score.state', key: op, op: 'open' });
+    assert.deepEqual([r.scoring, r.scoreUntil, r.scoreCustom], ['open', ms('2026-11-14T14:35:00+09:00'), true]);
+    assert.equal(save('05').ok, true);
+    b.at('2026-11-14T14:35:00+09:00');
+    assert.equal(save('05').error, 'SCORE_CLOSED');                           // 10분 뒤 저절로
+    r = b.post({ action: 'score.state', key: op, op: 'auto' });
+    assert.deepEqual([r.scoring, r.scoreUntil, r.scoreCustom], ['closed', ms('2026-11-14T14:25:00+09:00'), false]);
+    b.at('2026-11-14T13:00:00+09:00');
+    r = b.post({ action: 'score.state', key: op, op: 'close' });              // 일찍 마감
+    assert.deepEqual([r.scoring, r.scoreUntil], ['closed', ms('2026-11-14T13:00:00+09:00')]);
+    b.post({ action: 'score.state', key: op, op: 'auto' });
+    assert.equal(save('03').ok, true);
+    b.prop('SCORE_CLOSED', 'true');                                           // 예전 마감 버튼이 남긴 값도 마감으로 본다
+    assert.equal(save('03').error, 'SCORE_CLOSED');
+    assert.ok(b.rows('기록').some((l) => l['동작'] === 'score.open' && l['누가'] === '열람:박운영'));
+  });
+
+  test('비중을 바꾸면 참가자 점수 만점도 따라 바뀐다 (JUDGE_WEIGHT · POP_FULL_X)', () => {
+    const b = cb({ props: { ADMINS: 'op@x.com', JUDGE_WEIGHT: '0.8', POP_FULL_X: '1' } });
+    b.at('2026-11-14T12:15:00+09:00');
+    assert.equal(vote(b, 'tok-a1', 'H', ['12']).ok, true);
+    const h = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'H');
+    assert.deepEqual([h.popMax, h.popFull, h.full], [20, 1, 0.1]);
+    assert.equal(h.rows.find((r) => r.no === '12').p, 20);                    // 평균 0.1표의 1배 이상 → 만점 20
+  });
+});
+
+describe('연습용 팀 파일', () => {
+  test('심사위원 토큰으로는 연습용 팀(00) 파일을 받을 수 없다 (운영진은 된다)', () => {
+    const b = backend();
+    const { fin } = upload(b, { idToken: 'tok-op', as: '00' });
+    const id = fin.state.deck.id;
+    assert.equal(b.post({ action: 'file.get', key: b.viewer('심사'), id }).error, 'NOT_FOUND');
+    assert.equal(b.post({ action: 'file.get', key: b.viewer('운영', '운영진'), id }).ok, true);
+  });
+});
