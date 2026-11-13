@@ -18,7 +18,7 @@
 
   var st = {
     mine: {}, jdirty: {},      // 심사위원: 내 점수 · 고치는 중인 팀
-    key: '', data: null, tab: '', only: false, loadedAt: 0, shape: '', sig: {}, open: {},
+    key: '', data: null, tab: '', only: false, loadedAt: 0, shape: '', sig: {}, open: {}, jit: 1000 + Math.floor(Math.random() * 4000), cutSeen: 0,
     blobs: {}, order: [], pending: {}, viewSeq: 0, viewUrl: ''
   };
 
@@ -537,7 +537,17 @@
 
   /* ------------------------------ 시각 · 새로 고침 ------------------------------ */
   function tick() {
-    var dl = st.data ? st.data.deadline : (Date.parse(EP.cfg.DEADLINE) || 0), el = $('s-deadline');
+    var d = st.data, dl = d ? d.deadline : (Date.parse(EP.cfg.DEADLINE) || 0), el = $('s-deadline');
+    // 심사위원 화면: 제출이 마감된 뒤에는 그 자리에 심사 마감(점수를 고칠 수 있는 마지막 시각)을 보인다
+    var cut = d && judgeMode() && d.scoreUntil && (!dl || EP.now() > dl) ? d.scoreUntil : 0;
+    if (el.previousElementSibling) el.previousElementSibling.textContent = cut ? '심사 마감' : '제출 마감';
+    if (cut) {
+      var rest = cut - EP.now();
+      el.textContent = rest > 0 && d.scoring !== 'closed' ? EP.fmtDay(cut) + ' · ' + EP.fmtLeft(rest) + ' 남음' : EP.fmtDay(cut) + ' · 마감됨';
+      // 마감 시각이 지나면 한 번 새로 읽어 입력 칸을 닫는다 (사람마다 몇 초씩 어긋나게)
+      if (rest < -st.jit && d.scoring !== 'closed' && st.cutSeen !== cut) { st.cutSeen = cut; load(true); }
+      return;
+    }
     if (!dl) { el.textContent = '—'; return; }
     var left = dl - EP.now();
     el.textContent = left > 0 ? EP.fmtDay(dl) + ' · ' + EP.fmtLeft(left) + ' 남음' : EP.fmtDay(dl) + ' · 마감됨';

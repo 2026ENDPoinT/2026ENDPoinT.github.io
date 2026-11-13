@@ -49,17 +49,29 @@ var CONFIG = {
   ORG: '2026ENDPoinT',
   REPO: 'team{no}',
 
-  // 팀 번호 → 트랙
-  // key 는 투표를 열고 닫는 스크립트 속성 이름에 쓴다 (VOTE_A · VOTE_H)
+  // 팀 번호 → 트랙. 적은 순서가 화면 순서다 (본선 발표 순서: 해커톤 → 구현과제)
+  // key 는 투표 시각 설정 이름에 쓴다 (VOTE_H_FROM · VOTE_A_UNTIL …)
   TRACKS: [
-    { key: 'A', name: '구현과제', from: 1, to: 10 },
-    { key: 'H', name: '해커톤', from: 11, to: 20 }
+    { key: 'H', name: '해커톤', from: 11, to: 20 },
+    { key: 'A', name: '구현과제', from: 1, to: 10 }
   ],
 
   // 참가자 인기투표: 트랙마다 1인 VOTE_MAX 표, 한 팀에 1표. VOTE_SELF 가 false 면 자기 팀에는 못 준다.
-  // (스크립트 속성 VOTE_MAX · VOTE_SELF 로 바꿀 수 있다. 트랙별로 여닫는 것은 투표 페이지의 운영진 버튼으로)
+  // (스크립트 속성 VOTE_MAX · VOTE_SELF 로 바꿀 수 있다)
   VOTE_MAX: 3,
   VOTE_SELF: false,
+
+  // 투표가 저절로 열리고 닫히는 시각 (본선 시간표의 휴식 · 투표 시간). FROM 을 비우면 운영진이 열 때까지 닫혀 있고,
+  // UNTIL 을 비우면 운영진이 마감할 때까지 열려 있다. 투표 페이지의 운영진 버튼(지금 열기 · 마감 · 5분 연장 · 5분 늦추기)은
+  // 같은 이름의 스크립트 속성에 시각을 적는다 — 속성이 있으면 여기 값보다 앞선다. '시간표대로' 를 누르면 속성을 지운다.
+  VOTE_H_FROM: '2026-11-14T12:12:00+09:00',
+  VOTE_H_UNTIL: '2026-11-14T12:27:00+09:00',
+  VOTE_A_FROM: '2026-11-14T14:15:00+09:00',
+  VOTE_A_UNTIL: '2026-11-14T14:25:00+09:00',
+  // 마감한 뒤 '다시 열기' 를 누르면 이만큼(분) 열었다가 저절로 닫는다 (투표 · 심사 공통)
+  REOPEN_MIN: 10,
+  // 참가자 점수 P 의 만점은 100 × (1 − JUDGE_WEIGHT) = 15점. 그 트랙 팀당 평균 득표의 POP_FULL_X 배를 받으면 만점이다.
+  POP_FULL_X: 2,
 
   // 심사위원 평가: 두 트랙 공통 4문항 · 각 25점, 100점 (조직 소개의 심사 기준). 점수는 소수점 둘째 자리까지 받는다.
   CRITERIA: [
@@ -71,6 +83,9 @@ var CONFIG = {
   // 최종 점수 S = JUDGE_WEIGHT × (심사위원 원점수 평균) + 참가자 점수 P. 동점이면 심사위원 점수 → TIE_KEY 문항 평균 순
   JUDGE_WEIGHT: 0.85,
   TIE_KEY: 'arch',
+  // 심사위원이 점수를 고칠 수 있는 마지막 시각 (투표 취합 시작). 비우면 운영진이 마감할 때까지.
+  // 종합 화면의 '심사 마감' · '다시 열기' 는 스크립트 속성 SCORE_UNTIL 에 시각을 적는다.
+  SCORE_UNTIL: '2026-11-14T14:25:00+09:00',
   // 점수를 적는 스프레드시트: 제출 폴더와 나란한 이 이름의 폴더 안, 이 이름의 시트 (처음 설정이 찾거나 만든다)
   SCORE_FOLDER_NAME: '심사위원',
   SCORE_SHEET_NAME: 'ENDPoinT 2026 심사',
@@ -542,11 +557,12 @@ function actWithdraw_(body) {
    ================================================================ */
 
 function actFileGet_(body) {
-  var team = '', who = '';
+  var team = '', who = '', noTest = false;
   if (body.key) {
     var v = viewer_(body.key);
     if (!v) return fail_('KEY_INVALID');
     who = 'v:' + v.hash.slice(0, 16);
+    noTest = v.role !== '운영진';                      // 연습용 팀 파일은 운영진만 (현황판에서도 운영진에게만 보인다)
   } else {
     var a = actor_(body);
     if (a.error) return fail_(a.error);
@@ -556,7 +572,7 @@ function actFileGet_(body) {
   if (!hit_('dl:' + who, 3000, 600)) return fail_('TOO_MANY');
 
   var id = Number(body.id);
-  var f = id > 0 ? fileById_(id, team) : null;
+  var f = id > 0 ? fileById_(id, team, noTest) : null;
   if (!f) return fail_('NOT_FOUND');
   var offset = Number(body.offset) || 0;
   var len = Math.min(Math.max(1, Number(body.length) || DL_CHUNK), DL_MAX);
@@ -621,6 +637,7 @@ function actViewList_(body) {
   if (aud === 'staff') res.votes = voteTally_();          // 인기투표 결과는 운영진에게만
   res.criteria = criteria_();
   res.scoring = scoreState_();
+  res.scoreUntil = scoreUntil_();
   if (v.role === '심사위원') {
     try { res.mine = scoreMine_(v); } catch (e) { res.mine = {}; res.scoreError = String(e.message || e).split(':')[0]; }
   }
@@ -634,13 +651,20 @@ function actViewList_(body) {
    한 사람이 한 팀에 한 줄 — 다시 저장하면 그 줄을 고친다. 비워 둔 문항은 나중에 채울 수 있고, 4문항이 다 차야 합계로 센다.
    심사위원은 자기 점수만 본다. 운영진(역할 '운영진' 토큰)은 종합에서 전체를 본다:
      J = 4문항을 다 채운 심사위원들의 합계 평균, P = 인기투표 참가자 점수, S = 0.85 × J + P, 동점이면 J → 구조적 이해 평균
-   운영진이 마감하면(SCORE_CLOSED) 더 고칠 수 없다.
+   SCORE_UNTIL(투표 취합 시작) 이 지나거나 운영진이 마감하면 더 고칠 수 없다.
    ================================================================ */
 
 function criteria_() {
   return CONFIG.CRITERIA.map(function (c) { return { key: c.key, name: c.name, max: Number(c.max) || 25 }; });
 }
-function scoreState_() { return /^(1|true|yes|closed|o)$/i.test(String(props_().SCORE_CLOSED || '')) ? 'closed' : 'open'; }
+/** 'open' · 'closed'. 예전 마감 버튼이 남긴 SCORE_CLOSED 도 마감으로 본다 */
+function scoreState_(at) {
+  if (/^(1|true|yes|closed|o)$/i.test(String(props_().SCORE_CLOSED || ''))) return 'closed';
+  var u = cutMs_('SCORE_UNTIL');
+  return u && (at || nowMs_()) >= u ? 'closed' : 'open';
+}
+/** 화면에 보여 줄 심사 마감 시각 (ms, 없으면 0) */
+function scoreUntil_() { return cutMs_('SCORE_UNTIL'); }
 function judgeId_(v) { return v.hash.slice(0, 12); }
 function round2_(n) { return Math.round(n * 100) / 100; }
 
@@ -703,10 +727,11 @@ function scoreMine_(v) { var j = scores_().judges[judgeId_(v)]; return j ? j.tea
 
 /** 심사위원: 한 팀의 점수와 코멘트를 저장 { key, team, scores:{idea:21.5, …}, comment } */
 function actScoreSave_(body) {
+  var t0 = nowMs_();                                      // 마감 시각은 요청이 들어온 때로 견준다 (잠금을 기다린 시간은 빼고)
   var v = viewer_(body.key);
   if (!v) return fail_('KEY_INVALID');
   if (v.role !== '심사위원') return fail_('NOT_JUDGE');
-  if (scoreState_() === 'closed') return fail_('SCORE_CLOSED');
+  if (scoreState_(t0) === 'closed') return fail_('SCORE_CLOSED');
   var team = teamNo_(body.team);
   if (!team || team === TEST_TEAM || teamNos_().indexOf(team) === -1) return fail_('BAD_TEAM');
   var crit = criteria_(), sc = (body.scores && typeof body.scores === 'object') ? body.scores : {}, out = {}, total = 0, filled = 0;
@@ -722,6 +747,8 @@ function actScoreSave_(body) {
   if (!hit_('score:' + judgeId_(v), 400, 600)) return fail_('TOO_MANY');
 
   return withLock_(function () {
+    propsDrop_();                                         // 운영진이 방금 마감했을 수 있다 — 캐시가 아니라 지금 값으로
+    if (scoreState_(t0) === 'closed') return fail_('SCORE_CLOSED');
     var t = table_('score', true), c = t.col, id = judgeId_(v), at = -1;
     t.rows.forEach(function (row, j) { if (str_(row[c['심사위원 ID']]) === id && teamNo_(row[c['팀']]) === team) at = j; });
     var rec = { '심사위원': v.name, '심사위원 ID': id, '팀': team, '트랙': trackOf_(team), '합계': filled ? round2_(total) : '',
@@ -740,25 +767,36 @@ function actScoreSummary_(body) {
   if (v.role !== '운영진') return fail_('NOT_STAFF');
   seen_(v);
   var res = scoreTable_();
-  return { ok: true, api: API_VERSION, now: nowMs_(), name: v.name, role: v.role, criteria: criteria_(), weight: Number(conf_('JUDGE_WEIGHT')) || 0.85,
-           scoring: scoreState_(), judges: res.judges, tracks: res.tracks };
+  return { ok: true, api: API_VERSION, now: nowMs_(), name: v.name, role: v.role, criteria: criteria_(), weight: judgeW_(), popMax: popMax_(),
+           scoring: scoreState_(), scoreUntil: scoreUntil_(), scoreCustom: !!str_(props_().SCORE_UNTIL), judges: res.judges, tracks: res.tracks };
 }
 
-/** 운영진: 심사 마감 · 다시 열기 { key, op:'close'|'open' } */
+/**
+ * 운영진: { key, op } — 'close' 지금 마감 · 'open' 다시 열기(REOPEN_MIN 분 뒤 저절로 닫힘) · 'auto' 시간표대로(SCORE_UNTIL 속성을 지움)
+ * 마감 시각은 스크립트 속성 SCORE_UNTIL 에 적는다.
+ */
 function actScoreState_(body) {
   var v = viewer_(body.key);
   if (!v) return fail_('KEY_INVALID');
   if (v.role !== '운영진') return fail_('NOT_STAFF');
   var op = String(body.op || '');
-  if (op !== 'close' && op !== 'open') return fail_('BAD_OP');
-  withLock_(function () { PropertiesService.getScriptProperties().setProperty('SCORE_CLOSED', op === 'close' ? 'true' : ''); });
+  if (op !== 'close' && op !== 'open' && op !== 'auto') return fail_('BAD_OP');
+  var now = nowMs_();
+  withLock_(function () {
+    var P = PropertiesService.getScriptProperties(), u = cutMs_('SCORE_UNTIL');
+    P.deleteProperty('SCORE_CLOSED');                     // 예전 마감 버튼이 남긴 값
+    if (op === 'close') P.setProperty('SCORE_UNTIL', iso_(now));
+    else if (op === 'open') P.setProperty('SCORE_UNTIL', iso_(Math.max(now + reopenMin_() * 60000, u > now ? u : 0)));
+    else P.deleteProperty('SCORE_UNTIL');
+  });
   propsDrop_();
-  return { ok: true, scoring: scoreState_() };
+  log_({ email: '열람:' + v.name, team: '' }, 'score.' + op, '', '');
+  return { ok: true, scoring: scoreState_(), scoreUntil: scoreUntil_(), scoreCustom: !!str_(props_().SCORE_UNTIL) };
 }
 
 /** 트랙별 순위표. 심사위원 목록은 `열람` 탭의 심사위원 + 점수를 낸 사람 */
 function scoreTable_() {
-  var sc = scores_(), all = states_(), crit = criteria_(), w = Number(conf_('JUDGE_WEIGHT')) || 0.85, tie = conf_('TIE_KEY');
+  var sc = scores_(), all = states_(), crit = criteria_(), w = judgeW_(), tie = conf_('TIE_KEY');
   var vt = {};
   try { voteTally_().forEach(function (x) { vt[x.key] = x; }); } catch (e) {}
   var names = {}, vs = viewers_();
@@ -807,7 +845,8 @@ function scoreTable_() {
 /* ================================================================
    참가자 인기투표 — /judge/vote/
    ----------------------------------------------------------------
-   트랙마다 발표가 끝나면 운영진이 투표 페이지에서 연다(VOTE_A · VOTE_H). 명단(`팀원` 탭)에 있는 참가자만 낸다 —
+   트랙마다 시간표의 투표 시간(VOTE_H_FROM – VOTE_H_UNTIL …)에 저절로 열리고 닫힌다. 발표가 밀리거나 일찍 끝나면 운영진이
+   투표 페이지에서 지금 열기 · 마감 · 5분 연장 · 5분 늦추기로 시각을 옮긴다(같은 이름의 스크립트 속성). 명단(`팀원` 탭)에 있는 참가자만 낸다 —
    신청서와 맞지 않는 계정은 로그인부터 거절한다(NOT_MEMBER).
    1인 VOTE_MAX 표 · 한 팀에 1표 · 자기 팀은 안 된다. 열려 있는 동안은 다시 골라 낼 수 있고 마지막에 낸 투표지만 센다.
    표는 사람 단위다 — 같은 사람이 계정을 둘 갖고 있어도(명단에 두 줄) 투표지 한 장을 함께 쓴다.
@@ -820,6 +859,7 @@ function scoreTable_() {
    참가자는 자기 표마다 확인 코드(검증값 앞 6자리)를 받는다. 운영진은 `투표` 탭의 같은 값으로 그 표가 들어갔는지 확인할 수 있다.
 
    참가자 점수(조직 소개의 심사 기준): P = 15 × √min(1, v / 2v̄), v̄ = 그 트랙의 전체 표 / 그 트랙의 팀 수
+   (15 = 100 × (1 − JUDGE_WEIGHT), 2 = POP_FULL_X)
    ================================================================ */
 
 function voteTracks_() { return CONFIG.TRACKS.filter(function (tr) { return tr.key; }); }
@@ -839,10 +879,15 @@ function trackKeyByName_(name) {
   voteTracks_().forEach(function (tr) { if (tr.name === str_(name) || tr.key === str_(name)) k = tr.key; });
   return k;
 }
-/** 'ready' 열기 전 · 'open' 받는 중 · 'closed' 마감 */
-function voteState_(key) {
-  var v = String(props_()['VOTE_' + key] || '').toLowerCase();
-  return v === 'open' || v === 'closed' ? v : 'ready';
+/** 트랙의 투표 시간 { from, until } (ms, 없으면 0). 스크립트 속성이 있으면 그것, 없으면 CONFIG */
+function voteWin_(key) { return { from: cutMs_('VOTE_' + key + '_FROM'), until: cutMs_('VOTE_' + key + '_UNTIL') }; }
+/** 운영진 버튼으로 시각을 옮겨 두었는가 (속성이 있는가) */
+function voteCustom_(key) { var p = props_(); return !!(str_(p['VOTE_' + key + '_FROM']) || str_(p['VOTE_' + key + '_UNTIL'])); }
+/** 'ready' 열기 전 · 'open' 받는 중 · 'closed' 마감. at 을 주면 그 시각으로 (요청이 들어온 시각) */
+function voteState_(key, at) {
+  var w = voteWin_(key), now = at || nowMs_();
+  if (w.from && now >= w.from && (!w.until || now < w.until)) return 'open';
+  return w.from && w.until && now >= w.until ? 'closed' : 'ready';
 }
 function voteMax_() { var n = Number(conf_('VOTE_MAX')); return n >= 1 && n <= 10 ? Math.floor(n) : 3; }
 function voteSelf_() { return /^(1|true|yes|o|on)$/i.test(String(conf_('VOTE_SELF'))); }
@@ -919,21 +964,27 @@ function voteCount_(t, salt) {
   return (MEMO.votes = out);
 }
 
-/** 참가자 점수 P (15점 만점). mean 은 그 트랙의 팀당 평균 득표. */
+/** 심사위원 점수의 비중 (0 – 1) · 참가자 점수 만점 · 만점에 필요한 득표(팀당 평균의 몇 배) */
+function judgeW_() { var w = Number(conf_('JUDGE_WEIGHT')); return w > 0 && w <= 1 ? w : 0.85; }
+function popMax_() { return round2_(100 * (1 - judgeW_())); }
+function popFull_() { var x = Number(conf_('POP_FULL_X')); return x > 0 && x <= 20 ? x : 2; }
+
+/** 참가자 점수 P (popMax_ 점 만점, 기본 15). mean 은 그 트랙의 팀당 평균 득표. */
 function popScore_(v, mean) {
   if (!(mean > 0)) return 0;
-  return Math.round(15 * Math.sqrt(Math.min(1, v / (2 * mean))) * 100) / 100;
+  return Math.round(popMax_() * Math.sqrt(Math.min(1, v / (popFull_() * mean))) * 100) / 100;
 }
 /** 트랙별 결과 — 운영진에게만 준다 */
 function voteTally_() {
   var v = votes_(), all = states_(), people = roster_().people || 0;
   return voteTracks_().map(function (tr) {
-    var nos = voteTeams_(tr.key), V = 0;
+    var nos = voteTeams_(tr.key), V = 0, w = voteWin_(tr.key);
     nos.forEach(function (no) { V += v.n[no] || 0; });
     var mean = nos.length ? V / nos.length : 0;
     return {
-      key: tr.key, name: tr.name, state: voteState_(tr.key), votes: V, teams: nos.length,
-      mean: Math.round(mean * 100) / 100, full: Math.round(2 * mean * 100) / 100,
+      key: tr.key, name: tr.name, state: voteState_(tr.key), from: w.from, until: w.until, custom: voteCustom_(tr.key),
+      votes: V, teams: nos.length,
+      mean: Math.round(mean * 100) / 100, full: Math.round(popFull_() * mean * 100) / 100, popMax: popMax_(), popFull: popFull_(),
       voters: v.voters[tr.key] || 0, eligible: people, bad: (v.bad || {})[tr.key] || 0,
       rows: nos.map(function (no) {
         var n = v.n[no] || 0;
@@ -956,9 +1007,9 @@ function actVoteMe_(body) {
   var mine = member ? (votes_().by[voterKey_(a, salt)] || {}) : {};
   out.me = member ? { team: a.team, track: trackOf_(a.team), trackKey: trackKeyOf_(a.team), name: a.name } : null;
   out.tracks = voteTracks_().map(function (tr) {
-    var m = mine[tr.key] || { teams: [], codes: {} };
+    var m = mine[tr.key] || { teams: [], codes: {} }, w = voteWin_(tr.key);
     return {
-      key: tr.key, name: tr.name, state: voteState_(tr.key), mine: m.teams, codes: m.codes,
+      key: tr.key, name: tr.name, state: voteState_(tr.key), from: w.from, until: w.until, mine: m.teams, codes: m.codes,
       teams: voteTeams_(tr.key).map(function (no) {
         var s = all[no] || blank_(no);
         return { no: no, title: s.title, desc: s.desc, url: s.url };
@@ -971,12 +1022,13 @@ function actVoteMe_(body) {
 
 /** 투표지를 낸다: { track:'A', teams:['01','04','07'] }. 다시 내면 먼젓번 투표지는 세지 않는다. */
 function actVoteSubmit_(body) {
+  var t0 = nowMs_();                                       // 마감 시각은 요청이 들어온 때로 견준다 (잠금을 기다린 시간은 빼고)
   var a = actor_(body);
   if (a.error) return fail_(a.error);
   if (!a.team || a.proxy || a.team === TEST_TEAM) return fail_('NOT_MEMBER', { email: a.email });
   var tr = voteTrack_(body.track);
   if (!tr) return fail_('BAD_TRACK');
-  var st = voteState_(tr.key);
+  var st = voteState_(tr.key, t0);
   if (st !== 'open') return fail_(st === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN');
   var max = voteMax_(), self = voteSelf_(), seen = {};
   var pick = Array.isArray(body.teams) ? body.teams.slice(0, 20).map(function (x) { return teamNo_(x); }) : [];
@@ -995,7 +1047,8 @@ function actVoteSubmit_(body) {
   return withLock_(function () {
     return once_(a, body.nonce, function () {
       // 잠근 뒤 다시 본다 — 운영진이 방금 닫았을 수 있다 (캐시가 아니라 지금 값으로)
-      var now = String(PropertiesService.getScriptProperties().getProperty('VOTE_' + tr.key) || '').toLowerCase();
+      propsDrop_();
+      var now = voteState_(tr.key, t0);
       if (now !== 'open') return fail_(now === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN');
       var t = table_('vote', true), c = t.col, at = kst_(nowMs_()), n0 = nextId_(t);
       var ballot = 'B' + n0;
@@ -1012,13 +1065,21 @@ function actVoteSubmit_(body) {
         });
       });
       var v = voteCount_(t, salt), m = (v.by[voter] || {})[tr.key] || { teams: [], codes: {} };
-      log_(a, 'vote.submit', tr.name, pick.length + '표');           // 누구에게 줬는지는 기록하지 않는다
+      // `기록` 에는 누가 냈는지도 남기지 않는다 — 시각이 `투표` 탭과 같아서, 이메일을 적으면 두 탭을 맞춰 보는 것만으로 누가 누구에게 줬는지 드러난다
+      log_({ email: '(익명 투표)', team: '' }, 'vote.submit', tr.name, pick.length + '표');
       return { ok: true, track: tr.key, mine: m.teams, codes: m.codes };
     });
   });
 }
 
-/** 운영진: 트랙별로 투표를 열고 닫는다 { track:'A', op:'open'|'close' } */
+/**
+ * 운영진: 트랙별 투표 시간을 옮긴다 { track:'H', op }. 시각은 스크립트 속성 VOTE_<트랙>_FROM · _UNTIL 에 적는다.
+ *   open   지금 연다. 마감 시각이 지났거나 1분 안이면 REOPEN_MIN 분 뒤로
+ *   close  지금 마감
+ *   extend 마감을 5분 뒤로 (열려 있을 때)
+ *   delay  여는 시각과 마감을 함께 5분 뒤로 (열기 전 — 발표가 밀릴 때)
+ *   auto   시간표대로 (속성을 지워 CONFIG 의 시각으로)
+ */
 function actVoteAdmin_(body) {
   var a = actor_(body);
   if (a.error) return fail_(a.error);
@@ -1026,14 +1087,35 @@ function actVoteAdmin_(body) {
   var tr = voteTrack_(body.track);
   if (!tr) return fail_('BAD_TRACK');
   var op = String(body.op || '');
-  if (op !== 'open' && op !== 'close') return fail_('BAD_OP');
+  if (['open', 'close', 'extend', 'delay', 'auto'].indexOf(op) === -1) return fail_('BAD_OP');
   voteSalt_();
-  withLock_(function () {
-    PropertiesService.getScriptProperties().setProperty('VOTE_' + tr.key, op === 'open' ? 'open' : 'closed');
+  var now = nowMs_(), F = 'VOTE_' + tr.key + '_FROM', U = 'VOTE_' + tr.key + '_UNTIL', STEP = 5 * 60000;
+  var bad = withLock_(function () {
+    propsDrop_();
+    var P = PropertiesService.getScriptProperties(), w = voteWin_(tr.key), st = voteState_(tr.key, now);
+    if (op === 'open') {
+      if (!w.from || w.from > now) P.setProperty(F, iso_(now));
+      if (w.until && w.until <= now + 60000) P.setProperty(U, iso_(now + reopenMin_() * 60000));
+    } else if (op === 'close') {
+      if (st !== 'open') return 'VOTE_NOT_OPEN';
+      P.setProperty(U, iso_(now));
+    } else if (op === 'extend') {
+      if (st !== 'open' || !w.until) return 'VOTE_NOT_OPEN';
+      P.setProperty(U, iso_(w.until + STEP));
+    } else if (op === 'delay') {
+      if (st !== 'ready' || !w.from) return 'VOTE_NOT_READY';
+      P.setProperty(F, iso_(w.from + STEP));
+      if (w.until) P.setProperty(U, iso_(w.until + STEP));
+    } else {
+      P.deleteProperty(F); P.deleteProperty(U);
+    }
+    return '';
   });
   propsDrop_();                                                  // 다른 실행도 바로 새 값을 보게
-  log_(a, 'vote.' + op, tr.name, '');
-  return { ok: true, track: tr.key, state: voteState_(tr.key), tally: voteTally_() };
+  if (bad) return fail_(bad, { track: tr.key, state: voteState_(tr.key) });
+  var w2 = voteWin_(tr.key);
+  log_(a, 'vote.' + op, tr.name, (w2.from ? kst_(w2.from).slice(11, 16) : '') + '–' + (w2.until ? kst_(w2.until).slice(11, 16) : ''));
+  return { ok: true, track: tr.key, state: voteState_(tr.key), from: w2.from, until: w2.until, tally: voteTally_() };
 }
 
 /* ================================================================
@@ -1247,6 +1329,18 @@ function isoMs_(iso) { var t = iso ? Date.parse(String(iso)) : NaN; return isNaN
 function openMs_() { return isoMs_(conf_('OPEN_AT')); }
 function deadlineMs_() { return isoMs_(conf_('DEADLINE')); }
 function graceMin_() { var g = Number(conf_('GRACE_MIN')); return (isNaN(g) || g < 0) ? 0 : Math.min(g, 120); }
+function reopenMin_() { var m = Number(conf_('REOPEN_MIN')); return m >= 1 && m <= 180 ? m : 10; }
+/**
+ * 시각 설정 하나(투표 · 심사 마감) → ms. 비었거나 'none' 이면 0 (그쪽 끝이 없다).
+ * 스크립트 속성에 손으로 적을 때는 '2026-11-14T12:40:00+09:00' 이나 '2026-11-14 12:40' (서울 시각) 처럼.
+ */
+function cutMs_(k) {
+  var s = str_(conf_(k));
+  if (!s || /^(none|off|없음|-)$/i.test(s)) return 0;
+  return time_(s);
+}
+/** ms → '2026-11-14T12:40:00+09:00' (스크립트 속성에 적는 꼴) */
+function iso_(ms) { return kst_(ms).replace(' ', 'T') + '+09:00'; }
 
 /** 'before' 아직 안 열림 · 'open' 받는 중 · 'grace' 마감 직후(올리던 것만 마무리) · 'closed' 끝 */
 function phase_() {
@@ -1401,11 +1495,11 @@ function teamBytes_(no) {
 }
 function complete_(s) { return !!(s.title && s.deck && (s.url || s.program)); }
 
-/** 번호로 파일을 찾는다. team 을 주면 그 팀 것에서만 찾는다 (참가자). 올라온 파일(현재·이전)만. */
-function fileById_(id, team) {
+/** 번호로 파일을 찾는다. team 을 주면 그 팀 것에서만 찾는다 (참가자). noTest 면 연습용 팀은 빼고. 올라온 파일(현재·이전)만. */
+function fileById_(id, team, noTest) {
   var all = states_(), found = null;
   Object.keys(all).forEach(function (no) {
-    if (found || (team && no !== team)) return;
+    if (found || (team && no !== team) || (noTest && no === TEST_TEAM)) return;
     var s = all[no];
     [s.deck, s.program].concat(s.history).forEach(function (x) { if (x && x.id === id && x.drive) found = x; });
   });

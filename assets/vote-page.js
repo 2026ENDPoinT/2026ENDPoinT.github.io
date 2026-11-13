@@ -2,9 +2,11 @@
    참가자 투표 (/judge/vote/)
    --------------------------------------------------------------
    로그인 → 서버가 명단(신청서로 만든 `팀원` 탭)에서 참가자인지 확인한다. 아니면 들어오지 못한다.
-   트랙마다 운영진이 연 동안만 낼 수 있다. 1인 max 표 · 한 팀에 1표 · 우리 팀은 안 됨 — 판정은 전부 서버가 한다.
+   트랙마다 시간표의 투표 시간에만 낼 수 있다 (서버 시각 기준으로 저절로 열리고 닫힌다).
+   1인 max 표 · 한 팀에 1표 · 우리 팀은 안 됨 — 판정은 전부 서버가 한다.
    다시 내면 마지막에 낸 투표지만 센다. 표마다 확인 코드를 받는다.
-   운영진 계정이면 위쪽에 열기 · 마감 버튼과 결과가 보인다 (결과는 눌러야 펼쳐진다 — 화면을 띄워 둔 채 실수로 보이지 않게).
+   운영진 계정이면 위쪽에 지금 열기 · 마감 · 5분 연장 · 5분 늦추기 버튼과 결과가 보인다
+   (결과는 눌러야 펼쳐진다 — 화면을 띄워 둔 채 실수로 보이지 않게).
    ============================================================== */
 (function () {
   'use strict';
@@ -19,8 +21,18 @@
     editing: {},        // 트랙별로 고르는 중인가 (이미 냈는데 다시 고르는 경우 포함)
     prev: {},           // 트랙별 직전 상태 (열리고 닫힘 알림용)
     showRes: {},        // 운영진: 트랙별 결과 펼침
-    busy: false, loadedAt: 0
+    busy: false, loadedAt: 0,
+    edge: 0,            // 다음에 열리거나 닫히는 시각 (서버 시각). 그때 한 번 새로 읽는다
+    jit: Math.floor(Math.random() * 4000)   // 사람마다 몇 초씩 어긋나게 (한꺼번에 몰리지 않게)
   };
+
+  function hm(ms) { return ms ? EP.fmtTime(ms).slice(6) : ''; }
+  /** 머리 · 탭에 쓰는 짧은 상태: '12:12 시작' · '투표 중 · 12:27까지' · '마감' */
+  function stateTxt(tr) {
+    if (tr.state === 'open') return '투표 중' + (tr.until ? ' · ' + hm(tr.until) + '까지' : '');
+    if (tr.state === 'ready') return tr.from ? hm(tr.from) + ' 시작' : STATE_TXT.ready;
+    return STATE_TXT.closed;
+  }
 
   /* ------------------------------ 안내 패널 ------------------------------ */
   function showGate(html) { gate.innerHTML = html; gate.hidden = false; app.hidden = true; }
@@ -89,6 +101,11 @@
     });
     st.d = d;
     st.loadedAt = Date.now();
+    st.edge = 0;
+    d.tracks.forEach(function (tr) {
+      var e = tr.state === 'ready' ? tr.from : tr.state === 'open' ? tr.until : 0;
+      if (e && e > d.now && (!st.edge || e < st.edge)) st.edge = e;
+    });
     if (!st.tab || !trackOf(st.tab)) {
       var open = d.tracks.filter(function (t) { return t.state === 'open'; })[0];
       st.tab = (open || d.tracks[0]).key;
@@ -103,7 +120,7 @@
     $('h-team').textContent = d.me ? d.me.team + '팀 · ' + d.me.track : (d.admin ? '운영진 계정' : '—');
     d.tracks.forEach(function (tr) {
       var el = $('h-' + tr.key);
-      if (el) el.textContent = STATE_TXT[tr.state] + (d.me && tr.mine.length ? ' · ' + tr.mine.length + '표 냄' : '');
+      if (el) el.textContent = stateTxt(tr) + (d.me && tr.mine.length ? ' · ' + tr.mine.length + '표 냄' : '');
     });
   }
 
@@ -113,7 +130,7 @@
     paintAdmin();
     $('tabs').innerHTML = d.tracks.map(function (tr) {
       return '<button class="tab" type="button" role="tab" data-tab="' + esc(tr.key) + '" aria-selected="' + (st.tab === tr.key) + '">' +
-        esc(tr.name) + '<span class="cnt' + (tr.state === 'open' ? ' live' : '') + '">' + STATE_TXT[tr.state] + '</span></button>';
+        esc(tr.name) + '<span class="cnt' + (tr.state === 'open' ? ' live' : '') + '">' + esc(stateTxt(tr)) + '</span></button>';
     }).join('');
     $('when').textContent = EP.fmtTime(d.now).slice(6) + ' 기준';
     paintBallot();
@@ -131,10 +148,12 @@
 
     var head;
     if (!member) head = note('<b>운영진 계정은 투표하지 않습니다.</b> 위에서 트랙별로 투표를 열고 닫을 수 있습니다.');
-    else if (tr.state === 'ready') head = note('<b>' + esc(tr.name) + ' 트랙 발표가 끝나면 투표가 열립니다.</b>');
+    else if (tr.state === 'ready') head = note(tr.from ? '<b>' + esc(tr.name) + ' 투표는 ' + hm(tr.from) + '에 열립니다.</b>' + (tr.until ? ' ' + hm(tr.until) + ' 마감' : '')
+                                                       : '<b>' + esc(tr.name) + ' 트랙 발표가 끝나면 투표가 열립니다.</b>');
     else if (tr.state === 'closed') head = note(voted ? '<b>투표가 마감되었습니다.</b> 아래가 이 트랙에 낸 표입니다.' : '<b>투표가 마감되었습니다.</b> 이 트랙에는 투표하지 않았습니다.');
-    else if (!editing) head = note('<b>투표했습니다.</b> 마감 전까지 다시 고를 수 있습니다.');
-    else head = note('<b>좋았던 팀을 ' + d.max + '곳까지 골라 주세요.</b> 한 팀에 1표' + (d.self ? '' : ', 우리 팀(' + esc(myTeam) + ')은 고를 수 없습니다') + '.');
+    else if (!editing) head = note('<b>투표했습니다.</b> ' + (tr.until ? hm(tr.until) + ' 마감 전까지' : '마감 전까지') + ' 다시 고를 수 있습니다.');
+    else head = note('<b>좋았던 팀을 ' + d.max + '곳까지 골라 주세요.</b> 한 팀에 1표' + (d.self ? '' : ', 우리 팀(' + esc(myTeam) + ')은 고를 수 없습니다') + '.' +
+                     (tr.until ? ' <b>' + hm(tr.until) + ' 마감</b>' : ''));
 
     var cards = tr.teams.map(function (t) {
       var self = !d.self && t.no === myTeam;
@@ -178,14 +197,22 @@
         var show = !!st.showRes[x.key];
         var rows = x.rows.slice().sort(function (p, q) { return q.votes - p.votes || (p.no < q.no ? -1 : 1); });
         var top = rows.length ? rows[0].votes : 0;
+        var timed = x.from !== undefined;                       // 투표 시간이 있는 서버인가 (예전 서버면 열기 · 마감만)
+        var btn = function (op, label, cls) {
+          return '<button class="' + (cls || 'btn btn-sm') + '" type="button" data-act="admin" data-op="' + op + '" data-track="' + esc(x.key) + '"><span>' + label + '</span></button>';
+        };
+        var acts = x.state === 'open'
+          ? btn('close', '마감하기', 'btn btn-o btn-sm') + (timed && x.until ? btn('extend', '5분 연장', 'btn btn-o btn-sm') : '')
+          : x.state === 'closed' ? btn('open', '다시 열기')
+          : btn('open', timed ? '지금 열기' : '투표 열기') + (timed && x.from ? btn('delay', '5분 늦추기', 'btn btn-o btn-sm') : '');
+        if (timed && x.custom) acts += btn('auto', '시간표대로', 'mini quiet');
+        var win = timed ? (x.from || x.until ? (hm(x.from) || '…') + ' – ' + (hm(x.until) || '…') : '시각 없음 (버튼으로)') + (x.custom ? ' · 바꿈' : '') : '';
         return '<div class="vadm">' +
           '<div class="vadm-hd"><div class="t"><b>' + esc(x.name) + '</b><span class="vst ' + x.state + '">' + STATE_TXT[x.state] + '</span>' +
+            (win ? '<span class="m num">' + esc(win) + '</span>' : '') +
             '<span class="m num">투표한 사람 ' + x.voters + ' / ' + x.eligible + '명 · ' + x.votes + '표 · 팀당 평균 ' + x.mean + '표' +
             (x.bad ? ' · <em>검증 실패 ' + x.bad + '장 (세지 않음)</em>' : '') + '</span></div>' +
-          '<div class="acts">' +
-            (x.state === 'open'
-              ? '<button class="btn btn-o btn-sm" type="button" data-act="admin" data-op="close" data-track="' + esc(x.key) + '"><span>마감하기</span></button>'
-              : '<button class="btn btn-sm" type="button" data-act="admin" data-op="open" data-track="' + esc(x.key) + '"><span>' + (x.state === 'closed' ? '다시 열기' : '투표 열기') + '</span></button>') +
+          '<div class="acts">' + acts +
             '<button class="mini quiet" type="button" data-act="res" data-track="' + esc(x.key) + '" aria-expanded="' + show + '">' + (show ? '결과 접기' : '결과 보기') + '</button>' +
           '</div></div>' +
           (show ? '<div class="vres"><table><thead><tr><th>팀</th><th>프로젝트</th><th class="r">표</th><th class="r">참가자 점수</th></tr></thead><tbody>' +
@@ -194,7 +221,7 @@
               return '<tr><td class="num">' + esc(r.no) + '</td><td>' + esc(r.title || '—') + '</td>' +
                 '<td class="r num"><span class="vbarline" style="--w:' + w + '%"></span>' + r.votes + '</td><td class="r num">' + r.p.toFixed(2) + '</td></tr>';
             }).join('') + '</tbody></table>' +
-            '<p class="m">참가자 점수 P = 15 × √min(1, 득표 ÷ (2 × 팀당 평균)) · 평균의 2배(' + x.full + '표) 이상이면 만점</p></div>' : '') +
+            '<p class="m">참가자 점수 P = ' + (x.popMax || 15) + ' × √min(1, 득표 ÷ (' + (x.popFull || 2) + ' × 팀당 평균)) · 평균의 ' + (x.popFull || 2) + '배(' + x.full + '표) 이상이면 만점</p></div>' : '') +
         '</div>';
       }).join('');
   }
@@ -241,16 +268,20 @@
     }, function (e) { st.busy = false; EP.toast(EP.say(e)); paintBallot(); });
   }
 
+  var ADMIN_ASK = {
+    open: ['투표를 지금 열까요?\n참가자 화면에 바로 열립니다.', '투표를 열었습니다'],
+    close: ['투표를 지금 마감할까요?\n마감한 뒤에는 표를 받지 않습니다 (다시 열 수는 있습니다).', '투표를 마감했습니다'],
+    extend: ['투표 마감을 5분 늦출까요?', '투표 마감을 5분 늦췄습니다'],
+    delay: ['투표 시작과 마감을 5분씩 늦출까요?\n발표가 밀릴 때 씁니다.', '투표 시간을 5분 늦췄습니다'],
+    auto: ['투표 시간을 시간표대로 되돌릴까요?', '시간표대로 되돌렸습니다']
+  };
   function adminOp(track, op) {
-    var x = trackOf(track);
-    if (!x) return;
-    var msg = op === 'open'
-      ? x.name + ' 투표를 열까요?\n참가자 화면에 바로 열립니다.'
-      : x.name + ' 투표를 마감할까요?\n마감한 뒤에는 표를 받지 않습니다 (다시 열 수는 있습니다).';
-    if (!window.confirm(msg)) return;
+    var x = trackOf(track), ask = ADMIN_ASK[op];
+    if (!x || !ask) return;
+    if (!window.confirm(x.name + ' ' + ask[0])) return;
     EP.api('vote.admin', { track: track, op: op }, { tries: 2 }).then(function (r) {
-      if (r && r.ok) { EP.toast(x.name + ' 투표를 ' + (op === 'open' ? '열었습니다' : '마감했습니다')); load(true); }
-      else if (r && r.error !== 'AUTH_FAILED') EP.toast(EP.say(r));
+      if (r && r.ok) { EP.toast(x.name + ' ' + ask[1]); load(true); }
+      else if (r && r.error !== 'AUTH_FAILED') { EP.toast(EP.say(r)); load(true); }
     }, function (e) { EP.toast(EP.say(e)); });
   }
 
@@ -302,9 +333,10 @@
   var every = 15000 + Math.floor(Math.random() * 10000);
   setInterval(function () {
     if (document.hidden || !st.d || st.busy) return;
+    if (st.edge && EP.now() >= st.edge + 800 + st.jit) { st.edge = 0; load(true); return; }   // 열리거나 닫히는 시각
     var gap = st.d.admin ? 8000 : every;
     if (Date.now() - st.loadedAt > gap) load(true);
-  }, 3000);
+  }, 1000);
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden && st.d && Date.now() - st.loadedAt > 5000) load(true);
   });
