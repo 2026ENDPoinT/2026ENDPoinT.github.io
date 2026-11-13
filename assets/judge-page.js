@@ -17,6 +17,7 @@
   var NO_INLINE_PDF = IOS || navigator.pdfViewerEnabled === false;
 
   var st = {
+    mine: {}, jdirty: {},      // 심사위원: 내 점수 · 고치는 중인 팀
     key: '', data: null, tab: '', only: false, loadedAt: 0, shape: '', sig: {}, open: {},
     blobs: {}, order: [], pending: {}, viewSeq: 0, viewUrl: ''
   };
@@ -87,7 +88,11 @@
     return EP.api('view.list', {}, { key: st.key, tries: 3 }).then(function (d) {
       if (seq !== loadSeq) return;
       $('reload').textContent = '새로 고침';
-      if (d && d.ok) { st.data = d; st.loadedAt = Date.now(); render(); return; }
+      if (d && d.ok) {
+        var mine = d.mine || {};
+        Object.keys(mine).forEach(function (no) { if (!st.mine[no] || !(st.mine[no].at > mine[no].at)) st.mine[no] = mine[no]; });
+        st.data = d; st.loadedAt = Date.now(); render(); return;
+      }
       if (d && d.error === 'KEY_INVALID') { forget(); gateKey(EP.say(d)); return; }
       if (!silent) gateError(EP.say(d));
     }, function (e) {
@@ -111,7 +116,14 @@
 
     var sum = d.summary || { teams: 0, complete: 0, deck: 0, product: 0 };
     $('s-done').textContent = sum.complete + ' / ' + sum.teams + '팀';
-    $('s-parts').textContent = '발표 ' + sum.deck + ' · 결과물 ' + sum.product;
+    if (judgeMode()) paintProgress();
+    else $('s-parts').textContent = '발표 ' + sum.deck + ' · 결과물 ' + sum.product;
+    if (staff() && !$('to-score')) {
+      var a = document.createElement('a');
+      a.id = 'to-score'; a.className = 'chipbtn'; a.href = './score/'; a.textContent = '심사 종합 →';
+      a.style.cssText = 'display:inline-flex;align-items:center;text-decoration:none';
+      $('reload').parentNode.insertBefore(a, $('reload'));
+    }
     tick();
 
     // 트랙 탭
@@ -130,6 +142,7 @@
   }
 
   function paintList() {
+    if (judgeMode()) return paintJudge();
     var d = st.data;
     var tracks = d.tracks.filter(function (tr) { return !st.tab || tr.name === st.tab; }).map(function (tr) {
       return { name: tr.name, all: tr.teams, teams: tr.teams.filter(function (t) { return !st.only || has(t); }) };
@@ -243,6 +256,176 @@
     return hit;
   }
 
+  /* ------------------------------ 심사위원: 팀마다 한 줄 · 점수 · 코멘트 ------------------------------ */
+  function judgeMode() { var d = st.data; return !!(d && d.role === '심사위원' && d.criteria && d.criteria.length); }
+  function infoCard(t) { return card(t).replace(/ id="card-[^"]*"/, ''); }
+  function maxTotal() { return st.data.criteria.reduce(function (a, c) { return a + c.max; }, 0); }
+  function fmt2(n) { return (Math.round(n * 100) / 100).toFixed(2).replace(/\.?0+$/, ''); }
+
+  function paintProgress() {
+    var d = st.data, nos = [];
+    d.tracks.forEach(function (tr) { tr.teams.forEach(function (t) { nos.push(t.no); }); });
+    var done = nos.filter(function (no) { return st.mine[no] && st.mine[no].complete; }).length;
+    var lab = $('s-parts').previousElementSibling;
+    if (lab) lab.textContent = '내 평가';
+    $('s-parts').textContent = done + ' / ' + nos.length + '팀';
+  }
+
+  function jform(no) {
+    var d = st.data, m = st.mine[no] || null, closed = d.scoring === 'closed' || !!d.scoreError, dis = closed ? ' disabled' : '';
+    return '<div class="jgrid">' + d.criteria.map(function (c) {
+        var v = m && m.s && m.s[c.key] !== '' && m.s[c.key] !== undefined && m.s[c.key] !== null ? m.s[c.key] : '';
+        return '<label class="jq"><span class="lab ko">' + esc(c.name) + ' <small>/ ' + c.max + '</small></span>' +
+          '<input class="tin num" type="number" inputmode="decimal" step="0.01" min="0" max="' + c.max + '" name="' + esc(c.key) + '" value="' + esc(String(v)) + '"' + dis + '></label>';
+      }).join('') + '</div>' +
+      '<label class="jq"><span class="lab ko">코멘트</span><textarea class="tar" name="comment" maxlength="2000" rows="3"' + dis + '>' + esc(m ? m.comment : '') + '</textarea></label>' +
+      '<div class="jact"><div class="jsum"><span class="lab ko">합계</span><b class="num" data-sum></b><small>/ ' + maxTotal() + '</small></div>' +
+        '<span class="jstate" data-state></span>' +
+        (closed ? '' : '<button class="btn btn-sm" type="submit"><span>저장</span></button>') + '</div>';
+  }
+  function jrow(t) {
+    return '<article class="jrow" id="card-' + esc(t.no) + '" data-no="' + esc(t.no) + '">' + infoCard(t) +
+      '<form class="jscore" data-no="' + esc(t.no) + '" novalidate autocomplete="off">' + jform(t.no) + '</form></article>';
+  }
+  function setState(form, text, kind) {
+    var el = form.querySelector('[data-state]');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'jstate' + (kind ? ' ' + kind : '');
+  }
+  /** 입력 칸의 합계와 상태 줄 */
+  function refreshForm(form) {
+    var d = st.data, no = form.getAttribute('data-no'), sum = 0, filled = 0;
+    d.criteria.forEach(function (c) {
+      var raw = String(form.elements[c.key].value).trim();
+      if (raw === '') return;
+      var n = Number(raw);
+      if (isFinite(n)) { sum += n; filled++; }
+    });
+    form.querySelector('[data-sum]').textContent = filled ? fmt2(sum) : '—';
+    var m = st.mine[no];
+    if (d.scoreError) setState(form, '심사 시트가 아직 연결되지 않았습니다. 운영진에게 알려 주세요.', 'err');
+    else if (d.scoring === 'closed') setState(form, '심사가 마감되었습니다', '');
+    else if (st.jdirty[no]) setState(form, '저장하지 않은 내용이 있습니다', 'dirty');
+    else if (m && m.complete) setState(form, '저장됨 · ' + EP.fmtTime(m.at).slice(6), 'ok');
+    else if (m) setState(form, '작성 중 · ' + m.filled + ' / ' + d.criteria.length + '문항 · ' + EP.fmtTime(m.at).slice(6), '');
+    else setState(form, '아직 평가하지 않았습니다', '');
+  }
+  /** 서버 값으로 칸을 채운다 (고치는 중인 칸 · 커서가 있는 칸은 건드리지 않는다) */
+  function fillForm(no, force) {
+    var form = list.querySelector('form.jscore[data-no="' + no + '"]');
+    if (!form) return;
+    var m = st.mine[no], d = st.data;
+    if (force || !st.jdirty[no]) {
+      d.criteria.forEach(function (c) {
+        var el = form.elements[c.key];
+        if (!force && document.activeElement === el) return;
+        el.classList.remove('bad');
+        el.value = m && m.s && m.s[c.key] !== '' && m.s[c.key] !== null && m.s[c.key] !== undefined ? m.s[c.key] : '';
+      });
+      var ta = form.elements.comment;
+      if (force || document.activeElement !== ta) ta.value = m ? m.comment : '';
+    }
+    refreshForm(form);
+  }
+
+  function paintJudge() {
+    var d = st.data;
+    var tracks = d.tracks.filter(function (tr) { return !st.tab || tr.name === st.tab; }).map(function (tr) {
+      return { name: tr.name, all: tr.teams, teams: tr.teams.filter(function (t) { return !st.only || has(t); }) };
+    });
+    var shape = 'J|' + st.tab + '|' + st.only + '|' + d.scoring + '|' + (d.scoreError || '') + '|' + tracks.map(function (tr) {
+      return tr.name + ':' + tr.teams.map(function (t) { return t.no; }).join(',');
+    }).join(';');
+    if (shape !== st.shape) {
+      st.shape = shape; st.sig = {};
+      list.innerHTML = tracks.map(function (tr, i) {
+        return '<section class="trk"><div class="trk-hd"><h2>' + esc(tr.name) + ' 트랙</h2><small id="trk-n-' + i + '"></small></div>' +
+          (tr.teams.length ? '<div class="jlist">' + tr.teams.map(function (t) { st.sig[t.no] = JSON.stringify(t); return jrow(t); }).join('') + '</div>'
+                           : '<div class="empty-all">아직 낸 팀이 없습니다.</div>') + '</section>';
+      }).join('') || '<div class="empty-all">보여 줄 팀이 없습니다.</div>';
+      Array.prototype.forEach.call(list.querySelectorAll('form.jscore'), refreshForm);
+    } else {
+      tracks.forEach(function (tr) {
+        tr.teams.forEach(function (t) {
+          var sig = JSON.stringify(t);
+          if (st.sig[t.no] !== sig) {
+            st.sig[t.no] = sig;
+            var p = list.querySelector('#card-' + t.no + ' .post');
+            if (p) p.outerHTML = infoCard(t);
+          }
+          fillForm(t.no, false);
+        });
+      });
+    }
+    tracks.forEach(function (tr, i) {
+      var el = $('trk-n-' + i);
+      if (el) el.textContent = '내 평가 ' + tr.all.filter(function (t) { return st.mine[t.no] && st.mine[t.no].complete; }).length + ' / ' + tr.all.length + '팀';
+    });
+    paintProgress();
+    Object.keys(st.pending).forEach(function (id) { setProg(Number(id), st.pending[id].pct); });
+  }
+
+  function saveScore(form) {
+    var d = st.data, no = form.getAttribute('data-no'), scores = {}, bad = null, badName = '', badMax = 0;
+    d.criteria.forEach(function (c) {
+      var el = form.elements[c.key], raw = String(el.value).trim();
+      el.classList.remove('bad');
+      if (raw === '') { scores[c.key] = ''; return; }
+      var n = Number(raw);
+      if (!isFinite(n) || n < 0 || n > c.max) { if (!bad) { bad = el; badName = c.name; badMax = c.max; } el.classList.add('bad'); return; }
+      scores[c.key] = Math.round(n * 100) / 100;
+    });
+    if (bad) { setState(form, badName + ' 은(는) 0 – ' + badMax + ' 사이로 적어 주세요', 'err'); bad.focus(); return; }
+    var btn = form.querySelector('button[type="submit"]');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    setState(form, '저장하는 중…', '');
+    EP.api('score.save', { team: no, scores: scores, comment: form.elements.comment.value }, { key: st.key, nonce: EP.nonce(), tries: 3 }).then(function (r) {
+      btn.disabled = false;
+      if (r && r.ok) {
+        st.mine[no] = r.saved; st.jdirty[no] = false;
+        fillForm(no, true);
+        paintProgress();
+        tracksCount();
+        EP.toast(no + '팀 점수를 저장했습니다');
+        return;
+      }
+      if (r && r.error === 'KEY_INVALID') { forget(); gateKey(EP.say(r)); return; }
+      if (r && r.error === 'BAD_SCORE' && form.elements[r.item]) { form.elements[r.item].classList.add('bad'); form.elements[r.item].focus(); }
+      if (r && r.error === 'SCORE_CLOSED') { load(true); }
+      setState(form, EP.say(r), 'err');
+    }, function (e) { btn.disabled = false; setState(form, EP.say(e), 'err'); });
+  }
+  function tracksCount() {
+    var d = st.data, i = 0;
+    d.tracks.filter(function (tr) { return !st.tab || tr.name === st.tab; }).forEach(function (tr) {
+      var el = $('trk-n-' + (i++));
+      if (el) el.textContent = '내 평가 ' + tr.teams.filter(function (t) { return st.mine[t.no] && st.mine[t.no].complete; }).length + ' / ' + tr.teams.length + '팀';
+    });
+  }
+  list.addEventListener('input', function (e) {
+    var form = e.target.closest ? e.target.closest('form.jscore') : null;
+    if (!form) return;
+    st.jdirty[form.getAttribute('data-no')] = true;
+    e.target.classList.remove('bad');
+    refreshForm(form);
+  });
+  list.addEventListener('submit', function (e) {
+    var form = e.target.closest ? e.target.closest('form.jscore') : null;
+    if (!form) return;
+    e.preventDefault();
+    saveScore(form);
+  });
+  list.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return;
+    var form = e.target.closest ? e.target.closest('form.jscore') : null;
+    if (form) { e.preventDefault(); saveScore(form); }
+  });
+  window.addEventListener('beforeunload', function (e) {
+    if (Object.keys(st.jdirty).some(function (k) { return st.jdirty[k]; })) { e.preventDefault(); e.returnValue = ''; }
+  });
+
   /* ------------------------------ 파일 받기 · 보기 ------------------------------ */
   function setProg(id, pct) {
     var btns = list.querySelectorAll('[data-id="' + id + '"]');
@@ -333,8 +516,8 @@
     else if (act === 'get') getFile(id);
     else if (act === 'hist') {
       st.open[no] = !st.open[no];
-      var t = team(no), el = $('card-' + no);
-      if (t && el) { el.outerHTML = card(t); Object.keys(st.pending).forEach(function (k) { setProg(Number(k), st.pending[k].pct); }); }
+      var t = team(no), el = judgeMode() ? list.querySelector('#card-' + no + ' .post') : $('card-' + no);
+      if (t && el) { el.outerHTML = judgeMode() ? infoCard(t) : card(t); Object.keys(st.pending).forEach(function (k) { setProg(Number(k), st.pending[k].pct); }); }
     }
   });
   $('tabs').addEventListener('click', function (e) {

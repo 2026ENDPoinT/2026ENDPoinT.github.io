@@ -14,7 +14,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('ENDPoinT 제출')
     .addItem('① 처음 설정 (탭 · 폴더 · 권한)', 'setup')
     .addItem('② 명단 만들기 (신청 시트에서)', 'rosterBuild')
-    .addItem('③ 열람 링크 만들기 (심사위원 · 운영진)', 'viewerNew')
+    .addItem('③ 열람 토큰 만들기 (심사위원 · 운영진)', 'viewerNew')
     .addSeparator()
     .addItem('설정 점검', 'doctor')
     .addItem('현황 새로 읽기 (캐시 비우기)', 'cacheClear')
@@ -22,6 +22,7 @@ function onOpen() {
     .addItem('선택한 줄을 제출로 인정 (늦게 도착한 파일)', 'acceptSelected')
     .addSeparator()
     .addItem('인기투표 결과 보기', 'voteReport')
+    .addItem('심사 종합 만들기 (심사 시트의 `종합` 탭)', 'scoreReport')
     .addToUi();
 }
 
@@ -32,9 +33,9 @@ function setup() {
   // 둘 다 "없네" 하고 같은 이름의 폴더를 하나씩 만들 수 있다 (2026-11-13 에 실제로 겪었다).
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(120000)) return say_('다른 실행이 지금 처음 설정을 하고 있습니다. 1–2분 뒤에 다시 눌러 주세요.');
-  var root, made = 0, cleaned = [], busy = [];
+  var root, made = 0, cleaned = [], busy = [], scoreName = '';
   try {
-    Object.keys(TABS).forEach(function (k) { table_(k); });
+    Object.keys(TABS).forEach(function (k) { if (!TABS[k].book) table_(k); });   // 심사 시트의 탭은 아래에서
 
     // 새 스프레드시트에 딸려 오는 빈 기본 탭은 지운다
     var ss = ss_();
@@ -57,6 +58,8 @@ function setup() {
     });
     store.setProperties(set, false);
     propsDrop_();
+    // 심사 시트: 제출 폴더 옆 '심사위원' 폴더의 'ENDPoinT 2026 심사' (없으면 만든다) + `점수` 탭
+    try { scoreSheetFind_(true); MEMO.scoreSs = null; table_('score', true); scoreName = scoreSs_().getName(); } catch (e8) { scoreName = '못 만듦 — ' + e8.message; }
   } finally {
     lock.releaseLock();
   }
@@ -68,8 +71,9 @@ function setup() {
     '· 제출 폴더: ' + root.getName() + ' (팀 폴더 ' + made + '개를 새로 만들었습니다)\n' +
     (cleaned.length ? '· 같은 이름으로 겹쳐 생긴 빈 폴더 ' + cleaned.length + '개를 휴지통으로 보냈습니다: ' + cleaned.join(', ') + '\n' : '') +
     (busy.length ? '! 같은 이름의 폴더가 더 있지만 안에 무언가 있어 그대로 두었습니다 (확인해 주세요): ' + busy.join(', ') + '\n' : '') +
+    '· 심사 시트: ' + conf_('SCORE_FOLDER_NAME') + ' / ' + scoreName + '\n' +
     '· Drive 계정: ' + who + '\n\n' +
-    '다음: ② 명단 만들기 → 배포(웹 앱) → ③ 열람 링크 만들기');
+    '다음: ② 명단 만들기 → 배포(웹 앱) → ③ 열람 토큰 만들기');
 }
 
 /**
@@ -367,22 +371,24 @@ function extraAccounts_() {
 function viewerNew() {
   fresh_();
   var ui = ui_();
+  var salt = voteSalt_();                       // 토큰 · 검증값에 섞는 비밀값 (잠그기 전에)
   var t = table_('view', true), c = t.col, todo = [];
   t.rows.forEach(function (row, i) {
     if (str_(row[c['이름']]) && !str_(row[c['토큰 해시']])) todo.push(i);
   });
   if (!todo.length) {
     if (!ui) return say_('`열람` 탭에 이름을 적은 뒤 다시 실행해 주세요.');
-    var r = ui.prompt('열람 링크 만들기',
-      '받을 사람의 이름을 적어 주세요. 여러 명이면 `열람` 탭의 이름 칸에 먼저 적어 두고 이 메뉴를 누르면 한꺼번에 만듭니다.\n\n' +
-      '운영진용이면 이름 뒤에 "=운영진" 을 붙입니다 (Drive 링크까지 보입니다). 예) 홍길동 교수님   /   김운영=운영진',
+    var r = ui.prompt('열람 토큰 만들기',
+      '받을 사람의 이름을 쉼표로 적어 주세요. 사람마다 그 이름을 넣어 만든 토큰이 하나씩 나옵니다.\n' +
+      '예) 홍길동 교수님, 김철수 교수님\n\n' +
+      '운영진용(종합 · Drive 링크까지 보임)이면 이름 뒤에 "=운영진" 을 붙입니다. 예) 김운영=운영진',
       ui.ButtonSet.OK_CANCEL);
     if (r.getSelectedButton() !== ui.Button.OK) return;
-    var parts = str_(r.getResponseText()).split('=');
-    if (!str_(parts[0])) return;
+    var people = viewerPeople_(r.getResponseText());
+    if (!people.length) return;
     withLock_(function () {
       t = table_('view', true);
-      todo = [put_(t, 0, { '이름': str_(parts[0]), '역할': str_(parts[1]) || '심사위원' }) - 2];
+      todo = people.map(function (p) { return put_(t, 0, { '이름': p.name, '역할': p.role }) - 2; });
     });
   }
 
@@ -393,32 +399,62 @@ function viewerNew() {
     todo.forEach(function (i) {
       var row = t.rows[i];
       if (!row || !str_(row[c['이름']]) || str_(row[c['토큰 해시']])) return;
-      var key = newKey_();
+      var name = str_(row[c['이름']]), key = newKey_(name, salt), hash = sha256hex_(key);
       var role = str_(row[c['역할']]) || '심사위원';
       put_(t, i + 2, {
-        '역할': role, '토큰 해시': sha256hex_(key), '만든 시각': kst_(nowMs_()),
-        '만료': str_(row[c['만료']]) || until, '사용': 'O'
+        '역할': role, '토큰 해시': hash, '만든 시각': kst_(nowMs_()),
+        '만료': str_(row[c['만료']]) || until, '사용': 'O', '검증': viewSig_(salt, name, hash)
       });
-      links.push({ name: str_(row[c['이름']]), role: role, url: String(CONFIG.SITE_URL).replace(/\/+$/, '') + '/judge/#k=' + key });
+      links.push({ name: str_(row[c['이름']]), role: role, key: key, url: String(CONFIG.SITE_URL).replace(/\/+$/, '') + '/judge/#k=' + key });
     });
     SpreadsheetApp.flush();
   });
   cacheDrop_('views1');
-  if (!links.length) return say_('새로 만들 링크가 없습니다.');
+  if (!links.length) return say_('새로 만들 토큰이 없습니다.');
 
   var esc = function (s) { return String(s).replace(/[&<>"']/g, function (ch) { return '&#' + ch.charCodeAt(0) + ';'; }); };
-  var text = links.map(function (l) { return l.name + ' (' + l.role + ')\n' + l.url; }).join('\n\n');
-  if (!ui) { Logger.log(text); return; }
+  var text = links.map(function (l) { return l.name + ' (' + l.role + ')\n토큰: ' + l.key + '\n링크: ' + l.url; }).join('\n\n');
+  if (!ui) { Logger.log(text); return links; }
+  // 사람마다 따로 복사할 수 있게 한 칸씩
+  var boxes = links.map(function (l, i) {
+    return '<div style="border:1px solid #ddd;padding:10px 12px;margin:0 0 10px">' +
+      '<b>' + esc(l.name) + '</b> <span style="color:#666">(' + esc(l.role) + ')</span>' +
+      '<div style="margin-top:6px">토큰 <input id="k' + i + '" readonly value="' + esc(l.key) + '" style="width:72%;font:12px ui-monospace,Menlo,monospace"> ' +
+        '<button onclick="var e=document.getElementById(\'k' + i + '\');e.select();document.execCommand(\'copy\');this.textContent=\'복사함\'">복사</button></div>' +
+      '<div style="margin-top:4px">링크 <input id="u' + i + '" readonly value="' + esc(l.url) + '" style="width:72%;font:12px ui-monospace,Menlo,monospace"> ' +
+        '<button onclick="var e=document.getElementById(\'u' + i + '\');e.select();document.execCommand(\'copy\');this.textContent=\'복사함\'">복사</button></div></div>';
+  }).join('');
+  var all = '<textarea id="all" readonly style="width:100%;height:' + (links.length > 3 ? 160 : 90) + 'px;font:11.5px/1.5 ui-monospace,Menlo,monospace">' + esc(text) + '</textarea>' +
+    '<p style="margin:4px 0 12px"><button onclick="var e=document.getElementById(\'all\');e.select();document.execCommand(\'copy\');this.textContent=\'모두 복사함\'">모두 복사</button> ' +
+    '<span style="color:#666">이름 · 토큰 · 링크가 사람마다 세 줄씩</span></p>';
   var html = '<div style="font:13px/1.6 system-ui,sans-serif">' +
-    '<p style="margin:0 0 10px"><b>지금 복사해 두세요.</b> 창을 닫으면 링크를 다시 볼 수 없습니다 (시트에는 해시만 남습니다). ' +
-    '잃어버렸으면 그 줄의 "사용"을 지우고 새 줄에서 다시 만드세요.</p>' +
-    '<textarea id="t" readonly style="width:100%;height:230px;font:12px/1.5 ui-monospace,Menlo,monospace">' + esc(text) + '</textarea>' +
-    '<p style="margin:10px 0 0"><button onclick="var t=document.getElementById(\'t\');t.select();document.execCommand(\'copy\');this.textContent=\'복사했습니다\'">모두 복사</button> ' +
-    '<span style="color:#666">만료: ' + esc(until) + ' (서울) · 링크를 받은 사람은 로그인 없이 전체 팀 자료를 봅니다. 꼭 본인에게만 전달하세요.</span></p></div>';
-  ui.showModalDialog(HtmlService.createHtmlOutput(html).setWidth(680).setHeight(380), '열람 링크 ' + links.length + '개');
+    '<p style="margin:0 0 10px"><b>지금 복사해 두세요.</b> 창을 닫으면 다시 볼 수 없습니다 (시트에는 해시만 남습니다). ' +
+    '받는 분은 링크를 열거나, 현황판(/judge/)의 열람 코드 칸에 토큰을 붙여 넣으면 됩니다. ' +
+    '토큰은 이름을 넣어 만들었기 때문에 `열람` 탭에서 이름을 바꾸면 더 쓸 수 없습니다 (그때는 새로 만드세요).</p>' + all + boxes +
+    '<p style="margin:6px 0 0;color:#666">만료: ' + esc(until) + ' (서울) · 토큰을 받은 사람은 로그인 없이 전체 팀 자료를 봅니다. 꼭 본인에게만 전달하세요. ' +
+    '잃어버렸으면 그 줄의 "사용"을 지우고 다시 만드세요.</p></div>';
+  ui.showModalDialog(HtmlService.createHtmlOutput(html).setWidth(720).setHeight(Math.min(640, 150 + links.length * 110)), '열람 토큰 ' + links.length + '개');
+  return links;
 }
 
-function newKey_() { return secret_().slice(0, 40); }
+/** 프롬프트에 적은 것 → [{name, role}] */
+function viewerPeople_(text) {
+  var s = str_(text);
+  return s.split(/[,，\n]+/).map(function (x) {
+    var p = x.split('=');
+    return { name: str_(p[0]), role: str_(p[1]) === '운영진' ? '운영진' : '심사위원' };
+  }).filter(function (p) { return p.name; }).slice(0, 100);
+}
+
+/**
+ * token_ 으로 시작하는 46글자: SHA-256(비밀 솔트 | 이름 | 무작위 값 | 시각) 을 base64url 로.
+ * 이름이 들어가지만 솔트와 무작위 값 때문에 이름을 안다고 토큰을 만들어 낼 수는 없다. 시트에는 토큰의 해시만 남는다.
+ */
+function newKey_(name, salt) {
+  var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+    [salt || '', 'token', nameKey_(name || ''), Utilities.getUuid(), Utilities.getUuid(), Date.now()].join('|'));
+  return 'token_' + Utilities.base64EncodeWebSafe(raw).replace(/[=]+$/, '').slice(0, 40);
+}
 
 /* ================================================================
    점검 · 정리
@@ -455,7 +491,10 @@ function doctor() {
   ok(accounts > 0, '명단: 팀 ' + Object.keys(r.teams).length + '개 · 줄 ' +
     Object.keys(r.teams).reduce(function (n, k) { return n + r.teams[k]; }, 0) + '개' + (accounts ? '' : ' — ② 명단 만들기를 실행하세요'));
   ok(admins_().length > 0, '운영진 계정(스크립트 속성 ADMINS): ' + admins_().length + '명' + (admins_().length ? '' : ' — 없으면 대신 올리기를 쓸 수 없습니다'));
-  ok(true, '열람 링크: ' + Object.keys(viewers_()).length + '개 사용 중');
+  var vs = viewers_(), judgeN = Object.keys(vs).filter(function (h) { return vs[h].role === '심사위원'; }).length;
+  ok(true, '열람 토큰: ' + Object.keys(vs).length + '개 사용 중 (심사위원 ' + judgeN + '명)');
+  try { ok(true, '심사 시트: ' + scoreSs_().getName() + ' · 심사 ' + (scoreState_() === 'closed' ? '마감됨' : '받는 중')); }
+  catch (e9) { ok(false, '심사 시트 — ' + String(e9.message || e9)); }
   var d = deadlineMs_();
   ok(d > 0, '마감: ' + (d ? kst_(d) + ' (서울), 유예 ' + graceMin_() + '분' : '없음') + ' · 지금 단계: ' + phase_());
   lines.push('· 팀당 저장 한도: ' + (teamCap_() ? (teamCap_() / (1024 * MB)) + 'GB (스크립트 속성 TEAM_MAX_GB)' : '없음'));
@@ -503,7 +542,7 @@ function directProbe_() {
 /** 시트를 손으로 고친 뒤 바로 반영하고 싶을 때. (그냥 두어도 명단은 90초, 열람은 60초, 현황은 5분 안에 반영된다) */
 function cacheClear() {
   fresh_();
-  var keys = ['roster1', 'views1', 'props1', 'votes1'].concat(teamList_(true).map(function (tm) { return 'st1:' + tm.no; }));
+  var keys = ['roster1', 'views1', 'props1', 'votes1', 'scores1'].concat(teamList_(true).map(function (tm) { return 'st1:' + tm.no; }));
   try { CacheService.getScriptCache().removeAll(keys); } catch (e) {}
   say_('캐시를 비웠습니다. 다음 요청부터 시트를 새로 읽습니다.');
 }
@@ -555,6 +594,32 @@ function acceptSelected() {
 
 /** 메뉴에서 실행할 때는 메모와 속성 캐시를 비우고 시작한다 — 방금 고친 속성이 바로 보이게 */
 function fresh_() { MEMO = {}; cacheDrop_('props1'); }
+
+/** 심사 시트에 `종합` 탭을 새로 쓴다 (트랙별 순위 · 심사위원별 합계 · 평균 J · 참가자 점수 P · 최종 S) */
+function scoreReport() {
+  fresh_();
+  var res = scoreTable_(), crit = criteria_(), ss = scoreSs_();
+  var sh = ss.getSheetByName('종합') || ss.insertSheet('종합');
+  sh.clearContents();
+  var head = ['트랙', '순위', '팀', '프로젝트'].concat(res.judges.map(function (j) { return j.name; }),
+    ['심사위원 평균 (J)', '인기투표 표', '참가자 점수 (P)', '최종 (S = ' + (Number(conf_('JUDGE_WEIGHT')) || 0.85) + '×J + P)'],
+    crit.map(function (k) { return k.name + ' 평균'; }));
+  var rows = [head];
+  res.tracks.forEach(function (tr) {
+    tr.rows.forEach(function (r) {
+      rows.push([tr.name, r.rank || '', r.no, r.title].concat(
+        res.judges.map(function (j) { var x = r.judges[j.id]; return x ? (x.complete ? x.total : '(' + x.total + ' 작성 중)') : ''; }),
+        [r.J === null ? '' : r.J, r.votes, r.P, r.S === null ? '' : r.S],
+        crit.map(function (k) { return r.avg[k.key] === null ? '' : r.avg[k.key]; })));
+    });
+  });
+  var range = sh.getRange(1, 1, rows.length, head.length);
+  range.setNumberFormat('@');
+  range.setValues(rows.map(function (row) { return row.map(function (x) { return typeof x === 'number' ? x : cell_(x); }); }));
+  try { sh.setFrozenRows(1); sh.getRange(1, 1, 1, head.length).setFontWeight('bold'); } catch (e) {}
+  SpreadsheetApp.flush();
+  say_('`종합` 탭을 새로 썼습니다 (' + ss.getName() + ').\n심사위원 ' + res.judges.length + '명 · 트랙 ' + res.tracks.length + '개. 4문항을 다 채운 점수만 평균에 넣습니다.');
+}
 
 /** 인기투표 결과를 창으로 (트랙별 득표 · 참가자 점수 P). 시트를 연 운영진만 볼 수 있다. */
 function voteReport() {

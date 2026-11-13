@@ -331,7 +331,7 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   R.eq('주소창에서 토큰을 지운다', await page.evaluate(() => location.hash), '');
   R.eq('팀 카드 20장', await page.locator('#list .post').count(), 20);
   R.match('요약: 제출 완료 팀 수', await text(page, '#s-done'), /^1 \/ 20팀$/);
-  R.match('요약: 발표 · 결과물', await text(page, '#s-parts'), /^발표 1 · 결과물 2$/);
+  R.match('심사위원에게는 둘째 칸이 내 평가 진행', await text(page, '#s-parts'), /^0 \/ 20팀$/);
   R.match('낸 팀의 카드', await text(page, '#card-03'), /분실물 찾기 지도[\s\S]*서비스 열기[\s\S]*발표 자료 보기[\s\S]*데모 영상[\s\S]*코드/);
   R.match('참가자가 적은 글자는 글자 그대로 보인다 (태그로 해석하지 않는다)', await text(page, '#card-03 .txt'), /^<b>굵게<\/b> & "따옴표"$/);
   R.match('일부만 낸 팀', await text(page, '#card-12'), /발표 자료 없음[\s\S]*프로그램 받기/);
@@ -490,6 +490,64 @@ await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3�
   R.eq('화면 오류 없음', [...page.errs, ...op.errs], []);
   await page.context().close();
   await op.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코멘트 → 운영진 종합', async (w) => {
+  w.b.run('setup');                                         // 심사위원 폴더 · 심사 시트
+  const prof = w.b.viewer('가 교수님', '심사위원'), prof2 = w.b.viewer('나 교수님', '심사위원'), staffKey = w.b.viewer('운영 담당', '운영진');
+  const page = await newPage(browser);
+  await page.goto(SITE + '/judge/#k=' + prof);
+  await page.waitForSelector('form.jscore');
+  R.eq('심사위원 화면은 팀마다 세로로 한 줄 (20팀)', await page.locator('.jrow').count(), 20);
+  const f = 'form.jscore[data-no="03"]';
+  for (const [k, v] of [['idea', '21.5'], ['done', '18.25'], ['ux', '20'], ['arch', '22.75']]) await page.fill(`${f} input[name="${k}"]`, v);
+  await page.fill(`${f} textarea[name="comment"]`, '구조 설명이 분명했습니다.');
+  R.eq('합계가 바로 보인다', await text(page, `${f} [data-sum]`), '82.5');
+  R.match('저장 전에는 저장하지 않았다고 알린다', await text(page, `${f} [data-state]`), /저장하지 않은 내용/);
+  await page.click(`${f} button[type="submit"]`);
+  await page.waitForFunction((sel) => /저장됨/.test(document.querySelector(sel + ' [data-state]')?.textContent || ''), f);
+  const rows = w.b.scoreBook().getSheetByName('점수').objects();
+  R.eq('심사 시트 `점수` 탭에 한 줄 (숫자는 숫자로)', rows.map((r) => [r['심사위원'], r['팀'], r['문제 정의 · 아이디어'], r['완성도'], r['합계'], r['코멘트']]),
+    [['가 교수님', '03', 21.5, 18.25, 82.5, '구조 설명이 분명했습니다.']]);
+  R.match('내 평가 진행이 늘어난다', await text(page, '#s-parts'), /^1 \/ 20팀$/);
+  const g = 'form.jscore[data-no="05"]';
+  await page.fill(`${g} input[name="idea"]`, '26');
+  await page.click(`${g} button[type="submit"]`);
+  R.match('25 를 넘으면 저장하지 않고 알린다', await text(page, `${g} [data-state]`), /0 – 25 사이/);
+  R.eq('잘못된 점수는 시트에 들어가지 않는다', w.b.scoreBook().getSheetByName('점수').objects().length, 1);
+  await page.reload();
+  await page.waitForSelector('form.jscore');
+  R.eq('다시 열어도 내가 낸 점수가 채워져 있다', await page.inputValue(`${f} input[name="arch"]`), '22.75');
+  await shot(page, 'e2e-score-1-judge');
+
+  // 다른 교수님 한 분 더 (서버로 바로)
+  w.b.post({ action: 'score.save', key: prof2, team: '03', scores: { idea: 20, done: 20, ux: 20, arch: 20 }, comment: '데모가 좋았습니다' });
+
+  const p2 = await newPage(browser);
+  await p2.goto(SITE + '/judge/score/#k=' + prof);
+  await p2.waitForSelector('#key-form');
+  R.match('심사위원 토큰으로는 종합을 못 본다', await text(p2, '#gate'), /운영진 열람 토큰으로만/);
+  await p2.context().close();
+
+  const sp = await newPage(browser);
+  await sp.goto(SITE + '/judge/score/#k=' + staffKey);
+  await sp.waitForSelector('tr.row');
+  const r03 = sp.locator('tr.row[data-no="03"]');
+  R.match('종합: 교수님별 합계(이름순) · 평균 J · 최종 S', await r03.innerText(), /82\.50[\s\S]*80\.00[\s\S]*81\.25[\s\S]*69\.06/);
+  R.match('1등', await r03.innerText(), /^1/);
+  await r03.click();
+  R.match('줄을 누르면 문항별 점수와 코멘트', await text(sp, 'tr.more'), /22\.75[\s\S]*구조 설명이 분명했습니다[\s\S]*데모가 좋았습니다/);
+  await shot(sp, 'e2e-score-2-summary');
+
+  sp.once('dialog', (d) => d.accept());
+  await sp.click('#lock');
+  await sp.waitForFunction(() => /마감됨/.test(document.querySelector('#s-state')?.textContent || ''));
+  const closed = await page.evaluate(async (k) => (await EP.api('score.save', { team: '03', scores: { idea: 1 } }, { key: k })).error, prof);
+  R.eq('운영진이 마감하면 서버가 저장을 거절한다', closed, 'SCORE_CLOSED');
+  R.eq('화면 오류 없음', [...page.errs, ...sp.errs], []);
+  await page.context().close();
+  await sp.context().close();
 });
 
 await browser.close();

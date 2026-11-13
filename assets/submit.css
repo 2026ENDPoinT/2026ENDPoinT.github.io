@@ -363,6 +363,51 @@ select.tin option{background:var(--ink-2);color:#fff}
 /* 운영진 현황판 카드의 투표 줄 */
 .post .vline{font-size:12.5px;color:var(--blue-k);font-variant-numeric:tabular-nums}
 
+/* ================= 심사위원 평가 (현황판의 심사위원 화면) ================= */
+/* 팀마다 한 줄: 왼쪽은 현황판과 같은 흰 카드, 오른쪽은 점수 · 코멘트 */
+.jlist{display:flex;flex-direction:column;gap:clamp(14px,1.8vw,22px)}
+.jrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);border:1px solid var(--line);min-width:0}
+.jrow>.post{border-top-width:2px}
+.jscore{padding:clamp(18px,2.2vw,26px);display:flex;flex-direction:column;gap:16px;min-width:0}
+.jgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 22px}
+.jq{display:flex;flex-direction:column;gap:6px;min-width:0}
+.jq .lab small{color:var(--dim-2);font-weight:400;letter-spacing:0}
+.jq .tin.num{font-size:20px;font-weight:300;font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.jq .tin.num::-webkit-outer-spin-button,.jq .tin.num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.jq .tin.bad{border-bottom-color:var(--red)}
+.jq .tar{min-height:76px}
+.jact{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--line)}
+.jsum{display:flex;align-items:baseline;gap:8px}
+.jsum b{font-size:26px;font-weight:200;color:#fff;letter-spacing:-.02em}
+.jsum small{color:var(--dim-2);font-size:12.5px}
+.jstate{font-size:12.5px;color:var(--dim-2);flex:1 1 160px;text-align:right;line-height:1.6}
+.jstate.dirty{color:var(--fg)} .jstate.err{color:var(--red)} .jstate.ok{color:var(--blue)}
+
+/* ================= 심사 종합 (/judge/score/) ================= */
+.swrap{overflow-x:auto;border:1px solid var(--line);margin-top:clamp(14px,2vw,20px)}
+.stable{width:100%;border-collapse:collapse;font-size:14px;min-width:760px}
+.stable th,.stable td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;font-weight:300;white-space:nowrap;vertical-align:middle}
+.stable th{font-size:12px;color:var(--dim-2);font-weight:500;letter-spacing:.04em;background:var(--ink-2)}
+.stable .r{text-align:right}
+.stable td.rk{font-size:19px;font-weight:200;color:#fff;width:52px;font-variant-numeric:tabular-nums}
+.stable .nm{white-space:normal;min-width:180px;color:#fff}
+.stable .nm small{display:block;color:var(--dim-2);font-size:12px}
+.stable .s{font-size:16px;font-weight:400;color:#fff}
+.stable .num{font-variant-numeric:tabular-nums}
+.stable .part{color:var(--dim-2)}
+.stable tbody tr.row{cursor:pointer}
+.stable tbody tr.row:hover td{background:rgba(255,255,255,.025)}
+.stable tr.top .rk{color:var(--blue)}
+.stable tr.more td{white-space:normal;background:rgba(255,255,255,.02);padding:16px 18px 18px}
+.sdet{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px 28px}
+.sdet h4{margin:0 0 8px;font-size:12px;font-weight:500;color:var(--dim-2);letter-spacing:.04em}
+.sdet table{width:100%;border-collapse:collapse;font-size:13px}
+.sdet td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.sdet .cm{border-left:1px solid var(--blue);padding:4px 0 4px 12px;margin:0 0 10px;font-size:13.5px;line-height:1.75;color:var(--fg);white-space:pre-line}
+.sdet .cm b{display:block;font-size:12px;color:var(--dim-2);font-weight:500}
+.sstate{font-size:12.5px;border:1px solid var(--line);padding:2px 8px;color:var(--dim-2)}
+.sstate.open{color:var(--blue);border-color:var(--blue)}
+
 /* 발표 자료 보기 */
 .viewer{position:fixed;inset:0;z-index:100;background:rgba(14,14,14,.96);display:flex;flex-direction:column}
 .viewer-bar{display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap;padding:12px clamp(14px,3vw,28px);border-bottom:1px solid var(--line)}
@@ -390,6 +435,7 @@ footer a:hover{color:#fff}
 @media (max-width:1060px){
   .pagehead{grid-template-columns:1fr}
   .posts,.ballot{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .jrow{grid-template-columns:minmax(0,1fr)}
   .top .mark span{display:none}
   .top-auth .who .nm{display:none}
   .top-auth{margin-left:10px}
@@ -409,6 +455,10 @@ footer a:hover{color:#fff}
   .step-bd{padding-left:var(--pad)}
   .sb-send .btn,.gate .btn{flex:1 1 100%}
   .ballot{grid-template-columns:minmax(0,1fr)}
+  .jgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 14px}
+  .jstate{text-align:left;flex-basis:100%}
+  .jact .btn{flex:1 1 100%}
+  .sdet{grid-template-columns:minmax(0,1fr)}
   .vbar .acts,.vbar .acts .btn{flex:1 1 100%}
   .vadm-hd .acts{width:100%}
   .gate .act{width:100%}

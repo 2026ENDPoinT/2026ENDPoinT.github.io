@@ -101,6 +101,12 @@
     VOTE_BAD_TEAM: '이 트랙의 팀만 고를 수 있습니다.',
     VOTE_EMPTY: '팀을 한 곳 이상 골라 주세요.',
     NOT_ADMIN: '운영진만 할 수 있습니다.',
+    NOT_JUDGE: '심사위원 토큰으로만 점수를 적을 수 있습니다.',
+    NOT_STAFF: '운영진 토큰으로만 볼 수 있습니다.',
+    SCORE_CLOSED: '심사가 마감되어 더 고칠 수 없습니다.',
+    BAD_SCORE: '점수를 확인해 주세요 (문항마다 0 – 25).',
+    BAD_TEAM: '팀을 다시 골라 주세요.',
+    SCORE_SHEET_MISSING: '심사 시트가 아직 연결되지 않았습니다. 운영진에게 알려 주세요.',
     BAD_TRACK: '트랙을 다시 골라 주세요.',
     KEY_INVALID: '열람 링크가 만료됐거나 올바르지 않습니다.',
     NOT_FOUND: '파일을 찾지 못했습니다. 새로 고쳐 확인해 주세요.',
@@ -681,6 +687,45 @@
     });
     var mine = teams['03'];
 
+    // ---- 심사 (미리보기). 로컬에서 ?staff=1 을 붙이면 현황판이 운영진 화면으로 열린다 ----
+    var CRIT = [{ key: 'idea', name: '문제 정의 · 아이디어', max: 25 }, { key: 'done', name: '완성도', max: 25 },
+                { key: 'ux', name: '사용자 경험', max: 25 }, { key: 'arch', name: '구조적 이해', max: 25 }];
+    var SM = {}, SCORING = 'open', STAFF = LOCAL && /[?&]staff=1/.test(loc.search || '');
+    function scoreRec(s, comment, at) {
+      var total = 0, filled = 0;
+      CRIT.forEach(function (c) { if (s[c.key] !== '' && s[c.key] !== undefined) { total += s[c.key]; filled++; } });
+      return { s: s, total: Math.round(total * 100) / 100, complete: filled === CRIT.length, filled: filled, comment: comment || '', at: at || Date.now() };
+    }
+    function demoSummary() {
+      var judges = [{ id: 'j1', name: '강 교수님' }, { id: 'j2', name: '김 교수님' }, { id: 'j3', name: '한 교수님' }];
+      var seed = 11, rnd = function () { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+      var votes = {};
+      vtally().forEach(function (x) { x.rows.forEach(function (r) { votes[r.no] = r; }); });
+      var tracks = [['A', '구현과제'], ['H', '해커톤']].map(function (x) {
+        var rows = trackTeams(x[0]).map(function (no) {
+          var t = teams[no], per = {}, sum = 0, n = 0, cs = {}, comments = [];
+          judges.forEach(function (j, ji) {
+            if (!t.title || (ji === 2 && Number(no) % 4 === 0)) return;
+            var s = {};
+            CRIT.forEach(function (c) { s[c.key] = Math.round((14 + rnd() * 11) * 4) / 4; });
+            if (ji === 1 && Number(no) % 5 === 0) s.arch = '';
+            var rec = scoreRec(s, ji === 0 && Number(no) % 3 === 0 ? '발표가 분명했고 데모가 끝까지 동작했습니다.' : '');
+            per[j.id] = { total: rec.total, complete: rec.complete, s: s };
+            if (rec.complete) { sum += rec.total; n++; CRIT.forEach(function (c) { cs[c.key] = (cs[c.key] || 0) + s[c.key]; }); }
+            if (rec.comment) comments.push({ judge: j.name, text: rec.comment });
+          });
+          var J = n ? sum / n : null, v = votes[no] || { votes: 0, p: 0 }, avg = {};
+          CRIT.forEach(function (c) { avg[c.key] = n ? Math.round(cs[c.key] / n * 100) / 100 : null; });
+          return { no: no, title: t.title, judges: per, scored: n, J: J === null ? null : Math.round(J * 100) / 100, P: v.p, votes: v.votes,
+                   S: J === null ? null : Math.round((0.85 * J + v.p) * 100) / 100, avg: avg, comments: comments };
+        });
+        rows.sort(function (a, b) { return ((b.S === null ? -1 : b.S) - (a.S === null ? -1 : a.S)) || (a.no < b.no ? -1 : 1); });
+        rows.forEach(function (r, i) { r.rank = r.J === null ? null : i + 1; });
+        return { key: x[0], name: x[1], vote: VS[x[0]], rows: rows };
+      });
+      return { judges: judges, tracks: tracks };
+    }
+
     // ---- 투표 (미리보기). 로컬에서 ?admin=1 을 붙이면 운영진 화면도 보인다 ----
     var VS = { A: 'open', H: 'ready' }, VM = { A: [], H: [] }, VC = { A: {}, H: {} };
     var vadmin = LOCAL && /[?&]admin=1/.test(loc.search || '');
@@ -798,9 +843,34 @@
             if (complete(s)) sum.complete++;
             tracks[s.track === '해커톤' ? 1 : 0].teams.push(out(s, 'judge'));
           });
-          r.role = '심사위원'; r.name = '미리보기'; r.summary = sum; r.tracks = tracks;
+          r.role = STAFF ? '운영진' : '심사위원'; r.name = '미리보기'; r.summary = sum; r.tracks = tracks;
+          r.criteria = CRIT; r.scoring = SCORING; r.mine = JSON.parse(JSON.stringify(SM));
           return r;
         }
+        case 'score.save': {
+          if (STAFF) return { ok: false, error: 'NOT_JUDGE' };
+          if (SCORING === 'closed') return { ok: false, error: 'SCORE_CLOSED' };
+          var sc = b.scores || {}, vals = {};
+          for (var ci = 0; ci < CRIT.length; ci++) {
+            var c = CRIT[ci], raw = sc[c.key];
+            if (raw === '' || raw === undefined || raw === null) { vals[c.key] = ''; continue; }
+            var n = Number(raw);
+            if (!isFinite(n) || n < 0 || n > c.max) return { ok: false, error: 'BAD_SCORE', item: c.key };
+            vals[c.key] = Math.round(n * 100) / 100;
+          }
+          SM[b.team] = scoreRec(vals, String(b.comment || '').slice(0, 2000));
+          r.team = b.team; r.saved = JSON.parse(JSON.stringify(SM[b.team]));
+          return r;
+        }
+        case 'score.summary': {
+          var ds = demoSummary();
+          r.name = '미리보기'; r.role = '운영진'; r.criteria = CRIT; r.weight = 0.85; r.scoring = SCORING; r.judges = ds.judges; r.tracks = ds.tracks;
+          return r;
+        }
+        case 'score.state':
+          SCORING = b.op === 'close' ? 'closed' : 'open';
+          r.scoring = SCORING;
+          return r;
         case 'vote.me':
           r.email = 'member@demo'; r.admin = vadmin; r.max = 3; r.self = false;
           r.me = { team: '03', track: '구현과제', trackKey: 'A', name: '이서연' };

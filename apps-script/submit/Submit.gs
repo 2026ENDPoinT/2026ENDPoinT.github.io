@@ -16,6 +16,8 @@
  *     다시 올리면 먼젓번 파일은 팀 폴더 안의 '옛날 자료' 로 옮기고 그 줄의 상태·경로를 바꾼다. 지우지 않는다.
  *   - 심사위원·운영진은 열람 토큰으로 전체 팀의 제출 현황을 보고 파일을 받는다 (Drive 권한이 없어도 된다).
  *   - 발표가 끝나면 참가자가 구글 로그인으로 인기투표를 한다 (/judge/vote/, 트랙별 1인 3표). 아래 '참가자 인기투표' 절.
+ *   - 심사위원(열람 토큰)은 현황판에서 팀마다 4문항 점수(소수점)와 코멘트를 적고, 운영진은 종합(/judge/score/)을 본다.
+ *     점수는 제출 폴더와 나란한 '심사위원' 폴더의 'ENDPoinT 2026 심사' 시트에 쌓인다. 아래 '심사위원 평가' 절.
  *
  * 누가 무엇을 보나
  *   참가자   자기 팀 것만. 다른 팀 자료는 응답에 아예 담기지 않는다.
@@ -58,6 +60,20 @@ var CONFIG = {
   // (스크립트 속성 VOTE_MAX · VOTE_SELF 로 바꿀 수 있다. 트랙별로 여닫는 것은 투표 페이지의 운영진 버튼으로)
   VOTE_MAX: 3,
   VOTE_SELF: false,
+
+  // 심사위원 평가: 두 트랙 공통 4문항 · 각 25점, 100점 (조직 소개의 심사 기준). 점수는 소수점 둘째 자리까지 받는다.
+  CRITERIA: [
+    { key: 'idea', name: '문제 정의 · 아이디어', max: 25 },
+    { key: 'done', name: '완성도', max: 25 },
+    { key: 'ux', name: '사용자 경험', max: 25 },
+    { key: 'arch', name: '구조적 이해', max: 25 }
+  ],
+  // 최종 점수 S = JUDGE_WEIGHT × (심사위원 원점수 평균) + 참가자 점수 P. 동점이면 심사위원 점수 → TIE_KEY 문항 평균 순
+  JUDGE_WEIGHT: 0.85,
+  TIE_KEY: 'arch',
+  // 점수를 적는 스프레드시트: 제출 폴더와 나란한 이 이름의 폴더 안, 이 이름의 시트 (처음 설정이 찾거나 만든다)
+  SCORE_FOLDER_NAME: '심사위원',
+  SCORE_SHEET_NAME: 'ENDPoinT 2026 심사',
 
   // 제출을 여는 시각. 비우면 처음부터 열려 있다.
   OPEN_AT: '',
@@ -131,12 +147,17 @@ var TABS = {
   team:   { name: '팀',   head: ['팀', '트랙', '프로젝트', '설명', '배포 주소', '프로그램', '발표 자료', '데모 영상', '완료', '마지막 제출', '제출자', '폴더', '순서', '메모'] },
   file:   { name: '파일', head: ['번호', '팀', '종류', '버전', '상태', '경로', '이름', '원래 이름', '크기', 'md5', '형식', '올린 시각', '올린 사람', 'Drive ID', '링크'] },
   member: { name: '팀원', head: ['팀', '이름', '이메일', '계정 식별자', '역할', '상태', '비고', '출처'] },
-  view:   { name: '열람', head: ['이름', '역할', '토큰 해시', '만든 시각', '만료', '사용', '마지막 접속'] },
+  // 검증 = 이름과 토큰 해시를 비밀 솔트와 묶은 값. 시트에서 이름을 바꾸면 그 토큰은 더 통하지 않는다
+  view:   { name: '열람', head: ['이름', '역할', '토큰 해시', '만든 시각', '만료', '사용', '마지막 접속', '검증'] },
   log:    { name: '기록', head: ['시각', '누가', '팀', '동작', '대상', '메모'] },
   // 표 한 장이 한 줄. 누가 냈는지 대신 익명 표시만, 대상 팀과 함께 검증값(비밀 솔트를 섞은 SHA-256)을 남긴다.
-  vote:   { name: '투표', head: ['번호', '시각', '트랙', '투표지', '투표자(익명)', '투표자 팀', '대상 팀', '검증', '상태'] }
+  vote:   { name: '투표', head: ['번호', '시각', '트랙', '투표지', '투표자(익명)', '투표자 팀', '대상 팀', '검증', '상태'] },
+  // 심사위원 한 명이 한 팀에 준 점수가 한 줄 ('심사' 시트 — book: 'score')
+  score:  { name: '점수', book: 'score', head: ['심사위원', '심사위원 ID', '팀', '트랙'].concat(CONFIG.CRITERIA.map(function (c) { return c.name; }), ['합계', '코멘트', '저장 시각']) }
 };
-var NUMERIC = { '번호': 1, '버전': 1, '크기': 1 };
+/** 숫자로 두는 열과 그 표시 형식 (나머지 열은 전부 글자 서식) */
+var NUMERIC = { '번호': '0', '버전': '0', '크기': '0', '합계': '0.00' };
+CONFIG.CRITERIA.forEach(function (c) { NUMERIC[c.name] = '0.00'; });
 
 /** 한 번의 요청이 끝날 때까지만 사는 메모. 실행마다 새로 만들어진다. */
 var MEMO = {};
@@ -191,6 +212,9 @@ function route_(action, body) {
     case 'vote.me':       return actVoteMe_(body);
     case 'vote.submit':   return actVoteSubmit_(body);
     case 'vote.admin':    return actVoteAdmin_(body);
+    case 'score.save':    return actScoreSave_(body);
+    case 'score.summary': return actScoreSummary_(body);
+    case 'score.state':   return actScoreState_(body);
     default:              return fail_('UNKNOWN_ACTION');
   }
 }
@@ -595,7 +619,189 @@ function actViewList_(body) {
     role: v.role, name: v.name, summary: sum, tracks: tracks
   };
   if (aud === 'staff') res.votes = voteTally_();          // 인기투표 결과는 운영진에게만
+  res.criteria = criteria_();
+  res.scoring = scoreState_();
+  if (v.role === '심사위원') {
+    try { res.mine = scoreMine_(v); } catch (e) { res.mine = {}; res.scoreError = String(e.message || e).split(':')[0]; }
+  }
   return res;
+}
+
+/* ================================================================
+   심사위원 평가 — 현황판(/judge/)의 심사위원 화면 · 종합(/judge/score/)
+   ----------------------------------------------------------------
+   심사위원은 열람 토큰(역할 '심사위원')으로 들어와 팀마다 4문항 점수(0 – 25, 소수점 둘째 자리까지)와 코멘트를 적는다.
+   한 사람이 한 팀에 한 줄 — 다시 저장하면 그 줄을 고친다. 비워 둔 문항은 나중에 채울 수 있고, 4문항이 다 차야 합계로 센다.
+   심사위원은 자기 점수만 본다. 운영진(역할 '운영진' 토큰)은 종합에서 전체를 본다:
+     J = 4문항을 다 채운 심사위원들의 합계 평균, P = 인기투표 참가자 점수, S = 0.85 × J + P, 동점이면 J → 구조적 이해 평균
+   운영진이 마감하면(SCORE_CLOSED) 더 고칠 수 없다.
+   ================================================================ */
+
+function criteria_() {
+  return CONFIG.CRITERIA.map(function (c) { return { key: c.key, name: c.name, max: Number(c.max) || 25 }; });
+}
+function scoreState_() { return /^(1|true|yes|closed|o)$/i.test(String(props_().SCORE_CLOSED || '')) ? 'closed' : 'open'; }
+function judgeId_(v) { return v.hash.slice(0, 12); }
+function round2_(n) { return Math.round(n * 100) / 100; }
+
+/** 심사 시트. 스크립트 속성 SCORE_SHEET_ID → 없으면 제출 폴더 옆 '심사위원' 폴더에서 찾는다 */
+function scoreSs_() {
+  if (MEMO.scoreSs) return MEMO.scoreSs;
+  var id = props_().SCORE_SHEET_ID || scoreSheetFind_(false);
+  if (!id) throw new Error('SCORE_SHEET_MISSING: 처음 설정을 다시 실행해 주세요 (심사위원 폴더 · 시트를 찾거나 만듭니다).');
+  return (MEMO.scoreSs = SpreadsheetApp.openById(id));
+}
+/** 제출 폴더와 나란한 SCORE_FOLDER_NAME 폴더 안의 SCORE_SHEET_NAME 시트. create 면 없을 때 만든다. 찾으면 속성에 기억한다 */
+function scoreSheetFind_(create) {
+  var root = rootFolder_(), up = root.getParents(), home = up.hasNext() ? up.next() : root;
+  var folder = null, it = home.getFoldersByName(conf_('SCORE_FOLDER_NAME'));
+  while (it.hasNext()) { var f = it.next(); if (!f.isTrashed()) { folder = f; break; } }
+  if (!folder) {
+    if (!create) return '';
+    folder = home.createFolder(conf_('SCORE_FOLDER_NAME'));
+  }
+  var id = '', files = folder.getFilesByName(conf_('SCORE_SHEET_NAME'));
+  while (files.hasNext()) {
+    var x = files.next();
+    if ((!x.isTrashed || !x.isTrashed()) && x.getMimeType() === 'application/vnd.google-apps.spreadsheet') { id = x.getId(); break; }
+  }
+  if (!id) {
+    if (!create) return '';
+    id = SpreadsheetApp.create(conf_('SCORE_SHEET_NAME')).getId();
+    DriveApp.getFileById(id).moveTo(folder);
+  }
+  PropertiesService.getScriptProperties().setProperty('SCORE_SHEET_ID', id);
+  propsDrop_();
+  return id;
+}
+
+/** `점수` 탭 → { judges: {ID: {id, name, teams: {팀: {s:{문항:점수|''}, total, complete, comment, at}}}} } (1분 캐시, 쓸 때 새로) */
+function scores_() {
+  if (MEMO.scores) return MEMO.scores;
+  var hit = cacheGet_('scores1');
+  if (hit) return (MEMO.scores = hit);
+  return scoreBuild_(table_('score'));
+}
+function scoreBuild_(t) {
+  var c = t.col, crit = criteria_(), out = { judges: {} };
+  t.rows.forEach(function (row) {
+    var id = str_(row[c['심사위원 ID']]), no = teamNo_(row[c['팀']]);
+    if (!id || !no) return;
+    var s = {}, total = 0, filled = 0;
+    crit.forEach(function (k) {
+      var x = row[c[k.name]], n = (x === '' || x === null || x === undefined) ? NaN : Number(x);
+      if (isFinite(n) && n >= 0 && n <= k.max) { s[k.key] = round2_(n); total += n; filled++; } else s[k.key] = '';
+    });
+    var j = out.judges[id] = out.judges[id] || { id: id, name: str_(row[c['심사위원']]), teams: {} };
+    j.teams[no] = { s: s, total: round2_(total), complete: filled === crit.length, filled: filled,
+                    comment: str_(row[c['코멘트']]), at: time_(row[c['저장 시각']]) };
+  });
+  cachePut_('scores1', out, 60);
+  return (MEMO.scores = out);
+}
+function scoreMine_(v) { var j = scores_().judges[judgeId_(v)]; return j ? j.teams : {}; }
+
+/** 심사위원: 한 팀의 점수와 코멘트를 저장 { key, team, scores:{idea:21.5, …}, comment } */
+function actScoreSave_(body) {
+  var v = viewer_(body.key);
+  if (!v) return fail_('KEY_INVALID');
+  if (v.role !== '심사위원') return fail_('NOT_JUDGE');
+  if (scoreState_() === 'closed') return fail_('SCORE_CLOSED');
+  var team = teamNo_(body.team);
+  if (!team || team === TEST_TEAM || teamNos_().indexOf(team) === -1) return fail_('BAD_TEAM');
+  var crit = criteria_(), sc = (body.scores && typeof body.scores === 'object') ? body.scores : {}, out = {}, total = 0, filled = 0;
+  for (var i = 0; i < crit.length; i++) {
+    var k = crit[i], raw = sc[k.key];
+    if (raw === '' || raw === null || raw === undefined) { out[k.key] = ''; continue; }     // 비워 두고 나중에 채워도 된다
+    var n = Number(raw);
+    if (typeof raw === 'boolean' || !isFinite(n) || n < 0 || n > k.max) return fail_('BAD_SCORE', { item: k.key, max: k.max });
+    n = round2_(n);
+    out[k.key] = n; total += n; filled++;
+  }
+  var comment = clean_(body.comment, 2000, true);
+  if (!hit_('score:' + judgeId_(v), 400, 600)) return fail_('TOO_MANY');
+
+  return withLock_(function () {
+    var t = table_('score', true), c = t.col, id = judgeId_(v), at = -1;
+    t.rows.forEach(function (row, j) { if (str_(row[c['심사위원 ID']]) === id && teamNo_(row[c['팀']]) === team) at = j; });
+    var rec = { '심사위원': v.name, '심사위원 ID': id, '팀': team, '트랙': trackOf_(team), '합계': filled ? round2_(total) : '',
+                '코멘트': comment, '저장 시각': kst_(nowMs_()) };
+    crit.forEach(function (k) { rec[k.name] = out[k.key]; });
+    put_(t, at < 0 ? 0 : at + 2, rec);
+    var mine = scoreBuild_(t).judges[id].teams[team];
+    return { ok: true, team: team, saved: mine };
+  });
+}
+
+/** 운영진: 종합 — 트랙별 순위표와 코멘트 */
+function actScoreSummary_(body) {
+  var v = viewer_(body.key);
+  if (!v) return fail_('KEY_INVALID');
+  if (v.role !== '운영진') return fail_('NOT_STAFF');
+  seen_(v);
+  var res = scoreTable_();
+  return { ok: true, api: API_VERSION, now: nowMs_(), name: v.name, role: v.role, criteria: criteria_(), weight: Number(conf_('JUDGE_WEIGHT')) || 0.85,
+           scoring: scoreState_(), judges: res.judges, tracks: res.tracks };
+}
+
+/** 운영진: 심사 마감 · 다시 열기 { key, op:'close'|'open' } */
+function actScoreState_(body) {
+  var v = viewer_(body.key);
+  if (!v) return fail_('KEY_INVALID');
+  if (v.role !== '운영진') return fail_('NOT_STAFF');
+  var op = String(body.op || '');
+  if (op !== 'close' && op !== 'open') return fail_('BAD_OP');
+  withLock_(function () { PropertiesService.getScriptProperties().setProperty('SCORE_CLOSED', op === 'close' ? 'true' : ''); });
+  propsDrop_();
+  return { ok: true, scoring: scoreState_() };
+}
+
+/** 트랙별 순위표. 심사위원 목록은 `열람` 탭의 심사위원 + 점수를 낸 사람 */
+function scoreTable_() {
+  var sc = scores_(), all = states_(), crit = criteria_(), w = Number(conf_('JUDGE_WEIGHT')) || 0.85, tie = conf_('TIE_KEY');
+  var vt = {};
+  try { voteTally_().forEach(function (x) { vt[x.key] = x; }); } catch (e) {}
+  var names = {}, vs = viewers_();
+  Object.keys(vs).forEach(function (h) { if (vs[h].role === '심사위원') names[h.slice(0, 12)] = vs[h].name; });
+  Object.keys(sc.judges).forEach(function (id) { if (!names[id]) names[id] = sc.judges[id].name; });
+  var judges = Object.keys(names).map(function (id) { return { id: id, name: names[id] }; })
+    .sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+
+  var tracks = voteTracks_().map(function (tr) {
+    var vmap = {};
+    ((vt[tr.key] || {}).rows || []).forEach(function (r) { vmap[r.no] = r; });
+    var rows = voteTeams_(tr.key).map(function (no) {
+      var per = {}, sum = 0, n = 0, cs = {}, comments = [];
+      judges.forEach(function (j) {
+        var r = sc.judges[j.id] && sc.judges[j.id].teams[no];
+        if (!r) return;
+        per[j.id] = { total: r.total, complete: r.complete, s: r.s };
+        if (r.complete) {
+          sum += r.total; n++;
+          crit.forEach(function (k) { cs[k.key] = (cs[k.key] || 0) + Number(r.s[k.key]); });
+        }
+        if (r.comment) comments.push({ judge: j.name, text: r.comment });
+      });
+      var J = n ? sum / n : null, P = vmap[no] ? vmap[no].p : 0, avg = {};
+      crit.forEach(function (k) { avg[k.key] = n ? round2_(cs[k.key] / n) : null; });
+      return {
+        no: no, title: (all[no] || {}).title || '', judges: per, scored: n,
+        J: J === null ? null : round2_(J), P: P, votes: vmap[no] ? vmap[no].votes : 0,
+        S: J === null ? null : round2_(w * J + P), avg: avg, comments: comments,
+        _s: J === null ? -1 : w * J + P, _j: J === null ? -1 : J, _t: n ? cs[tie] / n : -1
+      };
+    });
+    rows.sort(function (a, b) { return (b._s - a._s) || (b._j - a._j) || (b._t - a._t) || (a.no < b.no ? -1 : 1); });
+    var rank = 0;
+    rows.forEach(function (r, i) {
+      var prev = rows[i - 1];
+      if (!prev || r._s !== prev._s || r._j !== prev._j || r._t !== prev._t) rank = i + 1;
+      r.rank = r.J === null ? null : rank;
+    });
+    rows.forEach(function (r) { delete r._s; delete r._j; delete r._t; });
+    return { key: tr.key, name: tr.name, vote: (vt[tr.key] || {}).state || 'ready', rows: rows };
+  });
+  return { judges: judges, tracks: tracks };
 }
 
 /* ================================================================
@@ -992,15 +1198,23 @@ function viewers_() {
   if (MEMO.viewers) return MEMO.viewers;
   var hit = cacheGet_('views1');
   if (hit) return (MEMO.viewers = hit);
-  var t = table_('view'), c = t.col, out = {};
+  var t = table_('view'), c = t.col, out = {}, salt = String(props_().VOTE_SALT || '');
   t.rows.forEach(function (row, i) {
     var h = str_(row[c['토큰 해시']]).toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(h)) return;
     if (!/^(o|y|yes|true|사용|1)$/i.test(str_(row[c['사용']]))) return;
+    // 이름을 넣어 만든 토큰은 지금 적힌 이름과 짝이 맞아야 한다 (검증 칸이 빈 예전 줄은 그대로 받는다)
+    var sig = c['검증'] === undefined ? '' : str_(row[c['검증']]).toLowerCase();
+    if (sig && (!salt || sig !== viewSig_(salt, str_(row[c['이름']]), h))) return;
     out[h] = { name: str_(row[c['이름']]), role: str_(row[c['역할']]) || '심사위원', until: time_(row[c['만료']]), row: i + 2 };
   });
   cachePut_('views1', out, 60);
   return (MEMO.viewers = out);
+}
+
+/** 열람 토큰의 이름 묶음: SHA-256(솔트 | view | 이름 | 토큰 해시) 앞 32자 */
+function viewSig_(salt, name, hash) {
+  return sha256hex_([salt, 'view', nameKey_(name), String(hash).toLowerCase()].join('|')).slice(0, 32);
 }
 
 function viewer_(key) {
@@ -1268,7 +1482,7 @@ function ss_() {
 function table_(key, fresh) {
   MEMO.t = MEMO.t || {};
   if (!fresh && MEMO.t[key]) return MEMO.t[key];
-  var def = TABS[key], ss = ss_();
+  var def = TABS[key], ss = def.book === 'score' ? scoreSs_() : ss_();
   var sh = ss.getSheetByName(def.name) || ss.insertSheet(def.name);
   var all = sh.getDataRange().getValues();
   var empty = all.length === 0 || (all.length === 1 && all[0].join('') === '');
@@ -1310,9 +1524,9 @@ function put_(t, rowNo, obj) {
     var vals = [], fmts = [];
     for (var c = r.start; c <= r.end; c++) {
       var h = t.headers[c], v = obj[h];
-      var num = NUMERIC[h] && typeof v === 'number';
+      var nf = NUMERIC[h], num = !!nf && typeof v === 'number' && isFinite(v);
       var out = num ? v : cell_(v);
-      vals.push(out); fmts.push(num ? '0' : '@');
+      vals.push(out); fmts.push(num ? (typeof nf === 'string' ? nf : '0') : '@');
       mem[c] = out;
     }
     var range = t.sheet.getRange(rowNo, r.start + 1, 1, vals.length);
