@@ -1732,3 +1732,83 @@ describe('투표 줄이 시트에서 바뀌어도 (최악의 경우)', () => {
     assert.deepEqual([h.voters, h.votes, h.bad], [2, 3, 0]);
   });
 });
+
+describe('발표 순서 — 트랙마다 마지막 제출이 늦은 팀부터 (11-14 공지)', () => {
+  const T = { ...TOKENS, 'tok-c1': token('c1@x.com', '601'), 'tok-c2': token('c2@x.com', '602'), 'tok-d1': token('d1@x.com', '701') };
+  function ob() {
+    const b = loadBackend({ props: { ADMINS: 'op@x.com' }, tokens: T });
+    b.roster([['01', '일팀', 'c1@x.com', '601', '조장', ''], ['02', '이팀', 'c2@x.com', '602', '조장', ''], ['03', '가나다', 'a1@x.com', '101', '조장', ''],
+              ['12', '사아자', 'b1@x.com', '201', '조장', ''], ['15', '마바사', 'd1@x.com', '701', '조장', '']]);
+    return b;
+  }
+  const save = (b, tok, title) => assert.equal(b.post({ action: 'info.save', idToken: tok, data: { title } }).ok, true);
+  const nos = (r, name) => r.tracks.find((t) => t.name === name).teams.map((t) => t.no);
+  const ranks = (r, name) => r.tracks.find((t) => t.name === name).teams.map((t) => t.rank);
+
+  test('공지 예시: 8시에 낸 01팀 · 10시에 낸 02팀이면 02팀이 먼저 — 안 낸 팀은 맨 뒤 (팀 번호 순)', () => {
+    const b = ob();
+    b.at('2026-11-14T08:00:00+09:00'); save(b, 'tok-c1', '일팀 서비스');
+    b.at('2026-11-14T09:00:00+09:00'); save(b, 'tok-a1', '삼팀 서비스');
+    b.at('2026-11-14T10:00:00+09:00'); save(b, 'tok-c2', '이팀 서비스');
+    const r = b.post({ action: 'view.list', key: b.viewer('홍길동 교수님') });
+    assert.deepEqual(nos(r, '구현과제'), ['02', '03', '01', '04', '05', '06', '07', '08', '09', '10']);
+    assert.deepEqual(ranks(r, '구현과제'), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.equal(r.orderFinal, false);                                   // 유예(10:05)가 끝나야 확정
+  });
+
+  test('파일을 올려도 · 다시 올려도 마지막 제출 시각이 바뀐다 (해커톤 트랙도 따로 센다)', () => {
+    const b = ob();
+    b.at('2026-11-14T08:30:00+09:00'); save(b, 'tok-b1', '십이팀');
+    b.at('2026-11-14T09:10:00+09:00'); save(b, 'tok-d1', '십오팀');
+    b.at('2026-11-14T09:40:00+09:00'); upload(b, { idToken: 'tok-b1' });
+    const r = b.post({ action: 'view.list', key: b.viewer('홍길동 교수님') });
+    assert.deepEqual(nos(r, '해커톤').slice(0, 3), ['12', '15', '11']);
+  });
+
+  test('마감(+유예) 뒤에 운영진이 대신 올려도 마지막 제출 시각 · 순서는 그대로 (기록에는 남는다)', () => {
+    const b = ob();
+    b.at('2026-11-14T08:00:00+09:00'); save(b, 'tok-c1', '일팀');
+    b.at('2026-11-14T09:00:00+09:00'); save(b, 'tok-c2', '이팀');
+    b.at('2026-11-14T10:20:00+09:00');
+    upload(b, { idToken: 'tok-op', as: '01' });                         // 늦은 팀 구제
+    const row = b.rows('팀').find((x) => x['팀'] === '01');
+    assert.equal(row['마지막 제출'], '2026-11-14 08:00:00');
+    assert.ok(row['발표 자료']);
+    const r = b.post({ action: 'view.list', key: b.viewer('홍길동 교수님') });
+    assert.deepEqual(nos(r, '구현과제').slice(0, 2), ['02', '01']);
+    assert.equal(r.orderFinal, true);
+    assert.ok(b.rows('기록').some((x) => x['동작'] === 'upload.finish' && String(x['팀']) === '01'));
+  });
+
+  test("`팀` 탭 '순서' 칸에 숫자를 적은 팀은 그 숫자대로 앞에 선다 (운영진이 손으로)", () => {
+    const b = ob();
+    b.at('2026-11-14T08:00:00+09:00'); save(b, 'tok-c1', '일팀');
+    b.at('2026-11-14T09:00:00+09:00'); save(b, 'tok-c2', '이팀');
+    const sh = b.tab('팀'), head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    const rowNo = sh.objects().findIndex((x) => x['팀'] === '01') + 2;
+    sh.getRange(rowNo, head.indexOf('순서') + 1).setValue(1);
+    b.ctx.refreshStates_();                                             // 시트를 손으로 고친 것은 캐시(5분)가 지나면 반영된다
+    const r = b.post({ action: 'view.list', key: b.viewer('홍길동 교수님') });
+    assert.deepEqual(nos(r, '구현과제').slice(0, 3), ['01', '02', '03']);
+  });
+
+  test('공개 현황판: 마감 전에는 순서가 없고, 10:00 이 지나면 순서 · 마지막 제출 시각, 유예가 끝나면 확정', () => {
+    const b = ob();
+    b.at('2026-11-14T08:00:00+09:00'); save(b, 'tok-c1', '일팀');
+    b.at('2026-11-14T09:59:00+09:00'); save(b, 'tok-c2', '이팀');
+    let r = b.post({ action: 'status.public' });
+    assert.equal(r.submit.order, null);
+    b.at('2026-11-14T10:01:00+09:00');
+    r = b.post({ action: 'status.public' });
+    assert.equal(r.submit.order.final, false);
+    b.at('2026-11-14T10:05:01+09:00');                                  // 유예 끝 — 같은 5분 칸이어도 바로 새로 센다
+    r = b.post({ action: 'status.public' });
+    assert.equal(r.submit.order.final, true);
+    const A = r.submit.order.tracks.find((t) => t.key === 'A');
+    assert.deepEqual(A.teams.slice(0, 3).map((t) => [t.no, t.rank]), [['02', 1], ['01', 2], ['03', 3]]);
+    assert.equal(A.teams[0].at, Date.parse('2026-11-14T09:59:00+09:00'));
+    assert.equal(A.teams[2].at, 0);                                     // 안 낸 팀
+    assert.deepEqual(r.submit.order.tracks.map((t) => t.key), ['H', 'A']);
+    assert.ok(!/일팀|이팀|@x\.com/.test(JSON.stringify(r)));               // 이름 · 이메일은 여전히 없다
+  });
+});

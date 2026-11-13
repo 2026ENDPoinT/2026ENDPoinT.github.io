@@ -715,6 +715,7 @@ function actViewList_(body) {
   var tracks = CONFIG.TRACKS.map(function (tr) { return { name: tr.name, teams: [] }; });
   var extra = { name: '기타', teams: [] }, practice = { name: '연습', teams: [] };
   var sum = { teams: 0, complete: 0, deck: 0, product: 0, title: 0 };
+  var rank = presentRanks_(all);
 
   teamList_(aud === 'staff').forEach(function (tm) {
     var s = all[tm.no];
@@ -730,18 +731,19 @@ function actViewList_(body) {
       if (complete_(s)) sum.complete++;
     }
     var out = stateOut_(s, aud), put = tm.no === TEST_TEAM ? practice : extra;
+    out.rank = rank[tm.no] || 0;
     tracks.forEach(function (tr) { if (tr.name === out.track) put = tr; });
     put.teams.push(out);
   });
   if (extra.teams.length) tracks.push(extra);
   if (practice.teams.length) tracks.push(practice);
-  tracks.forEach(function (tr) {
-    tr.teams.sort(function (x, y) { return ((x.order || 999) - (y.order || 999)) || (x.no < y.no ? -1 : 1); });
+  tracks.forEach(function (tr) {                                   // 발표 순서대로 (presentRanks_)
+    tr.teams.sort(function (x, y) { return ((x.rank || 999) - (y.rank || 999)) || (x.no < y.no ? -1 : 1); });
   });
   seen_(v);
   var res = {
     ok: true, api: API_VERSION, now: nowMs_(), deadline: deadlineMs_(), graceMin: graceMin_(), phase: phase_(),
-    role: v.role, name: v.name, summary: sum, tracks: tracks
+    role: v.role, name: v.name, summary: sum, tracks: tracks, orderFinal: phase_() === 'closed'
   };
   if (aud === 'staff') res.votes = voteTally_();          // 인기투표 결과는 운영진에게만
   res.criteria = criteria_();
@@ -1001,6 +1003,27 @@ function voteState_(key, at) {
 function voteMax_() { var n = Number(conf_('VOTE_MAX')); return n >= 1 && n <= 10 ? Math.floor(n) : 3; }
 function voteSelf_() { return /^(1|true|yes|o|on)$/i.test(String(conf_('VOTE_SELF'))); }
 function voteTeams_(key) { return teamNos_().filter(function (no) { return trackKeyOf_(no) === key; }); }
+
+/**
+ * 발표 순서 { 팀 번호: 트랙 안에서 몇 번째 } — 트랙마다 '마지막 제출' 이 늦은 팀부터 (11-14 공지:
+ * 8시에 낸 01팀 · 10시에 낸 02팀이면 02팀이 먼저). 아무것도 내지 않은 팀은 맨 뒤 (팀 번호 순).
+ * `팀` 탭 '순서' 칸에 숫자를 적은 팀은 그 숫자대로 맨 앞에 선다 (운영진이 손으로 바꿀 때).
+ * 마감(+유예) 뒤에 운영진이 대신 올린 것은 '마지막 제출' 을 바꾸지 않으므로(teamPatch_) 순서가 흔들리지 않는다.
+ */
+function presentRanks_(all) {
+  var out = {};
+  voteTracks_().forEach(function (tr) {
+    voteTeams_(tr.key).map(function (no) { return all[no] || blank_(no); }).sort(function (x, y) {
+      var ox = x.order || 0, oy = y.order || 0;
+      if (ox || oy) { if (!ox) return 1; if (!oy) return -1; if (ox !== oy) return ox - oy; }
+      var ax = x.at || 0, ay = y.at || 0;
+      if (!ax !== !ay) return ax ? -1 : 1;                       // 낸 팀이 먼저
+      if (ax !== ay) return ay - ax;                             // 늦게 낸 팀이 먼저
+      return x.no < y.no ? -1 : x.no > y.no ? 1 : 0;
+    }).forEach(function (s, i) { out[s.no] = i + 1; });
+  });
+  return out;
+}
 
 /** 비밀 솔트. 처음 한 번 만들고 스크립트 속성에 둔다 (처음 설정에서 미리 만든다). 잠금 안에서 부르지 않는다. */
 function voteSalt_() {
@@ -1272,7 +1295,7 @@ function boardSec_(k, def) { var n = Number(conf_(k)); return n >= 10 && n <= 36
 function actStatusPublic_(body) {
   var now = nowMs_(), sSec = boardSec_('BOARD_SUBMIT_SEC', 300), vSec = boardSec_('BOARD_VOTE_SEC', 60);
   var sb = Math.floor(now / (sSec * 1000)), vb = Math.floor(now / (vSec * 1000));
-  var sk = 'pub:s:' + sSec + ':' + sb, sub = cacheGet_(sk);
+  var ph = phase_(), sk = 'pub:s:' + sSec + ':' + sb + ':' + ph, sub = cacheGet_(sk);   // 마감 · 유예 끝에는 바로 새로 센다
   if (!sub) {
     var all = states_(), teams = [], sum = { teams: 0, complete: 0, deck: 0, product: 0 };
     voteTracks_().forEach(function (tr) {
@@ -1286,6 +1309,14 @@ function actStatusPublic_(body) {
       });
     });
     sub = { at: now, teams: teams, sum: sum };
+    // 발표 순서는 마감(10:00)이 지나야 보인다. 유예(올리던 것 마무리) 동안은 바뀔 수 있어 final: false
+    if (ph === 'grace' || ph === 'closed') {
+      var rk = presentRanks_(all);
+      sub.order = { final: ph === 'closed', tracks: voteTracks_().map(function (tr) {
+        return { key: tr.key, teams: voteTeams_(tr.key).map(function (no) { return { no: no, rank: rk[no] || 0, at: (all[no] || {}).at || 0 }; })
+          .sort(function (x, y) { return x.rank - y.rank; }) };
+      }) };
+    }
     cachePut_(sk, sub, sSec + 30);
   }
   var vk = 'pub:v:' + vSec + ':' + vb, cnt = cacheGet_(vk);
@@ -1296,7 +1327,7 @@ function actStatusPublic_(body) {
   }
   return {
     ok: true, api: API_VERSION, now: now, deadline: deadlineMs_(), graceMin: graceMin_(), phase: phase_(),
-    submit: { at: sub.at, next: (sb + 1) * sSec * 1000, every: sSec, sum: sub.sum, teams: sub.teams },
+    submit: { at: sub.at, next: (sb + 1) * sSec * 1000, every: sSec, sum: sub.sum, teams: sub.teams, order: sub.order || null },
     vote: {
       at: cnt.at, next: (vb + 1) * vSec * 1000, every: vSec, eligible: roster_().people || 0,
       tracks: voteTracks_().map(function (tr) {
@@ -1829,8 +1860,11 @@ function teamPatch_(a, patch, links) {
   var row = {};
   Object.keys(patch).forEach(function (h) { row[h] = patch[h]; });
   if (i < 0) { row['팀'] = a.team; row['트랙'] = trackOf_(a.team); }
-  row['마지막 제출'] = kst_(nowMs_());
-  row['제출자'] = byLabel_(a);
+  // 발표 순서는 마감 때의 '마지막 제출' 로 정한다 — 마감(+유예) 뒤에 운영진이 대신 올린 것은 시각을 바꾸지 않는다
+  if (phase_() !== 'closed') {
+    row['마지막 제출'] = kst_(nowMs_());
+    row['제출자'] = byLabel_(a);
+  }
 
   // '완료' 는 프로젝트 이름 + 발표 자료 + (배포 주소 또는 프로그램) 이 다 있을 때
   var cur = i < 0 ? null : t.rows[i];

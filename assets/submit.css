@@ -191,6 +191,20 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .tchip.part{border-color:var(--blue);color:var(--blue)}
 .tchip.done{background:var(--blue-k);border-color:var(--blue-k);color:#fff}
 .pub .legend{display:flex;gap:8px 12px;flex-wrap:wrap;margin-top:10px}
+/* 발표 순서 (마감 뒤): 순서 · 팀 · 마지막 제출 시각 */
+.porder{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px;flex:1 1 100%}
+.porder li{display:flex;align-items:baseline;gap:10px;padding:9px 12px;border:1px solid var(--line);min-width:0}
+.porder li b{font-size:19px;font-weight:200;color:var(--hi);min-width:1.3em;font-variant-numeric:tabular-nums}
+.porder li .t{font-size:14px;color:var(--fg);white-space:nowrap}
+.porder li small{margin-left:auto;font-size:12px;color:var(--dim-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.porder li.none{opacity:.5}
+@media (max-width:560px){
+  .porder{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .porder li{padding:8px 9px;gap:7px}
+  .porder li b{font-size:17px}
+  .porder li .t{font-size:13px}
+  .porder li small{font-size:11px}
+}
 .pub .legend .tchip{height:22px;min-width:0;font-size:11.5px}
 @media (max-width:560px){
   .pubrow{grid-template-columns:1fr auto}
@@ -321,6 +335,9 @@ select.tin option{background:var(--ink-2);color:var(--hi)}
 .post.part{border-top-color:#BDBDBD}
 .post.none{background:transparent;color:var(--dim);border:1px solid var(--line)}
 .post .hd{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.post .nog{display:inline-flex;align-items:baseline;gap:10px;min-width:0}
+.post .pord{font-size:12px;font-weight:500;letter-spacing:.02em;color:var(--blue-k);white-space:nowrap}
+.trk-hd .ordnote{flex-basis:100%;margin-top:-6px}
 .post .no{font-size:28px;font-weight:200;letter-spacing:-.03em;line-height:1;color:var(--paper-ink);font-variant-numeric:tabular-nums}
 .post.none .no{color:var(--dim)}
 .badge{font-size:11px;letter-spacing:.06em;font-weight:500;color:var(--blue-k);border:1px solid var(--blue-k);padding:3px 8px;white-space:nowrap}

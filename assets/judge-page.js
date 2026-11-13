@@ -106,6 +106,26 @@
     }, function () {});
   }
   function hm(ms) { return ms ? EP.fmtTime(ms).slice(6) : ''; }
+  function hms(ms) {                                              // 서울 시각 HH:MM:SS (같은 분 안의 앞뒤도 보이게)
+    var x = new Date(ms + 9 * 3600000);
+    return [x.getUTCHours(), x.getUTCMinutes(), x.getUTCSeconds()].map(function (n) { return (n < 10 ? '0' : '') + n; }).join(':');
+  }
+  /** 발표 순서 — 마감(10:00)이 지나면 서버가 준다. 트랙마다 마지막 제출이 늦은 팀부터 */
+  function orderHtml(d) {
+    var o = d.submit.order;
+    if (!o || !o.tracks) return '';
+    var name = {};
+    d.vote.tracks.forEach(function (x) { name[x.key] = x.name; });
+    var until = d.deadline ? hm(d.deadline + (d.graceMin || 0) * 60000) : '';
+    return '<section class="pubsec" id="pub-order"><div class="pubhd"><b>발표 순서</b><span class="when">마지막 제출이 늦은 팀부터 · ' +
+      (o.final ? '확정' : (until ? until + ' 확정 (올리던 파일 마무리 중)' : '확정 전')) + '</span></div>' +
+      o.tracks.map(function (tr) {
+        return '<div class="pubgrp"><span class="lab ko">' + esc(name[tr.key] || tr.key) + '</span><ol class="porder">' + tr.teams.map(function (t) {
+          return '<li' + (t.at ? '' : ' class="none"') + ' data-no="' + esc(t.no) + '"><b>' + t.rank + '</b><span class="t">' + esc(t.no) + '팀</span>' +
+            '<small>' + (t.at ? hms(t.at) : '제출 없음') + '</small></li>';
+        }).join('') + '</ol></div>';
+      }).join('') + '</section>';
+  }
   function every(sec) { return sec % 60 === 0 ? (sec / 60) + '분' : sec + '초'; }
   function voteTxt(tr) {
     if (tr.state === 'open') return '투표 중' + (tr.until ? ' · ' + hm(tr.until) + '까지' : '');
@@ -138,7 +158,7 @@
     var submit = '<section class="pubsec" id="pub-submit"><div class="pubhd"><b>제출 현황</b>' +
       '<span class="when">' + hm(d.submit.at) + ' 기준 · ' + every(d.submit.every) + '마다 갱신</span></div>' + groups +
       '<div class="legend"><span class="tchip done">완료</span><span class="tchip part">일부</span><span class="tchip none">아직</span></div></section>';
-    el.innerHTML = d.phase === 'closed' ? vote + submit : submit + vote;   // 제출이 끝나면 투표를 위로
+    el.innerHTML = orderHtml(d) + (d.phase === 'closed' ? vote + submit : submit + vote);   // 제출이 끝나면 발표 순서 · 투표를 위로
     el.hidden = false;
   }
 
@@ -219,7 +239,7 @@
     var tracks = d.tracks.filter(function (tr) { return !st.tab || tr.name === st.tab; }).map(function (tr) {
       return { name: tr.name, all: tr.teams, teams: tr.teams.filter(function (t) { return !st.only || has(t); }) };
     });
-    var shape = st.tab + '|' + st.only + '|' + (staff() ? 's' : 'j') + '|' + tracks.map(function (tr) {
+    var shape = st.tab + '|' + st.only + '|' + (staff() ? 's' : 'j') + '|' + (d.orderFinal ? 'F' : '') + '|' + tracks.map(function (tr) {
       return tr.name + ':' + tr.teams.map(function (t) { return t.no; }).join(',');
     }).join(';');
 
@@ -227,7 +247,7 @@
       // 보이는 팀의 구성이 달라졌다 — 통째로 다시 그린다
       st.shape = shape; st.sig = {};
       var html = tracks.map(function (tr, i) {
-        return '<section class="trk"><div class="trk-hd"><h2>' + esc(tr.name) + ' 트랙</h2><small id="trk-n-' + i + '"></small></div>' +
+        return '<section class="trk"><div class="trk-hd"><h2>' + esc(tr.name) + ' 트랙</h2><small id="trk-n-' + i + '"></small>' + ordNote(tr) + '</div>' +
           (tr.teams.length ? '<div class="posts">' + tr.teams.map(function (t) { st.sig[t.no] = JSON.stringify(t); return card(t); }).join('') + '</div>'
                            : '<div class="empty-all">아직 제출한 팀이 없습니다.</div>') + '</section>';
       }).join('');
@@ -307,8 +327,9 @@
       if (t.folderUrl) drive += '<a class="lnk" href="' + esc(t.folderUrl) + '" target="_blank" rel="noopener noreferrer">폴더 ↗</a>';
     }
 
+    var rk = t.rank ? '<span class="pord" title="발표 순서 — 마지막 제출이 늦은 팀부터">발표 ' + t.rank + '</span>' : '';
     return '<article class="post ' + cls + '" id="card-' + esc(t.no) + '">' +
-      '<div class="hd"><span class="no">' + esc(t.no) + '</span>' +
+      '<div class="hd"><span class="nog"><span class="no">' + esc(t.no) + '</span>' + rk + '</span>' +
         (t.complete ? '<span class="badge solid">제출 완료</span>' : '<span class="badge gray">' + miss.join(' · ') + ' 없음</span>') + '</div>' +
       (t.title ? '<h3>' + esc(t.title) + '</h3>' : '<h3 class="empty">이름을 아직 적지 않았습니다</h3>') +
       (t.desc ? '<p class="txt">' + esc(t.desc) + '</p>' : '<p class="txt"></p>') +
@@ -340,6 +361,25 @@
   /* ------------------------------ 심사위원: 팀마다 한 줄 · 점수 · 코멘트 ------------------------------ */
   function judgeMode() { var d = st.data; return !!(d && d.role === '심사위원' && d.criteria && d.criteria.length); }
   function infoCard(t) { return card(t).replace(/ id="card-[^"]*"/, ''); }
+  /** 발표 순서만 바뀌었을 때: 카드(점수 칸 포함)를 그대로 두고 자리만 옮긴다. 입력 중이던 칸의 커서도 되돌린다 */
+  function reorderJudge(tracks) {
+    var ae = document.activeElement, sel = null;
+    try { if (ae && typeof ae.selectionStart === 'number') sel = [ae.selectionStart, ae.selectionEnd]; } catch (e) {}
+    var secs = list.querySelectorAll('.trk');
+    tracks.forEach(function (tr, i) {
+      var box = secs[i] && secs[i].querySelector('.jlist');
+      if (!box) return;
+      tr.teams.forEach(function (t) { var el = $('card-' + t.no); if (el && el.parentNode === box) box.appendChild(el); });
+    });
+    if (ae && ae !== document.activeElement && document.body.contains(ae)) {
+      try { ae.focus({ preventScroll: true }); if (sel) ae.setSelectionRange(sel[0], sel[1]); } catch (e2) {}
+    }
+  }
+  /** 트랙 머리의 발표 순서 안내 (서버가 순서를 준 트랙만) */
+  function ordNote(tr) {
+    if (!tr.all.some(function (t) { return t.rank; })) return '';
+    return '<small class="ordnote">발표 순서대로 · 마지막 제출이 늦은 팀부터' + (st.data.orderFinal ? ' · 확정' : ' · 마감 때 확정') + '</small>';
+  }
   function maxTotal() { return st.data.criteria.reduce(function (a, c) { return a + c.max; }, 0); }
   function fmt2(n) { return (Math.round(n * 100) / 100).toFixed(2).replace(/\.?0+$/, ''); }
 
@@ -429,13 +469,24 @@
     var tracks = d.tracks.filter(function (tr) { return !st.tab || tr.name === st.tab; }).map(function (tr) {
       return { name: tr.name, all: tr.teams, teams: tr.teams.filter(function (t) { return !st.only || has(t); }) };
     });
+    // 보이는 팀의 '구성' (순서는 빼고). 구성이 같고 발표 순서만 바뀌었으면 다시 그리지 않고 카드 자리만 옮긴다 —
+    // 다시 그리면 저장하지 않은 점수 · 코멘트가 사라진다 (마감 전에는 다른 팀이 낼 때마다 순서가 바뀐다)
     var shape = 'J|' + st.tab + '|' + st.only + '|' + d.scoring + '|' + (d.scoreError || '') + '|' + tracks.map(function (tr) {
-      return tr.name + ':' + tr.teams.map(function (t) { return t.no; }).join(',');
+      return tr.name + ':' + tr.teams.map(function (t) { return t.no; }).sort().join(',');
     }).join(';');
+    var order = tracks.map(function (tr) { return tr.teams.map(function (t) { return t.no; }).join(','); }).join(';');
+    if (shape === st.shape && order !== st.jorder) {
+      st.jorder = order;
+      reorderJudge(tracks);
+    }
+    Array.prototype.forEach.call(list.querySelectorAll('.trk'), function (sec, i) {   // 트랙 머리의 '확정' 표시
+      var n = sec.querySelector('.ordnote'), tr = tracks[i];
+      if (n && tr) n.outerHTML = ordNote(tr);
+    });
     if (shape !== st.shape) {
-      st.shape = shape; st.sig = {};
+      st.shape = shape; st.sig = {}; st.jorder = order;
       list.innerHTML = tracks.map(function (tr, i) {
-        return '<section class="trk"><div class="trk-hd"><h2>' + esc(tr.name) + ' 트랙</h2><small id="trk-n-' + i + '"></small></div>' +
+        return '<section class="trk"><div class="trk-hd"><h2>' + esc(tr.name) + ' 트랙</h2><small id="trk-n-' + i + '"></small>' + ordNote(tr) + '</div>' +
           (tr.teams.length ? '<div class="jlist">' + tr.teams.map(function (t) { st.sig[t.no] = JSON.stringify(t); return jrow(t); }).join('') + '</div>'
                            : '<div class="empty-all">아직 제출한 팀이 없습니다.</div>') + '</section>';
       }).join('') || '<div class="empty-all">보여 줄 팀이 없습니다.</div>';

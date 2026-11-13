@@ -767,6 +767,21 @@
       return w.from && w.until && n >= w.until ? 'closed' : 'ready';
     }
     var vadmin = LOCAL && /[?&]admin=1/.test(loc.search || '');
+    // 로컬에서 ?closed=1 을 붙이면 제출 마감 뒤 모습 (공개 현황판의 발표 순서 · 확정)
+    var DPH = LOCAL && /[?&]closed=1/.test(loc.search || '') ? 'closed' : 'open';
+    /** 발표 순서: 트랙마다 마지막 제출이 늦은 팀부터, 안 낸 팀은 맨 뒤 (서버 presentRanks_ 와 같은 규칙) */
+    function demoRanks() {
+      var rk = {};
+      ['H', 'A'].forEach(function (key) {
+        trackTeams(key).map(function (no) { return teams[no]; }).sort(function (x, y) {
+          var ax = x.at || 0, ay = y.at || 0;
+          if (!ax !== !ay) return ax ? -1 : 1;
+          if (ax !== ay) return ay - ax;
+          return x.no < y.no ? -1 : 1;
+        }).forEach(function (s, i) { rk[s.no] = i + 1; });
+      });
+      return rk;
+    }
     function tk(no) { return Number(no) <= 10 ? 'A' : 'H'; }
     function trackTeams(key) { return Object.keys(teams).filter(function (no) { return tk(no) === key; }).sort(); }
     var others = (function () {                // 다른 참가자 41명이 이미 낸 표 (볼 때마다 같은 모양이 되게)
@@ -881,6 +896,7 @@
         case 'view.list': {
           var tracks = [{ name: '해커톤', teams: [] }, { name: '구현과제', teams: [] }];
           var sum = { teams: 0, complete: 0, deck: 0, product: 0, title: 0 };
+          var rk = demoRanks();
           Object.keys(teams).sort().forEach(function (no) {
             var s = teams[no];
             sum.teams++;
@@ -888,8 +904,11 @@
             if (s.deck) sum.deck++;
             if (s.url || s.program) sum.product++;
             if (complete(s)) sum.complete++;
-            tracks[s.track === '해커톤' ? 0 : 1].teams.push(out(s, 'judge'));
+            var o = out(s, 'judge'); o.rank = rk[no] || 0;
+            tracks[s.track === '해커톤' ? 0 : 1].teams.push(o);
           });
+          tracks.forEach(function (tr) { tr.teams.sort(function (x, y) { return ((x.rank || 999) - (y.rank || 999)) || (x.no < y.no ? -1 : 1); }); });
+          r.orderFinal = DPH === 'closed';
           r.role = STAFF ? '운영진' : '심사위원'; r.name = '미리보기'; r.summary = sum; r.tracks = tracks;
           r.criteria = CRIT; r.scoring = SCORING; r.scoreUntil = SCORE_UNTIL; r.mine = JSON.parse(JSON.stringify(SM));
           return r;
@@ -931,8 +950,13 @@
             });
           });
           var t5 = Math.floor(Date.now() / 300000), t1 = Math.floor(Date.now() / 60000);
-          r.deadline = Date.parse(CFG.DEADLINE) || 0; r.phase = 'open';
-          r.submit = { at: t5 * 300000, next: (t5 + 1) * 300000, every: 300, sum: sum, teams: tl };
+          r.deadline = Date.parse(CFG.DEADLINE) || 0; r.phase = DPH; r.graceMin = 5;
+          var rk2 = demoRanks();
+          r.submit = { at: t5 * 300000, next: (t5 + 1) * 300000, every: 300, sum: sum, teams: tl,
+            order: DPH === 'open' ? null : { final: true, tracks: ['H', 'A'].map(function (key) {
+              return { key: key, teams: trackTeams(key).map(function (no) { return { no: no, rank: rk2[no] || 0, at: teams[no].at || 0 }; })
+                .sort(function (x, y) { return x.rank - y.rank; }) };
+            }) } };
           r.vote = { at: t1 * 60000, next: (t1 + 1) * 60000, every: 60, eligible: 66, tracks: [['H', '해커톤'], ['A', '구현과제']].map(function (x) {
             return { key: x[0], name: x[1], state: vs(x[0]), from: VW[x[0]].from, until: VW[x[0]].until, voters: (vs(x[0]) !== 'ready' ? 41 : 0) + (VM[x[0]].length ? 1 : 0) };
           }) };
