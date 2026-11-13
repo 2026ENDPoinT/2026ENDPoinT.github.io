@@ -323,7 +323,7 @@
   }
 
   /**
-   * 서버 호출. opts: { key 열람 토큰(있으면 로그인 대신), nonce, tries, timeout }
+   * 서버 호출. opts: { key 열람 토큰(있으면 로그인 대신), anon 로그인 정보를 싣지 않음(공개 현황), nonce, tries, timeout }
    * 쓰기 요청은 nonce 를 붙여 다시 보내도 한 번만 처리되게 한다.
    * 로그인이 끝났다는 답(AUTH_FAILED)을 받으면 로그인 화면으로 돌려보낸다 — 부른 쪽은 결과만 보면 된다.
    */
@@ -333,7 +333,7 @@
     Object.keys(extra || {}).forEach(function (k) { if (extra[k] !== undefined) body[k] = extra[k]; });
     var sub = '';
     if (o.key) body.key = o.key;
-    else {
+    else if (!o.anon) {
       Session.sweep();
       var u = Session.get(), c = Session.creds();
       sub = u ? u.sub : '';
@@ -355,7 +355,7 @@
       });
     }
     function after(d) {
-      if (o.key || !d) return d;
+      if (o.key || o.anon || !d) return d;
       if (d.ok && d.sid) Session.adopt(sub, d.sid, d.sidLeft);
       if (d.error === 'AUTH_FAILED' && sub) Session.expire(sub);
       return d;
@@ -891,6 +891,23 @@
           else { SCORING = 'open'; SCORE_UNTIL = SCORE_UNTIL0; }
           r.scoring = SCORING; r.scoreUntil = SCORE_UNTIL; r.scoreCustom = SCORE_UNTIL !== SCORE_UNTIL0;
           return r;
+        case 'status.public': {
+          var sum = { teams: 0, complete: 0, deck: 0, product: 0 }, tl = [];
+          [['H', '해커톤'], ['A', '구현과제']].forEach(function (x) {
+            trackTeams(x[0]).forEach(function (no) {
+              var s = teams[no], deck = !!s.deck, product = !!(s.url || s.program), done = complete(s);
+              sum.teams++; if (done) sum.complete++; if (deck) sum.deck++; if (product) sum.product++;
+              tl.push({ no: no, track: x[0], deck: deck, product: product, done: done });
+            });
+          });
+          var t5 = Math.floor(Date.now() / 300000), t1 = Math.floor(Date.now() / 60000);
+          r.deadline = Date.parse(CFG.DEADLINE) || 0; r.phase = 'open';
+          r.submit = { at: t5 * 300000, next: (t5 + 1) * 300000, every: 300, sum: sum, teams: tl };
+          r.vote = { at: t1 * 60000, next: (t1 + 1) * 60000, every: 60, eligible: 66, tracks: [['H', '해커톤'], ['A', '구현과제']].map(function (x) {
+            return { key: x[0], name: x[1], state: vs(x[0]), from: VW[x[0]].from, until: VW[x[0]].until, voters: (vs(x[0]) !== 'ready' ? 41 : 0) + (VM[x[0]].length ? 1 : 0) };
+          }) };
+          return r;
+        }
         case 'vote.me':
           r.email = 'member@demo'; r.admin = vadmin; r.max = 3; r.self = false;
           r.me = { team: '03', track: '구현과제', trackKey: 'A', name: '이서연' };

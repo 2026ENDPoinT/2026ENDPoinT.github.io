@@ -24,7 +24,7 @@ test('PARAMS.md 의 Submit.gs 값 = CONFIG', () => {
   }
   // 시각 컷은 빠짐없이 적혀 있어야 한다
   for (const k of ['DEADLINE', 'GRACE_MIN', 'OPEN_AT', 'VOTE_H_FROM', 'VOTE_H_UNTIL', 'VOTE_A_FROM', 'VOTE_A_UNTIL', 'SCORE_UNTIL', 'REOPEN_MIN', 'VIEW_UNTIL',
-                   'JUDGE_WEIGHT', 'POP_FULL_X', 'VOTE_MAX', 'VOTE_SELF', 'TIE_KEY', 'TEAM_MAX_GB']) {
+                   'JUDGE_WEIGHT', 'POP_FULL_X', 'VOTE_MAX', 'VOTE_SELF', 'TIE_KEY', 'TEAM_MAX_GB', 'BOARD_SUBMIT_SEC', 'BOARD_VOTE_SEC']) {
     assert.ok(seen.includes(k), `PARAMS.md 에 ${k} 줄이 없습니다`);
   }
 });

@@ -34,7 +34,7 @@
     return true;
   }
   if (!takeHash()) { try { st.key = sessionStorage.getItem(KEY) || ''; } catch (e3) {} }
-  if (EP.demo) st.key = 'preview-preview-preview-preview';
+  if (EP.demo && !/[?&]hub=1/.test(location.search)) st.key = 'preview-preview-preview-preview';   // ?hub=1: 열람 링크 없이 온 화면(공개 현황)
   // 이 화면을 열어 둔 창에서 링크를 다시 열면 주소의 # 뒤만 바뀌고 화면은 새로 열리지 않는다 — 그때도 받아들인다
   window.addEventListener('hashchange', function () {
     if (EP.demo || !takeHash()) return;
@@ -62,6 +62,7 @@
           '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="열람 코드" placeholder="열람 코드" style="min-width:min(260px,70vw)">' +
           '<button class="btn btn-o" type="submit"><span>열기</span></button></form></div>' +
       '</div>');
+    pubShow(true);
     $('key-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var v = $('key-in').value.trim(), m = /k=([A-Za-z0-9_\-]{24,128})/.exec(v);   // 링크를 통째로 붙여 넣어도 된다
@@ -72,6 +73,68 @@
       load();
     });
   }
+  /* ------------------------------ 공개 현황 (열람 링크 없이) ------------------------------
+     팀 번호 · 낸 것의 유무 · 투표한 사람 수만 보인다. 서버가 제출 현황은 5분, 투표한 사람 수는 1분마다 새로 센다 —
+     화면은 그 갱신 시각이 지나면(사람마다 몇 초씩 어긋나게) 다시 읽는다. */
+  var pub = { d: null, on: false, seq: 0, nextAt: 0, jit: 1500 + Math.floor(Math.random() * 6000) };
+  function pubShow(on) {
+    pub.on = on;
+    var el = $('pub');
+    if (!el) return;
+    if (!on) { el.hidden = true; return; }
+    if (pub.d) pubPaint();
+    pubLoad();
+  }
+  function pubLoad() {
+    if (!pub.on || EP.pending) return;
+    var seq = ++pub.seq;
+    pub.nextAt = EP.now() + 60000;                               // 실패해도 1분 뒤 다시
+    EP.api('status.public', {}, { anon: true, tries: 2 }).then(function (d) {
+      if (seq !== pub.seq || !pub.on) return;
+      if (d && d.ok && d.submit && d.vote) {
+        pub.d = d;
+        pub.nextAt = Math.min(d.submit.next, d.vote.next) + pub.jit;
+        pubPaint();
+      } else if (d && d.error === 'UNKNOWN_ACTION') { pub.nextAt = EP.now() + 5 * 60000; }   // 서버가 아직 예전 버전
+    }, function () {});
+  }
+  function hm(ms) { return ms ? EP.fmtTime(ms).slice(6) : ''; }
+  function every(sec) { return sec % 60 === 0 ? (sec / 60) + '분' : sec + '초'; }
+  function voteTxt(tr) {
+    if (tr.state === 'open') return '투표 중' + (tr.until ? ' · ' + hm(tr.until) + '까지' : '');
+    if (tr.state === 'ready') return tr.from ? hm(tr.from) + ' 시작' : '열기 전';
+    return '마감';
+  }
+  function pubPaint() {
+    var d = pub.d, el = $('pub');
+    if (!d || !el || !pub.on) return;
+    var sum = d.submit.sum;
+    $('s-done').textContent = sum.complete + ' / ' + sum.teams + '팀';
+    $('s-parts').textContent = '발표 ' + sum.deck + ' · 결과물 ' + sum.product;
+    var vote = '<section class="pubsec" id="pub-vote"><div class="pubhd"><b>투표 현황</b>' +
+      '<span class="when">' + hm(d.vote.at) + ' 기준 · ' + every(d.vote.every) + '마다 갱신</span></div>' +
+      d.vote.tracks.map(function (tr) {
+        var pct = d.vote.eligible ? Math.min(100, Math.round(tr.voters / d.vote.eligible * 100)) : 0;
+        return '<div class="pubrow" data-track="' + esc(tr.key) + '"><div class="nm"><b>' + esc(tr.name) + '</b>' +
+          '<span class="vst ' + esc(tr.state) + '">' + esc(voteTxt(tr)) + '</span></div>' +
+          '<div class="meter" aria-hidden="true"><span style="width:' + pct + '%"></span></div>' +
+          '<div class="n">투표한 사람 ' + tr.voters + ' / ' + d.vote.eligible + '명</div></div>';
+      }).join('') + '</section>';
+    var groups = d.vote.tracks.map(function (tr) {                // 발표 순서 (서버가 준 트랙 순서)
+      var ts = d.submit.teams.filter(function (t) { return t.track === tr.key; });
+      return '<div class="pubgrp"><span class="lab ko">' + esc(tr.name) + '</span><div class="chips">' + ts.map(function (t) {
+        var cls = t.done ? 'done' : (t.deck || t.product) ? 'part' : 'none';
+        var tip = t.done ? '제출 완료' : t.deck && t.product ? '발표 자료 · 결과물' : t.deck ? '발표 자료만' : t.product ? '결과물만' : '아직';
+        return '<span class="tchip ' + cls + '" data-no="' + esc(t.no) + '" title="' + esc(t.no + '팀 · ' + tip) + '">' + esc(t.no) + '</span>';
+      }).join('') + '</div></div>';
+    }).join('');
+    var submit = '<section class="pubsec" id="pub-submit"><div class="pubhd"><b>제출 현황</b>' +
+      '<span class="when">' + hm(d.submit.at) + ' 기준 · ' + every(d.submit.every) + '마다 갱신</span></div>' + groups +
+      '<div class="legend"><span class="tchip done">완료</span><span class="tchip part">일부</span><span class="tchip none">아직</span></div></section>';
+    el.innerHTML = d.phase === 'closed' ? vote + submit : submit + vote;   // 제출이 끝나면 투표를 위로
+    el.hidden = false;
+  }
+
   function gateError(text) {
     showGate('<div class="t"><span class="lab red">Error</span><b>불러오지 못했습니다</b><span>' + esc(text) + '</span></div>' +
       '<div class="act"><button class="btn btn-o" type="button" id="gate-retry"><span>다시 시도</span></button></div>');
@@ -82,6 +145,7 @@
   var loadSeq = 0;
   function load(silent) {
     if (!st.key) { gateKey(); return Promise.resolve(); }
+    pubShow(false);
     var seq = ++loadSeq;
     if (!silent) showGate(EP.loading('제출 현황을 불러오는 중'));
     else $('reload').textContent = '불러오는 중…';
@@ -110,6 +174,7 @@
   function render() {
     var d = st.data;
     gate.hidden = true; app.hidden = false;
+    pubShow(false);
     $('top-auth').innerHTML = '<div class="who"><span class="nm" style="display:inline;max-width:24ch">' + esc(d.name || '') +
       (d.name ? ' · ' : '') + esc(d.role || '') + '</span><button class="mini quiet" type="button" id="leave">나가기</button></div>';
     $('leave').addEventListener('click', function () { forget(); gateKey(); });
@@ -559,6 +624,7 @@
   var period = 50000 + Math.floor(Math.random() * 20000);
   setInterval(function () {
     if (!document.hidden && st.key && st.data && Date.now() - st.loadedAt > period) load(true);
+    if (!document.hidden && !st.key && pub.on && pub.nextAt && EP.now() >= pub.nextAt) pubLoad();   // 공개 현황
   }, 5000);
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden && st.key && st.data && Date.now() - st.loadedAt > 20000) load(true);
