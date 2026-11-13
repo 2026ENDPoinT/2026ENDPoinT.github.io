@@ -1,0 +1,496 @@
+// 실제 브라우저로 제출 · 현황판을 끝에서 끝까지 돌려 본다.  (쓰는 법: README.md)
+//   node apps-script/submit/e2e/run.mjs [시나리오 이름의 일부]
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { startWorld, openBrowser, newPage, login, reporter, SITE, sha256, md5hex, sleep } from './lib.mjs';
+import { bytesOf } from '../test/harness.mjs';
+
+// SHOTS 에 폴더를 주면 장면마다 화면을 찍어 둔다
+const SHOTS = process.env.SHOTS ? path.resolve(process.env.SHOTS) : '';
+const shot = async (page, name) => {
+  if (!SHOTS) return;
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(SHOTS, name + '.png'), fullPage: true });
+};
+const only = process.argv[2] || '';
+const R = reporter();
+const browser = await openBrowser();
+
+const ROSTER = [
+  ['03', '가나다', 'a1@x.com', '101', '조장', ''], ['03', '라마바', 'a2@x.com', '102', '', ''],
+  ['12', '사아자', 'b1@x.com', '201', '조장', ''], ['05', '차카타', 'c1@x.com', '301', '조장', ''],
+];
+const pdf = (n, seed) => { const b = bytesOf(n, seed); b.write('%PDF-1.4\n'); return b; };
+const file = (name, buffer, mimeType = 'application/octet-stream') => ({ name, mimeType, buffer });
+const text = (page, sel) => page.locator(sel).first().innerText();
+const driveFile = (w, re) => [...w.b.drive.files.values()].find((f) => re.test(f.name) && !f.trashed);
+const folderOf = (w, f) => w.b.drive.folders.get(f.parents[0]);
+
+async function scenario(name, fn) {
+  if (only && !name.includes(only)) return;
+  console.log('\n■ ' + name);
+  const w = await startWorld();
+  w.b.roster(ROSTER);
+  try { await fn(w); } catch (e) { R.check(name + ' — 예외 없이 끝남', false, String(e && e.stack || e).split('\n').slice(0, 4).join(' / ')); }
+  await w.close();
+}
+
+/* ---------------------------------------------------------------- */
+await scenario('참가자: 로그인 → 저장 → 올리기 → 다시 올리기 → 받기 → 내리기', async (w) => {
+  // 다른 팀이 먼저 낸 것 — 03팀 화면에는 절대 오면 안 된다
+  const b1 = w.account('b1@x.com', '201', '사아자');
+  w.b.post({ action: 'info.save', idToken: b1, data: { title: 'SECRET-TEAM-12', url: 'https://secret12.example.com' } });
+
+  const page = await newPage(browser);
+  await page.goto(SITE + '/submit/');
+  await page.waitForSelector('#fake-gsi');
+  R.match('로그인 전에는 로그인 안내만 보인다', await text(page, '#gate'), /구글 계정으로 로그인/);
+  R.eq('로그인 전에는 제출 화면이 숨겨져 있다', await page.locator('#app').isHidden(), true);
+
+  await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForSelector('#steps:not([hidden])');
+  R.match('계정으로 팀을 찾아 준다', await text(page, '#h-team'), /^03팀 · 구현과제$/);
+  R.match('남은 시간이 서버 시계 기준으로 보인다 (마감 2시간 전)', await text(page, '#h-left'), /^1:5\d:\d\d$/);
+
+  // 글자 저장
+  await page.fill('#f-title', '분실물 찾기 지도');
+  await page.fill('#f-desc', '캠퍼스에서 잃어버린 물건을 지도에 올립니다.');
+  await page.fill('#f-url', 'team03.example.app');
+  await page.click('#save');
+  await page.waitForSelector('#msg.ok');
+  const row = w.b.rows('팀').find((r) => r['팀'] === '03');
+  R.eq('시트 `팀` 탭에 적힌다', [row['프로젝트'], row['배포 주소'], row['제출자']], ['분실물 찾기 지도', 'https://team03.example.app', 'a1@x.com']);
+  R.eq('주소에 https:// 를 붙여 돌려준다', await page.inputValue('#f-url'), 'https://team03.example.app');
+
+  // 발표 자료: 20MB → 8MB 조각 셋으로 Drive 에 직접
+  const deck1 = pdf(20 * 1024 * 1024 + 123, 3);
+  await page.setInputFiles('#in-deck', file('최종 발표 (1).pdf', deck1, 'application/pdf'));
+  await page.waitForSelector('#slot-deck .file.now', { timeout: 60000 });
+  const name1 = await text(page, '#slot-deck .file.now .nm');
+  R.match('올린 파일 이름이 규칙대로 바뀐다', name1, /^team03_발표_v1_1114-\d{4}\.pdf$/);
+  const puts = w.log.filter((x) => x.action === 'PUT');
+  R.eq('브라우저가 Drive 로 직접, 조각 셋으로 보냈다', puts.map((x) => x.code), [308, 308, 200]);
+  R.eq('서버를 거친 조각은 없다', w.log.filter((x) => x.action === 'upload.put').length, 0);
+  const f1 = driveFile(w, /^team03_발표_v1_/);
+  R.eq('Drive 의 파일이 올린 것과 같다', f1 && md5hex(f1.bytes), md5hex(deck1));
+  R.eq('team03 폴더에 있다', f1 && folderOf(w, f1).name, 'team03');
+  R.match('상태 띠: 제출 완료', await text(page, '#state .verdict'), /제출 완료/);
+  await shot(page, 'e2e-submit-1-uploaded');
+
+  // 다시 올리기 → v2, 먼젓번은 옛날 자료
+  const deck2 = pdf(300 * 1024, 9);
+  await page.setInputFiles('#in-deck', file('발표_수정.pdf', deck2, 'application/pdf'));
+  await page.waitForFunction(() => /_v2_/.test(document.querySelector('#slot-deck .file.now .nm')?.textContent || ''), null, { timeout: 30000 });
+  const old = driveFile(w, /^team03_발표_v1_/);
+  R.eq('먼젓번 파일은 옛날 자료 폴더로', old && folderOf(w, old).name, '옛날 자료');
+  R.match('화면의 옛날 자료에 보인다', await text(page, '#hist'), /team03_발표_v1_/);
+  const idx = w.b.rows('파일').filter((r) => r['팀'] === '03').map((r) => [r['버전'], r['상태'], r['경로']]);
+  R.eq('색인: v1 이전(옛날 자료) · v2 현재', idx, [[1, '이전', '/team03/옛날 자료/'], [2, '현재', '/team03/']]);
+
+  // 받아서 확인
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#slot-deck [data-act="get"]')]);
+  R.eq('받은 파일이 올린 것과 같다', md5hex(readFileSync(await dl.path())), md5hex(deck2));
+  R.match('받는 이름도 규칙대로', dl.suggestedFilename(), /^team03_발표_v2_.*\.pdf$/);
+
+  // 프로그램: 직접 올리기가 막힌 환경 → 서버를 거쳐 올라간다
+  w.fault.noCorsUpload = true;
+  const before = w.log.length;
+  const zip = bytesOf(9 * 1024 * 1024 + 77, 5);
+  await page.setInputFiles('#in-program', file('app-release.zip', zip, 'application/zip'));
+  await page.waitForSelector('#slot-program .file.now', { timeout: 90000 });
+  const fz = driveFile(w, /^team03_프로그램_v1_/);
+  R.eq('막힌 환경에서도 끝까지 올라간다 (우회 경로)', fz && md5hex(fz.bytes), md5hex(zip));
+  R.eq('우회 경로로 조각 셋 (4MB 씩)', w.log.filter((x) => x.action === 'upload.put' && x.ok).length, 3);
+  const since = w.log.slice(before);
+  R.eq('직접 올리기는 두 번 해 보고 그만둔다 (조각은 한 번도 Drive 로 직접 가지 않았다)', [since.filter((x) => x.action === 'OPTIONS').length, since.filter((x) => x.action === 'PUT').length], [2, 0]);
+  w.fault.noCorsUpload = false;
+
+  // 내리기
+  page.once('dialog', (d) => d.accept());
+  await page.click('#slot-program [data-act="withdraw"]');
+  await page.waitForSelector('#slot-program .drop');
+  R.eq('내린 파일은 옛날 자료로 (지우지 않는다)', folderOf(w, driveFile(w, /^team03_프로그램_v1_/)).name, '옛날 자료');
+
+  // 로그인 유지 · 다른 팀 자료
+  const by = w.log.filter((x) => x.by && x.by !== 'none' && x.by !== 'key').map((x) => x.by);
+  R.eq('구글 토큰은 처음 한 번만 보낸다 (그 뒤는 세션 값)', [by[0], [...new Set(by.slice(1))].join()], ['idToken', 'sid']);
+  const all = w.bodies.map((x) => x.res).join('\n');
+  R.check('다른 팀 자료는 응답 어디에도 없다', !/SECRET-TEAM-12|secret12/.test(all));
+  R.check('응답에 Drive 주소 · 폴더 ID 가 없다', !/drive\.google\.com|"folderUrl"|"driveUrl"/.test(all));
+  R.eq('화면 오류 없음', page.errs, []);
+  await shot(page, 'e2e-submit-2-final');
+  await page.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('명단에 없는 계정 · 서버가 잠깐 막힐 때', async (w) => {
+  const page = await newPage(browser);
+  await page.goto(SITE + '/submit/');
+  await page.waitForSelector('#fake-gsi');
+  await login(page, w.account('none@x.com', '999', '외부인'));
+  await page.waitForSelector('#gate-out');
+  R.match('명단에 없으면 안내와 함께 자기 주소를 보여 준다', await text(page, '#gate'), /팀 명단에 없습니다[\s\S]*none@x\.com/);
+  R.eq('제출 화면은 열리지 않는다', await page.locator('#app').isHidden(), true);
+  R.check('명단에 없는 계정에는 세션을 주지 않는다', ![...w.b.cache.keys()].some((k) => k.startsWith('ss1:')));
+  await shot(page, 'e2e-submit-3-notmember');
+
+  // 운영진이 명단에 넣어 주면 '다시 확인' 으로 바로 들어온다
+  w.b.roster([...ROSTER, ['12', '외부인', 'none@x.com', '', '', '']]);
+  await page.click('#gate-again');
+  await page.waitForSelector('#steps:not([hidden])');
+  R.match('명단에 넣으면 바로 들어온다', await text(page, '#h-team'), /^12팀 · 해커톤$/);
+
+  // Apps Script 가 HTML 오류 페이지를 돌려줘도 다시 보내서 된다
+  w.fault.html = 1;
+  await page.fill('#f-title', '다시 보내기');
+  await page.click('#save');
+  await page.waitForSelector('#msg.ok');
+  R.eq('서버가 한 번 막혀도 다시 보내서 저장된다 (한 번만 적힌다)', w.b.rows('기록').filter((r) => r['동작'] === 'info.save').length, 1);
+  R.eq('화면 오류 없음', page.errs, []);
+  await page.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('로그인 유지: 구글 토큰이 끝나도 이어지고, 세션이 끊기면 다시 로그인해서 이어 간다', async (w) => {
+  const page = await newPage(browser);
+  await page.goto(SITE + '/submit/');
+  await page.waitForSelector('#fake-gsi');
+  await login(page, w.account('a1@x.com', '101', '가나다', { expInSec: 34 }));     // 곧 끝나는 구글 토큰
+  await page.waitForSelector('#steps:not([hidden])');
+  await sleep(6000);                                                              // 구글 토큰이 "곧 만료"가 된 뒤
+  await page.fill('#f-title', '토큰이 끝난 뒤에 저장');
+  await page.click('#save');
+  await page.waitForSelector('#msg.ok');
+  R.eq('구글 토큰이 끝나도 세션 값으로 저장된다', w.log.at(-1), { action: 'info.save', by: 'sid', ok: true });
+
+  // 올리는 도중에 서버에서 세션이 사라진다 (캐시가 비워진 경우)
+  w.fault.noCorsUpload = true; w.fault.slowRelay = 12000;       // 조각 하나에 12초씩 걸리는 느린 길
+  const zip = bytesOf(13 * 1024 * 1024, 4);
+  await page.fill('#f-desc', '저장하지 않은 설명');
+  await page.setInputFiles('#in-program', file('big.zip', zip, 'application/zip'));
+  await page.waitForFunction(() => /우회 경로/.test(document.querySelector('#pm-program')?.textContent || ''), null, { timeout: 30000 });
+  await sleep(30000);                                                             // 구글 토큰도 완전히 끝나게
+  w.killSessions();
+  await page.waitForSelector('#gate #fake-gsi', { timeout: 30000 });
+  R.match('올리는 중에 로그인이 끊기면: 버리지 않았다고 알려 준다', await text(page, '#gate'), /로그인 시간이 지났습니다[\s\S]*올리던 파일은 버려지지 않았습니다/);
+  await shot(page, 'e2e-submit-4-expired');
+  R.eq('색인에는 아직 올리는 중으로 남아 있다', w.b.rows('파일').map((r) => r['상태']), ['업로드 중']);
+
+  w.fault.slowRelay = 0;
+  await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForSelector('#slot-program .file.now', { timeout: 90000 });
+  const fz = driveFile(w, /^team03_프로그램_v1_/);
+  R.eq('다시 로그인하면 이어서 끝까지 올라간다', fz && md5hex(fz.bytes), md5hex(zip));
+  R.eq('새로 시작하지 않고 같은 표로 마무리했다', w.b.rows('파일').map((r) => [r['번호'], r['상태']]), [[1, '현재']]);
+  R.eq('저장하지 않은 글자가 남아 있다', await page.inputValue('#f-desc'), '저장하지 않은 설명');
+
+  // 다른 계정으로 바꿔 로그인하면 앞사람이 쓰던 글자는 지운다
+  await page.click('#top-auth button');
+  await page.waitForSelector('#gate #fake-gsi');
+  R.eq('로그아웃하면 서버의 세션도 지운다', await (async () => { await sleep(400); return [...w.b.cache.keys()].filter((k) => k.startsWith('ss1:')).length; })(), 0);
+  await login(page, w.account('b1@x.com', '201', '사아자'));
+  await page.waitForSelector('#steps:not([hidden])');
+  R.eq('다른 계정으로 들어오면 그 팀이 보이고 앞사람의 글자는 없다', [await text(page, '#h-team'), await page.inputValue('#f-desc'), await page.inputValue('#f-title')], ['12팀 · 해커톤', '', '']);
+  R.eq('화면 오류 없음', page.errs, []);
+  await page.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('직접 올리기: 끊겨도 이어 올리고, 마지막 확인 때 로그인이 끝나 있어도 버리지 않는다', async (w) => {
+  const page = await newPage(browser);
+  await page.goto(SITE + '/submit/');
+  await page.waitForSelector('#fake-gsi');
+  await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForSelector('#steps:not([hidden])');
+
+  // 첫 조각은 잘 가고, 둘째 조각은 가다가 사라지고(서버가 못 받음), 다시 보낸 둘째 조각은 도착했는데 응답이 안 온다
+  const deck = pdf(20 * 1024 * 1024, 8);
+  w.putDelay = 150;
+  let armed = 0;
+  const arm = setInterval(() => {
+    const puts = w.log.filter((x) => x.action === 'PUT');
+    if (armed === 0 && puts.length === 1) { w.fault.dropPut = 1; armed = 1; }
+    if (armed === 1 && puts.some((x) => x.code === 'dropped')) { w.fault.lostReply = 1; armed = 2; }
+  }, 10);
+  await page.setInputFiles('#in-deck', file('deck.pdf', deck, 'application/pdf'));
+  await page.waitForSelector('#slot-deck .file.now', { timeout: 90000 });
+  clearInterval(arm);
+  const f = driveFile(w, /^team03_발표_v1_/);
+  R.eq('조각이 사라지거나 응답이 끊겨도 이어 올려 같은 파일이 된다', f && md5hex(f.bytes), md5hex(deck));
+  R.eq('Drive 로 간 조각: 성공 · 사라짐 · 응답 끊김 · 나머지', w.log.filter((x) => x.action === 'PUT').map((x) => x.code), [308, 'dropped', 'reply-lost', 200]);
+  R.eq('끊길 때마다 서버에 어디까지 갔는지 물었다', w.log.filter((x) => x.action === 'upload.status' && x.ok).length, 2);
+  R.eq('우회 경로로 넘어가지 않았다', w.log.filter((x) => x.action === 'upload.put').length, 0);
+
+  // 다 보낸 뒤 마지막 확인(finish) 직전에 세션이 사라진다
+  w.putDelay = 600;
+  const deck2 = pdf(2 * 1024 * 1024, 6);
+  await page.setInputFiles('#in-deck', file('deck2.pdf', deck2, 'application/pdf'));
+  await page.waitForFunction(() => !!document.querySelector('#pf-deck'), null, { timeout: 20000 });
+  w.killSessions();
+  await page.evaluate(() => { const r = JSON.parse(sessionStorage.getItem('endpoint.session.v1') || 'null'); if (r) { r.exp = 1; sessionStorage.setItem('endpoint.session.v1', JSON.stringify(r)); } });
+  await page.waitForSelector('#gate #fake-gsi', { timeout: 30000 }).catch(() => {});
+  const gate = await text(page, '#gate').catch(() => '');
+  R.check('마지막 확인 때 로그인이 끝나 있으면 로그인 화면으로 (구글 토큰이 살아 있으면 그대로 진행)', /버려지지 않았습니다/.test(gate) || await page.locator('#slot-deck .file.now').count() > 0, gate);
+  if (/버려지지 않았습니다/.test(gate)) await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForFunction(() => /_v2_/.test(document.querySelector('#slot-deck .file.now .nm')?.textContent || ''), null, { timeout: 60000 });
+  const f2 = driveFile(w, /^team03_발표_v2_/);
+  R.eq('다시 로그인한 뒤 마무리된다', f2 && md5hex(f2.bytes), md5hex(deck2));
+  R.eq('화면 오류 없음', page.errs, []);
+  await page.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('마감: 올리던 것만 유예 안에 마무리되고, 그 뒤에는 운영진만 대신 올릴 수 있다', async (w) => {
+  const page = await newPage(browser);
+  await page.goto(SITE + '/submit/');
+  await page.waitForSelector('#fake-gsi');
+  await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForSelector('#steps:not([hidden])');
+
+  w.at('2026-11-14T09:59:50+09:00');
+  await page.reload();                                   // 서버 시계를 다시 받는다 (로그인은 탭에 남아 있다)
+  await page.waitForSelector('#steps:not([hidden])');
+  R.match('새로 고쳐도 로그인이 남아 있고, 남은 시간이 서버 시계 기준으로 보인다', await text(page, '#h-left'), /^0:00:0\d$/);
+  await page.fill('#f-title', '마감 직전');
+  await page.click('#save');
+  await page.waitForSelector('#msg.ok');
+
+  // 마감 4초 전에 올리기 시작 → 마감을 넘겨 끝난다
+  w.fault.noCorsUpload = true; w.fault.slowRelay = 2500;
+  const zip = bytesOf(9 * 1024 * 1024, 2);
+  await page.setInputFiles('#in-program', file('late.zip', zip, 'application/zip'));
+  await page.waitForSelector('#slot-program .file.now', { timeout: 90000 });
+  const last = w.b.rows('기록').at(-1);
+  R.match('마감 전에 시작한 것은 마감을 넘겨도 받아 준다 (기록에 표시)', last['메모'], /마감 직후 도착/);
+  R.match('마감되면 화면이 닫힌다', await text(page, '#state .verdict'), /마감됨/);
+  R.eq('입력 칸이 잠긴다', await page.locator('#f-title').isDisabled(), true);
+  R.eq('다시 올리기 · 내리기 단추가 없다', await page.locator('#slot-program [data-act="pick"], #slot-program [data-act="withdraw"]').count(), 0);
+  await shot(page, 'e2e-submit-5-closed');
+
+  // 화면을 고쳐서 보내도 서버가 막는다
+  const tryAfter = await page.evaluate(async () => {
+    const a = await EP.api('info.save', { data: { title: '몰래 고치기' } });
+    const b = await EP.api('upload.start', { kind: 'deck', name: 'x.pdf', size: 10, origin: location.origin });
+    const c = await EP.api('file.withdraw', { kind: 'program' });
+    return [a.error, b.error, c.error];
+  });
+  R.eq('마감 뒤의 저장 · 올리기 · 내리기는 서버가 거부한다', tryAfter, ['CLOSED', 'CLOSED', 'CLOSED']);
+  await page.context().close();
+
+  // 운영진: 팀을 골라 대신 올린다 (마감 뒤에도)
+  w.fault.noCorsUpload = false; w.fault.slowRelay = 0;
+  w.shift(3600);
+  const op = await newPage(browser);
+  await op.goto(SITE + '/submit/');
+  await op.waitForSelector('#fake-gsi');
+  await login(op, w.account('op@x.com', '900', '운영진'));
+  await op.waitForSelector('#pick:not([hidden])');
+  R.match('운영진은 팀을 고르는 칸이 보인다', await text(op, '#h-team'), /팀을 골라 주세요/);
+  await op.selectOption('#pick-team', '05');
+  await op.waitForSelector('#steps:not([hidden])');
+  R.match('고른 팀을 대신한다', await text(op, '#h-team'), /^05팀 · 구현과제 \(대리\)$/);
+  const deck = pdf(500 * 1024, 1);
+  await op.setInputFiles('#in-deck', file('team05.pdf', deck, 'application/pdf'));
+  await op.waitForSelector('#slot-deck .file.now', { timeout: 30000 });
+  const f5 = driveFile(w, /^team05_발표_v1_/);
+  R.eq('마감 뒤에도 운영진은 대신 올릴 수 있다', f5 && folderOf(w, f5).name, 'team05');
+  R.match('기록에 운영진 대리로 남는다', w.b.rows('기록').at(-1)['누가'], /op@x\.com \(운영진 대리\)/);
+  await shot(op, 'e2e-submit-6-proxy');
+  R.eq('화면 오류 없음', [...page.errs, ...op.errs], []);
+  await op.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 고침', async (w) => {
+  const a1 = w.account('a1@x.com', '101', '가나다'), b1 = w.account('b1@x.com', '201', '사아자');
+  const up = (idToken, kind, name, bytes) => {
+    const s = w.b.post({ action: 'upload.start', idToken, kind, name, size: bytes.length, origin: SITE });
+    w.b.putDirect(s.url, bytes);
+    return w.b.post({ action: 'upload.finish', idToken, id: s.id });
+  };
+  const deck = pdf(9 * 1024 * 1024 + 5, 7), zip = bytesOf(3 * 1024 * 1024, 2);
+  w.b.post({ action: 'info.save', idToken: a1, data: { title: '분실물 찾기 지도', desc: '<b>굵게</b> & "따옴표"', url: 'https://team03.example.app', video: 'https://youtu.be/abc' } });
+  up(a1, 'deck', 'old.pdf', pdf(1000, 1)); up(a1, 'deck', 'final.pdf', deck);
+  w.b.post({ action: 'info.save', idToken: b1, data: { title: '코드 리뷰 도우미' } });
+  up(b1, 'program', 'app.zip', zip);
+  const judgeKey = w.b.viewer('김교수', '심사위원'), staffKey = w.b.viewer('운영 담당', '운영진');
+
+  const page = await newPage(browser);
+  await page.goto(SITE + '/judge/');
+  await page.waitForSelector('#key-form');
+  R.match('링크 없이 오면 안내만 보인다', await text(page, '#gate'), /열람 링크로 들어와 주세요/);
+  await page.fill('#key-in', 'x'.repeat(40));
+  await page.click('#key-form button');
+  await page.waitForFunction(() => /만료됐거나 올바르지 않습니다/.test(document.querySelector('#gate')?.textContent || ''));
+  R.check('틀린 코드로는 열리지 않는다', true);
+
+  // 이미 열어 둔 창에서 링크를 열면 주소의 # 뒤만 바뀐다 — 그래도 열려야 한다
+  await page.goto(SITE + '/judge/#k=' + judgeKey);
+  await page.waitForSelector('#list .post');
+  R.check('열어 둔 창에 링크를 붙여 넣어도 열린다', true);
+  R.eq('주소창에서 토큰을 지운다', await page.evaluate(() => location.hash), '');
+  R.eq('팀 카드 20장', await page.locator('#list .post').count(), 20);
+  R.match('요약: 제출 완료 팀 수', await text(page, '#s-done'), /^1 \/ 20팀$/);
+  R.match('요약: 발표 · 결과물', await text(page, '#s-parts'), /^발표 1 · 결과물 2$/);
+  R.match('낸 팀의 카드', await text(page, '#card-03'), /분실물 찾기 지도[\s\S]*서비스 열기[\s\S]*발표 자료 보기[\s\S]*데모 영상[\s\S]*코드/);
+  R.match('참가자가 적은 글자는 글자 그대로 보인다 (태그로 해석하지 않는다)', await text(page, '#card-03 .txt'), /^<b>굵게<\/b> & "따옴표"$/);
+  R.match('일부만 낸 팀', await text(page, '#card-12'), /발표 자료 없음[\s\S]*프로그램 받기/);
+  R.match('안 낸 팀', await text(page, '#card-01'), /제출 전/);
+  await shot(page, 'e2e-judge-1-list');
+
+  // 자료 보기 (PDF 를 이 화면 안에서)
+  await page.click('#card-03 [data-act="view"]');
+  // PDF 보기가 있는 브라우저는 화면 안에(iframe), 없는 브라우저는 '새 탭에서 열기' 로 같은 자료를 준다
+  await page.waitForSelector('#vw-body iframe, #vw-body a.btn', { timeout: 60000 });
+  const got = await page.evaluate(async () => {
+    const el = document.querySelector('#vw-body iframe, #vw-body a.btn');
+    const src = (el.src || el.href).split('#')[0];
+    const buf = await (await fetch(src)).arrayBuffer();
+    const d = await crypto.subtle.digest('SHA-256', buf);
+    return [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  });
+  R.eq('화면에 연 자료가 올린 파일과 같다 (9MB, 조각 셋을 이어 붙임)', got, sha256(deck));
+  R.match('보는 창에 팀과 파일 이름', await text(page, '.viewer-bar'), /03팀 · 분실물 찾기 지도[\s\S]*team03_발표_v2_/);
+  await shot(page, 'e2e-judge-2-viewer');
+  await page.keyboard.press('Escape');
+  R.eq('Esc 로 닫힌다', await page.locator('#viewer').isHidden(), true);
+
+  // 프로그램 받기
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#card-12 [data-act="get"]')]);
+  R.eq('프로그램 파일을 받는다', md5hex(readFileSync(await dl.path())), md5hex(zip));
+  // 이전 자료
+  await page.click('#card-03 [data-act="hist"]');
+  R.match('이전 자료를 펼쳐 볼 수 있다', await text(page, '#card-03 .old'), /team03_발표_v1_/);
+
+  // 새 제출이 들어오면 새로 고침으로 그 카드만 바뀐다
+  await page.evaluate(() => { document.querySelector('#card-01').dataset.keep = '1'; });
+  up(b1, 'deck', 'd.pdf', pdf(2000, 3));
+  await page.click('#reload');
+  await page.waitForFunction(() => /발표 자료 받기|발표 자료 보기/.test(document.querySelector('#card-12')?.textContent || ''));
+  R.eq('바뀐 팀의 카드만 다시 그린다 (다른 카드는 그대로)', await page.evaluate(() => document.querySelector('#card-01').dataset.keep), '1');
+  R.match('요약도 바뀐다', await text(page, '#s-done'), /^2 \/ 20팀$/);
+
+  // 탭 · 낸 팀만
+  await page.click('#tabs [data-tab="해커톤"]');
+  R.eq('트랙 탭: 해커톤 10팀', await page.locator('#list .post').count(), 10);
+  await page.click('#only');
+  R.eq('낸 팀만 보기', await page.locator('#list .post').count(), 1);
+
+  const res = w.bodies.filter((x) => x.action === 'view.list').map((x) => x.res).join('\n');
+  R.check('심사위원 응답에 이메일 · Drive 주소 · 폴더가 없다', !/@x\.com|drive\.google\.com|driveUrl|folderUrl|"by"/.test(res), (res.match(/@x\.com|drive\.google\.com|driveUrl|folderUrl|"by"/) || [])[0]);
+  R.eq('화면 오류 없음', page.errs, []);
+
+  // 링크를 꺼 두면 바로 닫힌다
+  const sheet = w.b.tab('열람');
+  sheet.cells[1][5] = '';
+  w.b.cache.delete('views1');
+  await page.click('#reload');
+  await page.waitForSelector('#key-form');
+  R.match('링크를 끄면 보던 화면도 닫힌다', await text(page, '#gate'), /만료됐거나 올바르지 않습니다/);
+  await page.context().close();
+
+  // 운영진 링크
+  const st = await newPage(browser);
+  await st.goto(SITE + '/judge/#k=' + staffKey);
+  await st.waitForSelector('#list .post');
+  R.match('운영진 링크는 Drive 로 가는 링크가 보인다', await text(st, '#card-03'), /발표 Drive[\s\S]*폴더/);
+  R.match('헤더에 이름과 역할', await text(st, '#top-auth'), /운영 담당 · 운영진/);
+  await shot(st, 'e2e-judge-3-staff');
+  R.eq('화면 오류 없음', st.errs, []);
+  await st.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('휴대폰 화면', async (w) => {
+  const page = await newPage(browser, { mobile: true });
+  await page.goto(SITE + '/submit/');
+  await page.waitForSelector('#fake-gsi');
+  await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForSelector('#steps:not([hidden])');
+  await page.fill('#f-title', '분실물 찾기 지도');
+  await page.fill('#f-url', 'https://team03.example.app');
+  await page.click('#save');
+  await page.waitForSelector('#msg.ok');
+  await page.setInputFiles('#in-deck', file('발표.pdf', pdf(700 * 1024, 2), 'application/pdf'));
+  await page.waitForSelector('#slot-deck .file.now', { timeout: 30000 });
+  const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  R.check('가로로 넘치지 않는다', wide <= 0, 'overflow ' + wide);
+  await shot(page, 'e2e-mobile-submit');
+  if (SHOTS) for (let y = 0; y < 3; y++) { await page.evaluate((n) => window.scrollTo(0, n * 700), y); await page.screenshot({ path: path.join(SHOTS, `e2e-mobile-submit-view${y}.png`) }); }
+  R.eq('화면 오류 없음', page.errs, []);
+  await page.context().close();
+});
+
+/* ---------------------------------------------------------------- */
+await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3표 · 운영진이 열고 닫는다', async (w) => {
+  const opTok = w.account('op@x.com', '900', '운영진');
+  const op = await newPage(browser);
+  await op.goto(SITE + '/judge/vote/');
+  await op.waitForSelector('#fake-gsi');
+  await login(op, opTok);
+  await op.waitForSelector('#admin:not([hidden])');
+  R.match('운영진에게는 트랙별 열기 버튼이 보인다', await text(op, '#admin'), /구현과제[\s\S]*투표 열기[\s\S]*해커톤[\s\S]*투표 열기/);
+
+  const out = await newPage(browser);
+  await out.goto(SITE + '/judge/vote/');
+  await out.waitForSelector('#fake-gsi');
+  await login(out, w.account('none@x.com', '999', '외부인'));
+  await out.waitForSelector('#gate-out');
+  R.match('신청서(명단)와 맞지 않는 계정은 들어오지 못한다', await text(out, '#gate'), /참가자 명단에 없습니다[\s\S]*none@x\.com/);
+  R.eq('그 화면에는 투표지가 없다', await out.locator('#app').isHidden(), true);
+  await out.context().close();
+
+  const page = await newPage(browser);
+  await page.goto(SITE + '/judge/vote/');
+  await page.waitForSelector('#fake-gsi');
+  await login(page, w.account('a1@x.com', '101', '가나다'));
+  await page.waitForSelector('.vcard');
+  R.match('열기 전에는 안내만 보인다', await text(page, '#ballot'), /발표가 모두 끝나면 투표가 열립니다/);
+  R.eq('열기 전에는 고르기 단추가 없다', await page.locator('.vcard .pick').count(), 0);
+
+  op.once('dialog', (d) => d.accept());
+  await op.click('[data-act="admin"][data-op="open"][data-track="A"]');
+  await op.waitForFunction(() => /투표 중/.test(document.querySelector('#h-A')?.textContent || ''));
+  await page.waitForSelector('.vcard .pick', { timeout: 45000 });
+  R.check('운영진이 열면 참가자 화면이 저절로 바뀐다 (새로 고치지 않아도)', true);
+  R.eq('우리 팀(03)은 고를 수 없다', await page.locator('.vcard[data-no="03"] .pick').count(), 0);
+  for (const no of ['01', '02', '04']) await page.click(`.vcard[data-no="${no}"] .pick`);
+  R.eq('3팀을 고르면 나머지는 막힌다', await page.locator('.vcard[data-no="05"] .pick[disabled]').count(), 1);
+  await page.click('[data-act="submit"]');
+  await page.waitForSelector('.vcard .code');
+  const codes = await page.$$eval('.vcard .code b', (l) => l.map((e) => e.textContent).sort());
+  const rows = w.b.rows('투표');
+  R.eq('시트 `투표` 탭에 표 3장', rows.length, 3);
+  R.check('시트에는 누가 냈는지(이메일 · 이름)가 없다', !/a1@x\.com|가나다/.test(JSON.stringify(w.b.tab('투표').cells)));
+  R.eq('확인 코드 = 그 표의 검증값 앞 6자리', codes, rows.map((r) => String(r['검증']).slice(0, 6).toUpperCase()).sort());
+  await shot(page, 'e2e-vote-1-done');
+
+  await page.click('[data-act="edit"]');
+  await page.click('.vcard[data-no="04"] .pick');
+  page.once('dialog', (d) => d.accept());                    // 2팀만 골랐다는 확인
+  await page.click('[data-act="submit"]');
+  await page.waitForFunction(() => document.querySelectorAll('.vcard .code').length === 2);
+  const tally = () => w.b.post({ action: 'vote.me', idToken: opTok }).tally[0];
+  R.eq('다시 내면 마지막 투표지만 센다', tally().rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['01', 1], ['02', 1]]);
+  R.eq('한 사람으로 센다', tally().voters, 1);
+
+  await op.waitForFunction(() => /투표한 사람 1/.test(document.querySelector('#admin')?.textContent || ''), null, { timeout: 20000 });
+  await op.click('[data-act="res"][data-track="A"]');
+  R.match('운영진은 결과(표 · 참가자 점수)를 펼쳐 본다', await text(op, '.vres'), /01[\s\S]*1[\s\S]*15\.00/);
+  await shot(op, 'e2e-vote-2-admin');
+
+  op.once('dialog', (d) => d.accept());
+  await op.click('[data-act="admin"][data-op="close"][data-track="A"]');
+  await page.waitForFunction(() => /마감되었습니다/.test(document.querySelector('#ballot')?.textContent || ''), null, { timeout: 45000 });
+  R.check('마감하면 참가자 화면도 닫힌다', true);
+  const late = await page.evaluate(async () => (await EP.api('vote.submit', { track: 'A', teams: ['05'] })).error);
+  R.eq('마감 뒤에 보내도 서버가 거절한다', late, 'VOTE_CLOSED');
+  const forged = await page.evaluate(async () => (await EP.api('vote.admin', { track: 'A', op: 'open' })).error);
+  R.eq('참가자가 화면을 고쳐 열려고 해도 거절한다', forged, 'NOT_ADMIN');
+  R.eq('화면 오류 없음', [...page.errs, ...op.errs], []);
+  await page.context().close();
+  await op.context().close();
+});
+
+await browser.close();
+process.exit(R.done() ? 1 : 0);

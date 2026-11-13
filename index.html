@@ -1350,7 +1350,7 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
   <div class="facts">
     <div data-anim style="--d:.05s"><span class="lab">본 해커톤 · 1박 2일</span><b>11.13 (금) 19:00 – 11.14 (토)</b></div>
     <div data-anim style="--d:.15s"><span class="lab">장소</span><b>미래관 109호</b></div>
-    <div data-anim style="--d:.25s"><span class="lab">1차 모집</span><b>10.07 (수) – 10.31 (토) 23:59</b></div>
+    <div data-anim style="--d:.25s" id="fact-round"><span class="lab">1차 모집</span><b>10.07 (수) – 10.31 (토) 23:59</b></div>
   </div>
 
   <!-- 공지사항 — 공지 모듈이 채운다 (Notice.gs). 게시 중인 공지가 하나도 없으면 절 자체가 숨겨진다 -->
@@ -2435,6 +2435,60 @@ window.EPUI = {
       '<div class="t"><span class="lab blue">' + esc(t.tag) + '</span>' +
       '<b>' + esc(t.board) + '</b><span>' + esc(t.boardWhy) + '</span>' + devNote() + '</div>';
     gate.hidden = false;
+  }
+})();
+
+/* ==============================================================
+   결과물 제출 안내 — 본 해커톤 기간에만
+   ---------------------------------------------------------------
+   모집이 끝나면 '참가 신청' 버튼들은 눌리지 않는 '모집 마감' 라벨이 된다 (바로 위 블록).
+   제출 페이지(submit/)가 열려 있는 동안에는 그 자리에 '결과물 제출' 버튼을 놓는다.
+   기간이 지나면 아무것도 하지 않으므로 원래 모습(모집 마감)으로 돌아간다.
+
+   [고칠 곳은 바로 아래 세 줄뿐입니다]
+     FROM   이 시각부터 보인다.          UNTIL  이 시각 뒤에는 보이지 않는다.
+     DUE    화면에 적을 마감 표기 (실제 마감 판정은 제출 서버가 한다 — SUBMIT.md).
+   로컬에서는 ?gate=after&submit=on / submit=off 로 두 모습을 볼 수 있다.
+   ============================================================== */
+(function () {
+  var FROM  = '2026-11-13T00:00:00+09:00';
+  var UNTIL = '2026-11-15T00:00:00+09:00';
+  var DUE   = '11.14 (토) 10:00';
+  var HREF  = 'submit/';
+
+  var G = window.EPGATE, now = Date.now();
+  var on = now >= Date.parse(FROM) && now < Date.parse(UNTIL);
+  if (G.local) {
+    var m = /[?&]submit=(on|off)/.exec(window.location.search || '');
+    if (m) on = m[1] === 'on';
+  }
+  // 모집 중이면 참가 신청 버튼이 살아 있다 — 건드리지 않는다
+  if (!on || G.open) return;
+
+  function revive(a, html) {
+    if (!a) return;
+    a.setAttribute('href', HREF);
+    a.classList.remove('gated');
+    a.removeAttribute('aria-disabled');
+    a.removeAttribute('title');
+    a.removeAttribute('data-gate');
+    a.innerHTML = html;
+  }
+  revive(document.querySelector('#top-bar nav a.apply'), '결과물 제출');
+  revive(document.querySelector('#v-home .hero-cta a[data-gate="apply"]'), '<span>결과물 제출</span>');
+
+  var cta = document.querySelector('#v-home .cta');
+  if (cta) {
+    var h = cta.querySelector('h2'), p = cta.querySelector('p');
+    if (h) h.textContent = '결과물을 제출해 주세요';
+    if (p) p.textContent = '제출 마감 {due} · 팀원이면 누구나 낼 수 있습니다'.replace('{due}', DUE);
+    revive(cta.querySelector('a[data-gate="apply"]'), '<span>제출하러 가기</span>');
+  }
+  var fact = document.getElementById('fact-round');
+  if (fact) {
+    var lab = fact.querySelector('.lab'), b = fact.querySelector('b');
+    if (lab) lab.textContent = '결과물 제출';
+    if (b) b.textContent = '{due} 까지'.replace('{due}', DUE);
   }
 })();
 

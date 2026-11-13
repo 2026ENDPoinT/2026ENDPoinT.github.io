@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#191919">
+<meta name="robots" content="noindex,nofollow">
+<!-- 열람 링크의 토큰이 다른 사이트로 새지 않게 -->
+<meta name="referrer" content="no-referrer">
+<title>제출 현황 · ENDPoinT</title>
+<meta name="description" content="ENDPoinT 해커톤 제출 현황. 심사위원과 운영진이 팀별 결과물과 발표 자료를 보는 곳입니다.">
+<link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
+<link rel="icon" href="../assets/img/icon-512.png" sizes="512x512" type="image/png">
+<link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@100;200;300;400;500;600&display=swap">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="stylesheet" href="../assets/submit.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a class="mark" href="../"><b>ENDPoinT</b><span>SeoulTech CSE Hackathon</span></a>
+    <nav>
+      <a href="../" class="sm-hide">홈</a>
+      <a href="../#prize" class="sm-hide">심사 기준</a>
+      <a href="./" class="on" aria-current="page">제출 현황</a>
+      <a href="./vote/">투표</a>
+    </nav>
+    <div class="top-auth" id="top-auth" aria-live="polite"></div>
+  </div>
+</header>
+
+<main>
+  <div class="phead">
+    <div class="wrap">
+      <div class="pagehead">
+        <div>
+          <span class="lab blue">Judging</span>
+          <h1 class="ptitle">제출 현황</h1>
+          <p class="sub">팀이 낸 결과물과 발표 자료를 한곳에서 볼 수 있습니다. 새 제출은 1분 안에 이 화면에 나타납니다.</p>
+        </div>
+        <div class="stack">
+          <div><span class="lab ko">제출 완료</span><b id="s-done" class="num">—</b></div>
+          <div><span class="lab ko">발표 자료 · 결과물</span><b id="s-parts" class="num">—</b></div>
+          <div><span class="lab ko">제출 마감</span><b id="s-deadline" class="num">—</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="wrap">
+      <div class="demo-note" id="demo-note" hidden><b>미리보기 모드</b>서버에 연결하지 않은 화면입니다. 팀 이름과 자료는 모두 예시입니다.</div>
+      <div class="gate" id="gate"></div>
+      <div id="app" hidden>
+        <div class="bar">
+          <div class="tabs" id="tabs" role="tablist" aria-label="트랙"></div>
+          <div class="tools">
+            <span class="when" id="when"></span>
+            <button class="chipbtn" type="button" id="only" aria-pressed="false">낸 팀만 보기</button>
+            <button class="chipbtn" type="button" id="reload">새로 고침</button>
+          </div>
+        </div>
+        <div id="list"></div>
+      </div>
+      <noscript><p class="sub">이 화면에는 자바스크립트가 필요합니다. 브라우저 설정을 확인한 뒤 다시 열어 주세요.</p></noscript>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="f-in">
+      <div>
+        <div class="mark" style="margin-bottom:12px"><b>ENDPoinT</b><span>SeoulTech CSE Hackathon</span></div>
+        <div>서울과학기술대학교 컴퓨터공학과 해커톤<br>EC · NL · 다락방 · Plum · TCP</div>
+      </div>
+      <div class="f-links">
+        <a href="../">대회 안내</a>
+        <a href="../#prize">심사 기준</a>
+        <a href="mailto:recognize@seoultech.ac.kr">문의</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="발표 자료 보기">
+  <div class="viewer-bar">
+    <div class="t"><b id="vw-title"></b><span id="vw-sub"></span></div>
+    <button class="mini" type="button" id="vw-save" hidden>내려받기</button>
+    <button class="mini" type="button" id="vw-close">닫기</button>
+  </div>
+  <div class="viewer-body" id="vw-body"></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="../assets/submit-config.js"></script>
+<script src="../assets/submit-core.js"></script>
+<script src="../assets/judge-page.js"></script>
+</body>
+</html>
