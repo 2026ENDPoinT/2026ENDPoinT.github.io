@@ -27,7 +27,7 @@
   function gateLogin(expired) {
     showGate('<div class="t"><span class="lab ' + (expired ? 'red' : 'blue') + '">' + (expired ? 'Signed out' : 'Sign in') + '</span>' +
       '<b>' + (expired ? '로그인 시간이 지났습니다. 다시 로그인해 주세요' : '참가 신청에 쓴 구글 계정으로 로그인해 주세요') + '</b>' +
-      '<span>투표는 참가자 명단에 있는 계정만 할 수 있습니다. 로그인한 계정으로 어느 팀인지 확인하고, 우리 팀에는 투표할 수 없게 막습니다.</span></div>' +
+      '</div>' +
       '<div class="act" id="gate-btn"></div>');
     S.mountButton($('gate-btn'));
   }
@@ -100,7 +100,6 @@
   /* ------------------------------ 그리기 ------------------------------ */
   function paintHead() {
     var d = st.d;
-    $('h-max').textContent = d.max;
     $('h-team').textContent = d.me ? d.me.team + '팀 · ' + d.me.track : (d.admin ? '운영진 계정' : '—');
     d.tracks.forEach(function (tr) {
       var el = $('h-' + tr.key);
@@ -132,9 +131,9 @@
 
     var head;
     if (!member) head = note('<b>운영진 계정은 투표하지 않습니다.</b> 위에서 트랙별로 투표를 열고 닫을 수 있습니다.');
-    else if (tr.state === 'ready') head = note('<b>' + esc(tr.name) + ' 트랙 발표가 모두 끝나면 투표가 열립니다.</b> 이 화면을 열어 두면 열리는 대로 바뀝니다.');
+    else if (tr.state === 'ready') head = note('<b>' + esc(tr.name) + ' 트랙 발표가 끝나면 투표가 열립니다.</b>');
     else if (tr.state === 'closed') head = note(voted ? '<b>투표가 마감되었습니다.</b> 아래가 이 트랙에 낸 표입니다.' : '<b>투표가 마감되었습니다.</b> 이 트랙에는 투표하지 않았습니다.');
-    else if (!editing) head = note('<b>투표했습니다.</b> 마감 전까지는 다시 고를 수 있고, 마지막에 낸 것만 셉니다.');
+    else if (!editing) head = note('<b>투표했습니다.</b> 마감 전까지 다시 고를 수 있습니다.');
     else head = note('<b>좋았던 팀을 ' + d.max + '곳까지 골라 주세요.</b> 한 팀에 1표' + (d.self ? '' : ', 우리 팀(' + esc(myTeam) + ')은 고를 수 없습니다') + '.');
 
     var cards = tr.teams.map(function (t) {
@@ -167,15 +166,14 @@
         : '<div class="vbar"><div class="wrapx"><div class="t"><b>투표함</b><span>' + tr.mine.map(function (n) { return esc(n) + '팀'; }).join(' · ') + '</span></div>' +
           '<div class="acts"><button class="btn btn-o btn-sm" type="button" data-act="edit"><span>다시 고르기</span></button></div></div></div>';
     }
-    el.innerHTML = head + '<div class="ballot">' + cards + '</div>' + bar +
-      (member ? '<p class="note">투표는 익명으로 셉니다 — 시트에는 이름 대신 익명 표시만 남습니다. 표마다 받는 <b>확인 코드</b>로, 내 표가 고른 팀에 제대로 들어갔는지 운영진에게 확인할 수 있습니다.</p>' : '');
+    el.innerHTML = head + '<div class="ballot">' + cards + '</div>' + bar;
   }
 
   function paintAdmin() {
     var d = st.d, box = $('admin');
     box.hidden = !(d.admin && d.tally);
     if (box.hidden) { box.innerHTML = ''; return; }
-    box.innerHTML = '<div class="sechd" style="margin-top:0">운영진 <small>트랙별 투표 열기 · 마감 · 결과 — 운영진 계정에만 보입니다</small></div>' +
+    box.innerHTML = '<div class="sechd" style="margin-top:0">운영진</div>' +
       d.tally.map(function (x) {
         var show = !!st.showRes[x.key];
         var rows = x.rows.slice().sort(function (p, q) { return q.votes - p.votes || (p.no < q.no ? -1 : 1); });

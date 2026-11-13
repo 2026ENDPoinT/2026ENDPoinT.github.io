@@ -51,8 +51,7 @@
   function gateKey(why) {
     showGate('<div class="t"><span class="lab ' + (why ? 'red' : 'blue') + '">Viewer</span>' +
       '<b>' + (why ? esc(why) : '받으신 열람 링크로 들어와 주세요') + '</b>' +
-      '<span>심사위원 · 운영진께 보내 드린 링크를 그대로 열면 됩니다. 링크 대신 열람 코드를 받으셨다면 아래에 붙여 넣어 주세요.' +
-      (why ? ' 링크가 만료됐다면 운영진에게 새 링크를 요청해 주세요.' : '') + '</span></div>' +
+      (why ? '<span>링크가 만료됐다면 운영진에게 새 링크를 요청해 주세요.</span>' : '') + '</div>' +
       '<form class="act" id="key-form" autocomplete="off">' +
         '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="열람 코드" placeholder="열람 코드" style="min-width:min(320px,70vw)">' +
         '<button class="btn btn-o" type="submit"><span>열기</span></button></form>');
