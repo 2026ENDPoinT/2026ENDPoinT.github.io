@@ -442,6 +442,7 @@ select.tin option{background:var(--ink-2);color:var(--hi)}
 .stable th,.stable td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;font-weight:300;white-space:nowrap;vertical-align:middle}
 .stable th{font-size:12px;color:var(--dim-2);font-weight:500;letter-spacing:.04em;background:var(--ink-2)}
 .stable .r{text-align:right}
+.stable .agg{border-left:1px solid var(--line)}   /* 심사위원별 칸과 합산 칸(J · P · S) 사이 */
 .stable td.rk{font-size:19px;font-weight:200;color:var(--hi);width:52px;font-variant-numeric:tabular-nums}
 .stable .nm{white-space:normal;min-width:180px;color:var(--hi)}
 .stable .nm small{display:block;color:var(--dim-2);font-size:12px}
@@ -456,6 +457,7 @@ select.tin option{background:var(--ink-2);color:var(--hi)}
 .sdet h4{margin:0 0 8px;font-size:12px;font-weight:500;color:var(--dim-2);letter-spacing:.04em}
 .sdet table{width:100%;border-collapse:collapse;font-size:13px}
 .sdet td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.stable .sdet td:first-child{white-space:nowrap}   /* 심사위원 이름이 두 줄로 갈리지 않게 */
 .sdet .cm{border-left:1px solid var(--blue);padding:4px 0 4px 12px;margin:0 0 10px;font-size:13.5px;line-height:1.75;color:var(--fg);white-space:pre-line}
 .sdet .cm b{display:block;font-size:12px;color:var(--dim-2);font-weight:500}
 .sstate{font-size:12.5px;border:1px solid var(--line);padding:2px 8px;color:var(--dim-2)}

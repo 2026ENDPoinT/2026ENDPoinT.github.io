@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadBackend, token, bytesOf, md5 } from './harness.mjs';
+import { loadBackend, token, bytesOf, md5, FakeSheet } from './harness.mjs';
 
 const TOKENS = {
   'tok-a1': token('a1@x.com', '101'),          // 03팀 조장
@@ -1487,6 +1487,21 @@ describe('시각 컷 (본선 시간표)', () => {
     assert.equal(admin(b, 'H', 'wipe').error, 'BAD_OP');
   });
 
+  test('운영진: 같은 누름을 다시 보내도 5분 연장 · 5분 늦추기는 한 번만 된다 (nonce)', () => {
+    const b = cb();
+    b.at('2026-11-14T12:05:00+09:00');
+    const send = (op, nonce) => b.post({ action: 'vote.admin', idToken: 'tok-op', track: 'H', op, nonce });
+    assert.equal(send('delay', 'n-1').from, ms('2026-11-14T12:17:00+09:00'));
+    const again = send('delay', 'n-1');                                       // 응답이 끊겨 화면이 다시 보냈다
+    assert.deepEqual([again.ok, again.replay, again.from], [true, true, ms('2026-11-14T12:17:00+09:00')]);
+    assert.equal(b.store.VOTE_H_FROM, '2026-11-14T12:17:00+09:00');
+    assert.equal(send('delay', 'n-2').from, ms('2026-11-14T12:22:00+09:00'));   // 새로 누르면 또 늦춘다
+    b.at('2026-11-14T12:23:00+09:00');
+    assert.equal(send('extend', 'n-3').until, ms('2026-11-14T12:42:00+09:00'));
+    assert.equal(send('extend', 'n-3').until, ms('2026-11-14T12:42:00+09:00'));
+    assert.equal(b.rows('기록').filter((l) => l['동작'] === 'vote.extend').length, 1);
+  });
+
   test('스크립트 속성에 손으로 적어도 된다 (서울 시각) · none 이면 그쪽 끝이 없다', () => {
     const b = cb({ props: { ADMINS: 'op@x.com', VOTE_H_FROM: '2026-11-14 11:00', VOTE_H_UNTIL: 'none' } });
     b.at('2026-11-14T10:59:00+09:00');
@@ -1697,5 +1712,23 @@ describe('발표 자료 보기용 PDF (PowerPoint · odp)', () => {
     upload(b, { idToken: 'tok-op', as: '05', name: 'c.pdf' });
     assert.deepEqual(b.run('pdfMissing'), { todo: 2, done: 2, bad: 0, left: 0 });
     assert.deepEqual(b.run('pdfMissing'), { todo: 0, done: 0, bad: 0, left: 0 });
+  });
+});
+
+describe('투표 줄이 시트에서 바뀌어도 (최악의 경우)', () => {
+  test('시트가 시각을 날짜로, 숫자처럼 보이는 글자를 숫자로 바꿔도 다시 읽어 글자로 고쳐 쓰고, 표는 그대로 센다', () => {
+    const T = { ...TOKENS, 'tok-d1': token('d1@x.com', '701') };
+    const b = loadBackend({ props: { ADMINS: 'op@x.com' }, tokens: T });
+    b.roster([['03', '가나다', 'a1@x.com', '101', '조장', ''], ['12', '사아자', 'b1@x.com', '201', '조장', ''], ['15', '마바사', 'd1@x.com', '701', '조장', '']]);
+    b.at('2026-11-14T12:15:00+09:00');
+    FakeSheet.misparse = true;
+    try {
+      assert.equal(b.post({ action: 'vote.submit', idToken: 'tok-a1', track: 'H', teams: ['12', '15'] }).ok, true);
+      assert.equal(b.post({ action: 'vote.submit', idToken: 'tok-b1', track: 'H', teams: ['15'] }).ok, true);
+    } finally { FakeSheet.misparse = false; }
+    const rows = b.rows('투표');
+    assert.ok(rows.every((r) => typeof r['시각'] === 'string' && typeof r['대상 팀'] === 'string'), JSON.stringify(rows[0]));
+    const h = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'H');
+    assert.deepEqual([h.voters, h.votes, h.bad], [2, 3, 0]);
   });
 });

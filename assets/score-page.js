@@ -104,7 +104,7 @@
     var wide = d.judges.length <= WIDE;
     var head = '<tr><th class="rk">순위</th><th>팀</th>' +
       (wide ? d.judges.map(function (j) { return '<th class="r">' + esc(j.name) + '</th>'; }).join('') : '<th class="r">평가</th>') +
-      '<th class="r">심사위원 J</th><th class="r">인기투표</th><th class="r">P</th><th class="r">최종 S</th></tr>';
+      '<th class="r agg">심사 평균 J</th><th class="r">인기투표</th><th class="r">투표 점수 P</th><th class="r">최종 S</th></tr>';   // 'J' 만 쓰면 심사위원이 한 명 더 있는 것처럼 보인다
     var body = tr.rows.map(function (r) {
       var open = !!st.open[tr.key + r.no];
       var cells = wide
@@ -116,7 +116,7 @@
       var row = '<tr class="row' + (r.rank === 1 ? ' top' : '') + '" data-no="' + esc(r.no) + '" aria-expanded="' + open + '">' +
         '<td class="rk">' + (r.rank || '—') + '</td>' +
         '<td class="nm">' + esc(r.no) + '팀<small>' + esc(r.title || '이름 없음') + '</small></td>' + cells +
-        '<td class="r num">' + n2(r.J) + '</td><td class="r num">' + r.votes + '표</td><td class="r num">' + n2(r.P) + '</td>' +
+        '<td class="r num agg">' + n2(r.J) + '</td><td class="r num">' + r.votes + '표</td><td class="r num">' + n2(r.P) + '</td>' +
         '<td class="r num s">' + n2(r.S) + '</td></tr>';
       if (!open) return row;
       var colN = 6 + (wide ? d.judges.length : 1);

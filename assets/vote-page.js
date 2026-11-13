@@ -23,7 +23,7 @@
     showRes: {},        // 운영진: 트랙별 결과 펼침
     busy: false, loadedAt: 0,
     edge: 0,            // 다음에 열리거나 닫히는 시각 (서버 시각). 그때 한 번 새로 읽는다
-    jit: Math.floor(Math.random() * 4000)   // 사람마다 몇 초씩 어긋나게 (한꺼번에 몰리지 않게)
+    jit: Math.floor(Math.random() * 8000)   // 사람마다 0 – 8초 어긋나게 (12:12 에 66명이 한꺼번에 몰리지 않게 — 서버는 동시 60여 개부터 거절)
   };
 
   function hm(ms) { return ms ? EP.fmtTime(ms).slice(6) : ''; }
@@ -279,7 +279,7 @@
     var x = trackOf(track), ask = ADMIN_ASK[op];
     if (!x || !ask) return;
     if (!window.confirm(x.name + ' ' + ask[0])) return;
-    EP.api('vote.admin', { track: track, op: op }, { tries: 2 }).then(function (r) {
+    EP.api('vote.admin', { track: track, op: op }, { nonce: EP.nonce(), tries: 2 }).then(function (r) {
       if (r && r.ok) { EP.toast(x.name + ' ' + ask[1]); load(true); }
       else if (r && r.error !== 'AUTH_FAILED') { EP.toast(EP.say(r)); load(true); }
     }, function (e) { EP.toast(EP.say(e)); });

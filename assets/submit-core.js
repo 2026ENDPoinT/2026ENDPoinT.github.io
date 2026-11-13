@@ -347,15 +347,17 @@
     if (DEMO) return Demo.call(body).then(function (d) { if (d && d.now) sync(d.now); return d; });
 
     var tries = o.tries || 2;
+    function jitter(ms) { return Math.floor(Math.random() * ms); }
     function attempt(text, n, busy) {
       return send(text, o.timeout).then(function (d) {
         if (d && d.now) sync(d.now);
         // 다른 팀의 쓰기를 기다리다 차례가 안 온 경우 — 조금 쉬었다 다시
-        if (d && d.error === 'BUSY' && busy < 3) return wait(700 * (busy + 1)).then(function () { return attempt(text, n, busy + 1); });
+        if (d && d.error === 'BUSY' && busy < 3) return wait(700 * (busy + 1) + jitter(500)).then(function () { return attempt(text, n, busy + 1); });
         return d;
       }, function (err) {
         if (n >= tries) throw err;
-        return wait(700 * n).then(function () { return attempt(text, n + 1, busy); });
+        // 한꺼번에 막힌 사람들이 같은 순간에 다시 몰리지 않게 조금씩 어긋나게 다시 보낸다
+        return wait(700 * n + jitter(700)).then(function () { return attempt(text, n + 1, busy); });
       });
     }
     function after(d) {

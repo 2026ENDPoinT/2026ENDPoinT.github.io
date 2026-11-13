@@ -678,10 +678,10 @@
     if (row) fillForm(no, false);
   }
   function sideHtml(t) {
-    var links = '';
-    if (t.url) links += '<a class="mini" href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">서비스 열기 ↗</a>';
-    if (t.video) links += '<a class="mini quiet" href="' + esc(t.video) + '" target="_blank" rel="noopener noreferrer">데모 영상 ↗</a>';
-    if (t.repo) links += '<a class="mini quiet" href="' + esc(t.repo) + '" target="_blank" rel="noopener noreferrer">코드 ↗</a>';
+    var links = '', web = function (u) { return /^https?:\/\//i.test(String(u || '')); };     // http · https 만 링크로
+    if (web(t.url)) links += '<a class="mini" href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">서비스 열기 ↗</a>';
+    if (web(t.video)) links += '<a class="mini quiet" href="' + esc(t.video) + '" target="_blank" rel="noopener noreferrer">데모 영상 ↗</a>';
+    if (web(t.repo)) links += '<a class="mini quiet" href="' + esc(t.repo) + '" target="_blank" rel="noopener noreferrer">코드 ↗</a>';
     if (t.program) links += '<button class="mini quiet" type="button" data-rv="get" data-id="' + t.program.id + '">프로그램 받기</button>';
     return '<div class="rv-team"><span class="no">' + esc(t.no) + '</span><div class="t"><small>' + esc(t.track || '') + '</small>' +
       '<b>' + esc(t.title || '이름을 아직 적지 않았습니다') + '</b></div></div>' +

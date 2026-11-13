@@ -1039,7 +1039,8 @@ function voteCount_(t, salt) {
   var c = t.col, ballots = {}, bad = {};
   t.rows.forEach(function (row, pos) {
     var key = trackKeyByName_(row[c['트랙']]), ballot = str_(row[c['투표지']]), voter = str_(row[c['투표자(익명)']]);
-    var vt = teamNo_(row[c['투표자 팀']]), team = teamNo_(row[c['대상 팀']]), at = str_(row[c['시각']]);
+    var vt = teamNo_(row[c['투표자 팀']]), team = teamNo_(row[c['대상 팀']]);
+    var at = row[c['시각']] instanceof Date ? kst_(row[c['시각']].getTime()) : str_(row[c['시각']]);   // 날짜로 바뀌어 있어도 같은 글자로
     if (!key && !ballot && !voter && !team) return;                       // 빈 줄
     var sig = str_(row[c['검증']]).toLowerCase();
     if (!key || !ballot || !voter || !team || sig !== voteSig_(salt, ballot, key, voter, vt, team, at)) {
@@ -1161,14 +1162,15 @@ function actVoteSubmit_(body) {
     var now = voteState_(tr.key, t0);
     if (now !== 'open') return fail_(now === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN');
     var ms = nowMs_(), at = kst_(ms), ballot = 'B' + ms + '-' + ('00' + Math.floor(Math.random() * 1000)).slice(-3);
-    var sh = voteSheet_(), head = voteHead_(sh), codes = {};
+    var sh = voteSheet_(), head = voteHead_(sh), codes = {}, recs = {};
     pick.forEach(function (no) {
       var sig = voteSig_(salt, ballot, tr.key, voter, a.team, no, at);
       codes[no] = sig.slice(0, 6).toUpperCase();
-      var rec = { '시각': at, '트랙': tr.name, '투표지': ballot, '투표자(익명)': voter, '투표자 팀': a.team, '대상 팀': no, '검증': sig, '상태': '유효' };
+      var rec = recs[no] = { '시각': at, '트랙': tr.name, '투표지': ballot, '투표자(익명)': voter, '투표자 팀': a.team, '대상 팀': no, '검증': sig, '상태': '유효' };
       // ' 를 붙여 글자로 고정한다 (시각이 날짜로, '03' 이 3 으로 바뀌면 검증값이 맞지 않게 된다)
       sh.appendRow(head.map(function (h) { return rec[h] === undefined ? '' : "'" + rec[h]; }));
     });
+    voteVerify_(sh, head, ballot, recs);
     cacheDrop_('votes1');
     // `기록` 에는 누가 냈는지도 남기지 않는다 — 시각이 `투표` 탭과 같아서, 이메일을 적으면 두 탭을 맞춰 보는 것만으로 누가 누구에게 줬는지 드러난다
     log_({ email: '(익명 투표)', team: '' }, 'vote.submit', tr.name, pick.length + '표');
@@ -1177,6 +1179,26 @@ function actVoteSubmit_(body) {
 }
 
 function voteSheet_() { return ss_().getSheetByName(TABS.vote.name) || table_('vote').sheet; }
+/**
+ * 방금 붙인 줄을 다시 읽어 적은 그대로인지 본다. 시트가 글자를 숫자 · 날짜로 바꿔 놓았으면(검증값이 어긋난다)
+ * 그 줄만 글자 서식으로 다시 쓴다. 투표지 번호로 내 줄만 찾으므로 다른 실행이 붙인 줄은 건드리지 않는다.
+ */
+function voteVerify_(sh, head, ballot, recs) {
+  try {
+    var last = sh.getLastRow(), from = Math.max(2, last - Object.keys(recs).length - 60);
+    if (last < from) return;
+    var iB = head.indexOf('투표지'), iT = head.indexOf('대상 팀');
+    var vals = sh.getRange(from, 1, last - from + 1, head.length).getValues();
+    vals.forEach(function (row, j) {
+      if (str_(row[iB]) !== ballot) return;
+      var rec = recs[teamNo_(row[iT])];
+      if (!rec || head.every(function (h, k) { return rec[h] === undefined || str_(row[k]) === String(rec[h]); })) return;
+      var r = sh.getRange(from + j, 1, 1, head.length);
+      r.setNumberFormat('@');
+      r.setValues([head.map(function (h, k) { return rec[h] === undefined ? row[k] : String(rec[h]); })]);
+    });
+  } catch (e) {}
+}
 /** `투표` 탭의 머리줄만 읽는다 (탭 전체를 읽지 않게). 빠진 열이 있으면 한 번 채운다 */
 function voteHead_(sh) {
   var read = function () { var n = sh.getLastColumn(); return n ? sh.getRange(1, 1, 1, n).getValues()[0].map(function (h) { return str_(h); }) : []; };
@@ -1203,6 +1225,8 @@ function actVoteAdmin_(body) {
   var op = String(body.op || '');
   if (['open', 'close', 'extend', 'delay', 'auto'].indexOf(op) === -1) return fail_('BAD_OP');
   voteSalt_();
+  // 같은 누름을 다시 보내도(응답이 끊겨 화면이 다시 보낸 경우) '5분 연장' 이 두 번 되지 않게
+  return once_(a, body.nonce, function () {
   var now = nowMs_(), F = 'VOTE_' + tr.key + '_FROM', U = 'VOTE_' + tr.key + '_UNTIL', STEP = 5 * 60000;
   var bad = withLock_(function () {
     propsDrop_();
@@ -1230,6 +1254,7 @@ function actVoteAdmin_(body) {
   var w2 = voteWin_(tr.key);
   log_(a, 'vote.' + op, tr.name, (w2.from ? kst_(w2.from).slice(11, 16) : '') + '–' + (w2.until ? kst_(w2.until).slice(11, 16) : ''));
   return { ok: true, track: tr.key, state: voteState_(tr.key), from: w2.from, until: w2.until, tally: voteTally_() };
+  });
 }
 
 /* ================================================================

@@ -22,9 +22,16 @@ class FakeSheet {
   }
   appendRow(values) {
     // 실제 appendRow 는 사람이 친 것처럼 해석한다: ' 로 시작하면 글자로 두고 ' 는 보이지 않는다
+    // FakeSheet.misparse 면 ' 를 무시하고 숫자 · 날짜처럼 보이는 글자를 바꿔 버리는 시트를 흉내 낸다 (최악의 경우 시험)
     this.cells[this.getLastRow()] = values.map((v) => {
       if (typeof v === 'string' && v.startsWith('=')) throw new Error('formula written by appendRow: ' + v);
-      return typeof v === 'string' && v.startsWith("'") ? v.slice(1) : v;
+      let x = typeof v === 'string' && v.startsWith("'") ? v.slice(1) : v;
+      if (FakeSheet.misparse && typeof x === 'string') {
+        const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(x);
+        if (m) x = new Date(Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+09:00`));
+        else if (/^\d+(e\d+)?$/i.test(x)) x = Number(x);
+      }
+      return x;
     });
   }
   getRange(row, col, rows = 1, cols = 1) {
@@ -203,6 +210,7 @@ function formatSeoul(date, pattern) {
  * @param {object} [o.tokens]  idToken → tokeninfo 응답
  * @param {number|string} [o.now] 시작 시각
  */
+export { FakeSheet };
 export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:00+09:00' } = {}) {
   const clock = { t: typeof now === 'number' ? now : Date.parse(now) };
   const ss = new FakeSpreadsheet('sheet-submit', 'ENDPoinT 2026 제출');
