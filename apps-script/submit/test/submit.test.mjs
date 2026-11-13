@@ -1545,3 +1545,66 @@ describe('연습용 팀 파일', () => {
     assert.equal(b.post({ action: 'file.get', key: b.viewer('운영', '운영진'), id }).ok, true);
   });
 });
+
+describe('공개 현황판 (로그인 없이 — 메인 메뉴 제출·투표 현황)', () => {
+  const T = { ...TOKENS, 'tok-d1': token('d1@x.com', '701') };
+  function pb(extra = {}) {
+    const b = loadBackend({ props: { ADMINS: 'op@x.com' }, tokens: T, ...extra });
+    b.roster([['03', '가나다', 'a1@x.com', '101', '조장', ''], ['12', '사아자', 'b1@x.com', '201', '조장', ''], ['15', '마바사', 'd1@x.com', '701', '조장', '']]);
+    return b;
+  }
+  const pub = (b) => b.post({ action: 'status.public' });
+  const ms = (iso) => Date.parse(iso);
+
+  test('누구나 본다 — 팀 번호 · 낸 것의 유무 · 투표한 사람 수만 (프로젝트 이름 · 링크 · 이메일 · 득표 · 연습팀 없음)', () => {
+    const b = pb();
+    b.at('2026-11-14T09:00:00+09:00');
+    b.post({ action: 'info.save', idToken: 'tok-a1', data: { title: '비밀 프로젝트', url: 'https://secret.example.app' } });
+    upload(b, { idToken: 'tok-a1' });
+    upload(b, { idToken: 'tok-op', as: '00' });
+    b.at('2026-11-14T09:05:00+09:00');
+    const r = pub(b);
+    assert.equal(r.ok, true);
+    assert.equal(r.submit.teams.length, 20);
+    assert.deepEqual(r.submit.teams.slice(0, 2).map((t) => t.no), ['11', '12']);           // 발표 순서: 해커톤 먼저
+    assert.deepEqual(r.submit.teams.find((t) => t.no === '03'), { no: '03', track: 'A', deck: true, product: true, done: true });
+    assert.deepEqual(r.submit.sum, { teams: 20, complete: 1, deck: 1, product: 1 });
+    const text = JSON.stringify(r);
+    assert.ok(!/비밀 프로젝트|secret\.example|@x\.com|가나다|drive|"00"|token/.test(text), text.slice(0, 400));
+    assert.deepEqual(r.vote.tracks.map((t) => [t.key, t.name, t.state, t.voters]), [['H', '해커톤', 'ready', 0], ['A', '구현과제', 'ready', 0]]);
+    assert.equal(r.vote.eligible, 3);
+    assert.equal(r.vote.tracks[0].rows, undefined);                                         // 팀별 득표는 없다
+  });
+
+  test('제출 현황은 5분, 투표한 사람 수는 1분마다 새로 센다 — 그 사이에는 같은 값, 열림 · 닫힘은 바로', () => {
+    const b = pb();
+    b.at('2026-11-14T09:00:10+09:00');
+    let r = pub(b);
+    assert.deepEqual([r.submit.sum.deck, r.submit.every, r.submit.next], [0, 300, ms('2026-11-14T09:05:00+09:00')]);
+    upload(b, { idToken: 'tok-a1' });
+    b.at('2026-11-14T09:04:59+09:00');
+    assert.equal(pub(b).submit.sum.deck, 0);
+    b.at('2026-11-14T09:05:00+09:00');
+    r = pub(b);
+    assert.deepEqual([r.submit.sum.deck, r.submit.at], [1, ms('2026-11-14T09:05:00+09:00')]);
+    b.at('2026-11-14T12:12:05+09:00');
+    r = pub(b);
+    assert.deepEqual(r.vote.tracks.map((t) => [t.key, t.state, t.voters]), [['H', 'open', 0], ['A', 'ready', 0]]);
+    assert.deepEqual([r.vote.every, r.vote.next], [60, ms('2026-11-14T12:13:00+09:00')]);
+    assert.equal(b.post({ action: 'vote.submit', idToken: 'tok-a1', track: 'H', teams: ['12'] }).ok, true);
+    b.at('2026-11-14T12:12:59+09:00');
+    assert.equal(pub(b).vote.tracks[0].voters, 0);
+    b.at('2026-11-14T12:13:00+09:00');
+    assert.equal(pub(b).vote.tracks[0].voters, 1);
+    b.at('2026-11-14T12:27:00+09:00');
+    assert.equal(pub(b).vote.tracks[0].state, 'closed');
+  });
+
+  test('간격은 스크립트 속성으로 바꿀 수 있다 (BOARD_SUBMIT_SEC · BOARD_VOTE_SEC)', () => {
+    const b = pb({ props: { ADMINS: 'op@x.com', BOARD_SUBMIT_SEC: '60', BOARD_VOTE_SEC: '30' } });
+    b.at('2026-11-14T09:00:10+09:00');
+    const r = pub(b);
+    assert.deepEqual([r.submit.every, r.vote.every, r.submit.next, r.vote.next],
+      [60, 30, ms('2026-11-14T09:01:00+09:00'), ms('2026-11-14T09:00:30+09:00')]);
+  });
+});

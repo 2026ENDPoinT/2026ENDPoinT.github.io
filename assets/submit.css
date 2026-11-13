@@ -148,6 +148,33 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .gate .hub .row{display:flex;align-items:center;justify-content:space-between;gap:clamp(16px,2.4vw,32px);flex-wrap:wrap}
 .gate .hub .row+.row{border-top:1px solid var(--line);margin-top:clamp(20px,2.8vw,30px);padding-top:clamp(20px,2.8vw,30px)}
 
+/* 공개 현황판 (열람 링크 없이 — 메인 메뉴 '제출·투표 현황'): 팀 번호 · 낸 것의 유무 · 투표한 사람 수만 */
+.pub{margin-top:clamp(22px,3vw,34px);display:grid;gap:clamp(22px,3vw,34px)}
+.pub[hidden]{display:none}
+.pubsec{border:1px solid var(--line);padding:clamp(20px,2.6vw,28px)}
+.pubhd{display:flex;align-items:baseline;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;margin-bottom:8px}
+.pubhd b{font-size:clamp(18px,2vw,21px);font-weight:300;color:#fff;letter-spacing:-.01em}
+.pubhd .when{font-size:12.5px;color:var(--dim-2);font-variant-numeric:tabular-nums}
+.pubrow{display:grid;grid-template-columns:minmax(170px,auto) 1fr auto;align-items:center;gap:8px 18px;padding:13px 0;border-top:1px solid var(--line)}
+.pubhd+.pubrow{border-top:0}
+.pubrow .nm{display:flex;align-items:baseline;gap:6px 10px;flex-wrap:wrap}
+.pubrow .nm b{font-size:16px;font-weight:300;color:#fff}
+.pubrow .meter{height:4px;background:rgba(255,255,255,.08);position:relative;overflow:hidden}
+.pubrow .meter span{position:absolute;left:0;top:0;bottom:0;background:var(--blue);transition:width .6s var(--ease)}
+.pubrow .n{font-size:14px;color:var(--fg);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pubgrp{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:10px 0}
+.pubgrp>.lab{min-width:64px}
+.pubgrp .chips{display:flex;flex-wrap:wrap;gap:8px}
+.tchip{display:inline-flex;align-items:center;justify-content:center;min-width:40px;height:30px;padding:0 8px;font-size:13px;font-variant-numeric:tabular-nums;border:1px solid var(--line);color:var(--dim-2)}
+.tchip.part{border-color:var(--blue);color:var(--blue)}
+.tchip.done{background:var(--blue-k);border-color:var(--blue-k);color:#fff}
+.pub .legend{display:flex;gap:8px 12px;flex-wrap:wrap;margin-top:10px}
+.pub .legend .tchip{height:22px;min-width:0;font-size:11.5px}
+@media (max-width:560px){
+  .pubrow{grid-template-columns:1fr auto}
+  .pubrow .meter{grid-column:1/-1;grid-row:2}
+}
+
 /* ================= 제출 폼 ================= */
 .sb{border:1px solid var(--line)}
 .sb-state{padding:16px var(--pad);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px 22px;flex-wrap:wrap}

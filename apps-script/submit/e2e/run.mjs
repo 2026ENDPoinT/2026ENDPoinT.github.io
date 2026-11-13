@@ -319,6 +319,13 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   await page.goto(SITE + '/judge/');
   await page.waitForSelector('#key-form');
   R.match('링크 없이 오면 안내만 보인다', await text(page, '#gate'), /열람 링크로 들어와 주세요/);
+  // 공개 현황판: 팀 번호 · 낸 것의 유무 · 투표한 사람 수만 (프로젝트 이름은 없다)
+  await page.waitForSelector('#pub-submit .tchip');
+  R.match('공개 현황판: 제출 현황(해커톤 → 구현과제) · 투표 현황', await text(page, '#pub'), /제출 현황[\s\S]*5분마다 갱신[\s\S]*해커톤[\s\S]*구현과제[\s\S]*투표 현황[\s\S]*1분마다 갱신[\s\S]*12:12 시작[\s\S]*투표한 사람 0/);
+  R.eq('다 낸 팀은 완료, 일부만 낸 팀은 일부로', [await page.locator('#pub .tchip.done[data-no="03"]').count(), await page.locator('#pub .tchip.part[data-no="12"]').count(), await page.locator('#pub .tchip.none[data-no="01"]').count()], [1, 1, 1]);
+  R.match('머리 요약도 채운다', await text(page, '#s-done'), /^1 \/ 20팀$/);
+  R.check('공개 현황판에 프로젝트 이름이 없다', !/분실물 찾기 지도|코드 리뷰 도우미/.test(await text(page, '#pub')));
+  await shot(page, 'e2e-judge-0-public');
   await page.fill('#key-in', 'x'.repeat(40));
   await page.click('#key-form button');
   await page.waitForFunction(() => /만료됐거나 올바르지 않습니다/.test(document.querySelector('#gate')?.textContent || ''));
@@ -329,6 +336,7 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   await page.waitForSelector('#list .post');
   R.check('열어 둔 창에 링크를 붙여 넣어도 열린다', true);
   R.eq('주소창에서 토큰을 지운다', await page.evaluate(() => location.hash), '');
+  R.eq('열람 링크로 들어오면 공개 현황판은 감춘다', await page.locator('#pub').isHidden(), true);
   R.eq('팀 카드 20장', await page.locator('#list .post').count(), 20);
   R.match('요약: 제출 완료 팀 수', await text(page, '#s-done'), /^1 \/ 20팀$/);
   R.match('심사위원에게는 둘째 칸이 내 평가 진행', await text(page, '#s-parts'), /^0 \/ 20팀$/);

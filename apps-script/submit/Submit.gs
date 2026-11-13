@@ -70,6 +70,9 @@ var CONFIG = {
   VOTE_A_UNTIL: '2026-11-14T14:25:00+09:00',
   // 마감한 뒤 '다시 열기' 를 누르면 이만큼(분) 열었다가 저절로 닫는다 (투표 · 심사 공통)
   REOPEN_MIN: 10,
+  // 공개 현황판(/judge/ — 열람 링크 없이, 메인 메뉴 '제출·투표 현황')을 새로 세는 간격(초). 그 사이에는 같은 값을 보여 준다
+  BOARD_SUBMIT_SEC: 300,
+  BOARD_VOTE_SEC: 60,
   // 참가자 점수 P 의 만점은 100 × (1 − JUDGE_WEIGHT) = 15점. 그 트랙 팀당 평균 득표의 POP_FULL_X 배를 받으면 만점이다.
   POP_FULL_X: 2,
 
@@ -230,6 +233,7 @@ function route_(action, body) {
     case 'score.save':    return actScoreSave_(body);
     case 'score.summary': return actScoreSummary_(body);
     case 'score.state':   return actScoreState_(body);
+    case 'status.public': return actStatusPublic_(body);
     default:              return fail_('UNKNOWN_ACTION');
   }
 }
@@ -1116,6 +1120,56 @@ function actVoteAdmin_(body) {
   var w2 = voteWin_(tr.key);
   log_(a, 'vote.' + op, tr.name, (w2.from ? kst_(w2.from).slice(11, 16) : '') + '–' + (w2.until ? kst_(w2.until).slice(11, 16) : ''));
   return { ok: true, track: tr.key, state: voteState_(tr.key), from: w2.from, until: w2.until, tally: voteTally_() };
+}
+
+/* ================================================================
+   공개 현황판 — /judge/ (열람 링크 없이 오는 사람 · 메인 메뉴 '제출·투표 현황')
+   ----------------------------------------------------------------
+   로그인 없이 누구나 본다. 그래서 팀 번호 · 낸 것의 유무 · 투표한 사람 수만 담는다 —
+   프로젝트 이름 · 파일 · 링크 · 이메일 · 팀별 득표는 담지 않는다.
+   제출 현황은 BOARD_SUBMIT_SEC(5분)마다, 투표한 사람 수는 BOARD_VOTE_SEC(1분)마다 새로 센다.
+   그 사이에는 캐시에 둔 같은 값을 주므로, 화면을 몇 명이 띄워 두든 시트는 그 간격으로만 읽는다.
+   투표가 열렸는지 · 닫혔는지는 시각으로 매번 판단한다.
+   ================================================================ */
+
+function boardSec_(k, def) { var n = Number(conf_(k)); return n >= 10 && n <= 3600 ? Math.floor(n) : def; }
+
+function actStatusPublic_(body) {
+  var now = nowMs_(), sSec = boardSec_('BOARD_SUBMIT_SEC', 300), vSec = boardSec_('BOARD_VOTE_SEC', 60);
+  var sb = Math.floor(now / (sSec * 1000)), vb = Math.floor(now / (vSec * 1000));
+  var sk = 'pub:s:' + sSec + ':' + sb, sub = cacheGet_(sk);
+  if (!sub) {
+    var all = states_(), teams = [], sum = { teams: 0, complete: 0, deck: 0, product: 0 };
+    voteTracks_().forEach(function (tr) {
+      voteTeams_(tr.key).forEach(function (no) {
+        var s = all[no] || blank_(no), deck = !!s.deck, product = !!(s.url || s.program), done = complete_(s);
+        sum.teams++;
+        if (done) sum.complete++;
+        if (deck) sum.deck++;
+        if (product) sum.product++;
+        teams.push({ no: no, track: tr.key, deck: deck, product: product, done: done });
+      });
+    });
+    sub = { at: now, teams: teams, sum: sum };
+    cachePut_(sk, sub, sSec + 30);
+  }
+  var vk = 'pub:v:' + vSec + ':' + vb, cnt = cacheGet_(vk);
+  if (!cnt) {
+    var v = votes_();
+    cnt = { at: now, voters: v.voters || {} };
+    cachePut_(vk, cnt, vSec + 30);
+  }
+  return {
+    ok: true, api: API_VERSION, now: now, deadline: deadlineMs_(), graceMin: graceMin_(), phase: phase_(),
+    submit: { at: sub.at, next: (sb + 1) * sSec * 1000, every: sSec, sum: sub.sum, teams: sub.teams },
+    vote: {
+      at: cnt.at, next: (vb + 1) * vSec * 1000, every: vSec, eligible: roster_().people || 0,
+      tracks: voteTracks_().map(function (tr) {
+        var w = voteWin_(tr.key);
+        return { key: tr.key, name: tr.name, state: voteState_(tr.key), from: w.from, until: w.until, voters: cnt.voters[tr.key] || 0 };
+      })
+    }
+  };
 }
 
 /* ================================================================
