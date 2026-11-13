@@ -89,6 +89,11 @@ var CONFIG = {
   // 심사위원이 점수를 고칠 수 있는 마지막 시각 (투표 취합 시작). 비우면 운영진이 마감할 때까지.
   // 종합 화면의 '심사 마감' · '다시 열기' 는 스크립트 속성 SCORE_UNTIL 에 시각을 적는다.
   SCORE_UNTIL: '2026-11-14T14:25:00+09:00',
+  // 결과 발표: 심사와 두 트랙 투표가 모두 마감되고 이 시각이 지나면 메인 페이지에 등수가 뜬다 (발표 전에 새지 않게).
+  // 'none' 이면 마감되는 대로 바로. 종합 화면의 '지금 공개' 는 스크립트 속성 RESULTS_AT 에 지금 시각을 적는다.
+  RESULTS_AT: '2026-11-14T14:30:00+09:00',
+  // 등수마다 받는 팀 수 — 메인 페이지 상금표와 같게 (해커톤 1등 1 · 2등 2 · 3등 3, 구현과제 1 – 4등 각 1)
+  PRIZES: { H: [1, 2, 3], A: [1, 1, 1, 1] },
   // 점수를 적는 스프레드시트: 제출 폴더와 나란한 이 이름의 폴더 안, 이 이름의 시트 (처음 설정이 찾거나 만든다)
   SCORE_FOLDER_NAME: '심사위원',
   SCORE_SHEET_NAME: 'ENDPoinT 2026 심사',
@@ -239,6 +244,8 @@ function route_(action, body) {
     case 'score.summary': return actScoreSummary_(body);
     case 'score.state':   return actScoreState_(body);
     case 'status.public': return actStatusPublic_(body);
+    case 'results.public': return actResultsPublic_(body);
+    case 'results.state': return actResultsState_(body);
     case 'deck.pdf':      return actDeckPdf_(body);
     default:              return fail_('UNKNOWN_ACTION');
   }
@@ -879,7 +886,8 @@ function actScoreSummary_(body) {
   seen_(v);
   var res = scoreTable_();
   return { ok: true, api: API_VERSION, now: nowMs_(), name: v.name, role: v.role, criteria: criteria_(), weight: judgeW_(), popMax: popMax_(),
-           scoring: scoreState_(), scoreUntil: scoreUntil_(), scoreCustom: !!str_(props_().SCORE_UNTIL), judges: res.judges, tracks: res.tracks };
+           scoring: scoreState_(), scoreUntil: scoreUntil_(), scoreCustom: !!str_(props_().SCORE_UNTIL), judges: res.judges, tracks: res.tracks,
+           results: resultsInfo_() };
 }
 
 /**
@@ -903,6 +911,83 @@ function actScoreState_(body) {
   propsDrop_();
   log_({ email: '열람:' + v.name, team: '' }, 'score.' + op, '', '');
   return { ok: true, scoring: scoreState_(), scoreUntil: scoreUntil_(), scoreCustom: !!str_(props_().SCORE_UNTIL) };
+}
+
+/* ================================================================
+   결과 발표 — 메인 페이지 (로그인 없이)
+   ----------------------------------------------------------------
+   심사(SCORE_UNTIL)와 두 트랙 투표가 모두 마감되고 RESULTS_AT(14:30 결과 발표)이 지나면 공개된다.
+   등수는 최종 S 순서대로 PRIZES(등수마다 팀 수)에 맞춰 나눈다 — 해커톤 1등 1 · 2등 2 · 3등 3, 구현과제 1 – 4등 각 1.
+   동점(S · 심사위원 점수 · 동점 문항까지 같음)이면 같은 등수를 준다. 점수는 내보내지 않는다 (등수 · 팀 번호 · 프로젝트 이름만).
+   운영진은 종합 화면에서 '지금 공개' (RESULTS_AT = 지금) · '내리기' (RESULTS_AT = off) · '시간표대로' (속성 지움).
+   ================================================================ */
+
+/** RESULTS_AT: 0 = 시각 조건 없음, Infinity = 내림(off) */
+function resultsAt_() {
+  var s = str_(conf_('RESULTS_AT'));
+  if (/^off$/i.test(s)) return Infinity;
+  return cutMs_('RESULTS_AT');
+}
+/** 'judging' 심사 · 투표 진행 중 · 'ready' 다 마감됐지만 발표 시각 전(또는 내림) · 'open' 공개 */
+function resultsState_(at) {
+  var now = at || nowMs_();
+  if (scoreState_(now) !== 'closed') return 'judging';
+  for (var i = 0, tr = voteTracks_(); i < tr.length; i++) if (voteState_(tr[i].key, now) !== 'closed') return 'judging';
+  return now >= resultsAt_() ? 'open' : 'ready';
+}
+function resultsInfo_() {
+  var at = resultsAt_(), p = str_(props_().RESULTS_AT);
+  return { state: resultsState_(), at: at === Infinity ? -1 : at, custom: !!p };
+}
+/** 트랙마다 [{ place, teams: [{ no, title }] }] — scoreTable_ 의 S 순서대로 PRIZES 에 맞춰 */
+function resultsBuild_() {
+  var prizes = CONFIG.PRIZES || {};
+  return scoreTable_().tracks.map(function (tr) {
+    var counts = prizes[tr.key] || [], places = counts.map(function (n, i) { return { place: i + 1, teams: [] }; });
+    var total = counts.reduce(function (a, n) { return a + n; }, 0), pos = 0, last = null;
+    tr.rows.forEach(function (r) {
+      if (r.rank === null || r.rank === undefined) return;              // 4문항을 다 채운 점수가 없는 팀
+      var place;
+      if (last && r.rank === last.rank) place = last.place;              // 동점은 같은 등수
+      else {
+        if (pos >= total) return;
+        var c = 0;
+        for (var i = 0; i < counts.length; i++) { c += counts[i]; if (pos < c) { place = i + 1; break; } }
+      }
+      places[place - 1].teams.push({ no: r.no, title: r.title || '' });
+      pos++; last = { rank: r.rank, place: place };
+    });
+    return { key: tr.key, name: tr.name, places: places };
+  });
+}
+/** 누구나: 결과 (공개 전에는 상태와 발표 시각만) */
+function actResultsPublic_(body) {
+  var now = nowMs_(), state = resultsState_(now), at = resultsAt_();
+  var out = { ok: true, api: API_VERSION, now: now, state: state, at: at === Infinity ? -1 : at };
+  if (state !== 'open') return out;
+  var key = 'pub:r:' + Math.floor(now / 60000), hit = cacheGet_(key);   // 메인 페이지는 사람이 많다 — 1분 동안 같은 답
+  if (!hit) { hit = { tracks: resultsBuild_() }; cachePut_(key, hit, 90); }
+  out.tracks = hit.tracks;
+  return out;
+}
+/** 운영진: { key, op } — 'now' 지금 공개 · 'hide' 내리기 · 'auto' 시간표대로 (RESULTS_AT 속성) */
+function actResultsState_(body) {
+  var v = viewer_(body.key);
+  if (!v) return fail_('KEY_INVALID');
+  if (v.role !== '운영진') return fail_('NOT_STAFF');
+  var op = String(body.op || '');
+  if (op !== 'now' && op !== 'hide' && op !== 'auto') return fail_('BAD_OP');
+  if (op === 'now' && resultsState_() === 'judging') return fail_('RESULTS_NOT_READY', { results: resultsInfo_() });
+  var now = nowMs_();
+  withLock_(function () {
+    var P = PropertiesService.getScriptProperties();
+    if (op === 'now') P.setProperty('RESULTS_AT', iso_(now));
+    else if (op === 'hide') P.setProperty('RESULTS_AT', 'off');
+    else P.deleteProperty('RESULTS_AT');
+  });
+  propsDrop_();
+  log_({ email: '열람:' + v.name, team: '' }, 'results.' + op, '', '');
+  return { ok: true, results: resultsInfo_() };
 }
 
 /** 트랙별 순위표. 심사위원 목록은 `열람` 탭의 심사위원 + 점수를 낸 사람 */

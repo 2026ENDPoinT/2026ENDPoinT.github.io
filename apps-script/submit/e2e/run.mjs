@@ -642,6 +642,49 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
 });
 
 /* ---------------------------------------------------------------- */
+await scenario('메인 결과 발표: 심사 · 투표가 마감되고 14:30 이 지나면 해커톤 1 – 3등 · 구현과제 1 – 4등', async (w) => {
+  w.b.run('setup');
+  const prof = w.b.viewer('가 교수님', '심사위원'), staffKey = w.b.viewer('운영 담당', '운영진');
+  w.at('2026-11-14T13:00:00+09:00');
+  const four = (n) => ({ idea: n, done: n, ux: n, arch: n });
+  for (const [no, n] of [['11', 24], ['12', 23], ['13', 22], ['14', 21], ['15', 20], ['16', 19], ['17', 18], ['01', 25], ['02', 22], ['03', 20], ['04', 18], ['05', 10]]) {
+    w.b.post({ action: 'score.save', key: prof, team: no, scores: four(n) });
+  }
+  // 브라우저 시계도 그 시각으로 (메인 페이지는 14:00 전에는 서버에 묻지 않는다)
+  const clock = (page, iso) => page.addInitScript((t) => { const d = t - Date.now(), N = Date.now.bind(Date); Date.now = () => N() + d; }, Date.parse(iso));
+
+  w.at('2026-11-14T14:26:00+09:00');                             // 다 마감됐지만 발표(14:30) 전
+  const p1 = await newPage(browser);
+  await clock(p1, '2026-11-14T14:26:00+09:00');
+  await p1.goto(SITE + '/');
+  await p1.waitForTimeout(1500);
+  R.eq('발표 시각 전에는 결과 절이 숨어 있다', await p1.locator('#results').isHidden(), true);
+  await p1.context().close();
+
+  w.at('2026-11-14T14:31:00+09:00');
+  const page = await newPage(browser);
+  await clock(page, '2026-11-14T14:31:00+09:00');
+  await page.goto(SITE + '/');
+  await page.waitForSelector('#results:not([hidden]) .res-trk');
+  const got = await page.$$eval('#results .res-trk', (ts) => ts.map((t) => [t.dataset.track,
+    [...t.querySelectorAll('.pl')].map((p) => [p.querySelector('b').textContent, [...p.querySelectorAll('.tm .no')].map((x) => x.textContent)])]));
+  R.eq('해커톤 1등 1 · 2등 2 · 3등 3팀, 구현과제 1 – 4등 (최종 S 순서)', got, [
+    ['H', [['1등', ['11팀']], ['2등', ['12팀', '13팀']], ['3등', ['14팀', '15팀', '16팀']]]],
+    ['A', [['1등', ['01팀']], ['2등', ['02팀']], ['3등', ['03팀']], ['4등', ['04팀']]]]]);
+  R.eq('맨 위 단추가 결과 보기로', (await page.locator('#v-home .hero-cta a.btn').first().textContent()).trim(), '결과 보기');
+  R.check('점수 · 심사위원 이름은 메인에 없다', !/교수님|점수 [0-9]|\d+\.\d\d/.test(await text(page, '#results-grid')));
+  await shot(page, 'e2e-results-main');
+  R.eq('화면 오류 없음', page.errs, []);
+
+  // 운영진이 내리면 사라진다 (화면은 1분마다 다시 묻는다 — 여기서는 탭을 다시 보는 것으로 바로)
+  R.eq('운영진: 내리기', w.b.post({ action: 'results.state', key: staffKey, op: 'hide' }).results.state, 'ready');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForFunction(() => document.getElementById('results').hidden);
+  R.check('내리면 메인에서 사라진다', true);
+  await page.context().close();
+});
+
+/* ---------------------------------------------------------------- */
 await scenario('발표 PPT → 보기용 PDF: 올리면 저절로 바뀌고, 심사위원은 PDF 로 바로 본다', async (w) => {
   const page = await newPage(browser);
   await page.goto(SITE + '/submit/');

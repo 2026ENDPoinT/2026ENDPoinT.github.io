@@ -7,6 +7,7 @@
 <!-- 화면 테마: 밝은 화면을 고른 사람은 첫 화면부터 밝게 (assets/theme.js 가 단추를 단다) -->
 <script>try{if(localStorage.getItem('ep-theme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
 <script src="assets/theme.js?v=547fe78e" defer></script>
+<script src="assets/submit-config.js?v=1f1bcd66" defer></script>
 <script>document.documentElement.className+=" js";</script>
 <title>ENDPoinT</title>
 <meta name="description" content="서울과학기술대학교 컴퓨터공학과 해커톤 ENDPoinT. 컴퓨터공학과 주최 · 5개 학술 동아리 주관, 2026년 11월 13일–14일, 1박 2일.">
@@ -861,6 +862,26 @@ p{text-wrap:pretty}
 #prize .cards2>.trk{display:contents!important}
 @media (max-width:1060px){ #prize .cards2{grid-template-columns:repeat(2,minmax(0,1fr))} #prize .cards2>.card{grid-column:1/-1} }
 @media (max-width:720px){ #prize .cards2{grid-template-columns:1fr} }
+
+/* 결과 발표 — 심사 · 투표가 모두 마감되고 발표 시각이 지나면 제출 서버가 등수를 준다 (아래 '결과 발표' 스크립트) */
+#results .res-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(12px,1.6vw,20px)}
+#results .res-trk{border:1px solid var(--line);padding:clamp(24px,3vw,34px);display:flex;flex-direction:column}
+#results .res-trk>.lab{margin-bottom:10px}
+#results .pl{display:grid;grid-template-columns:4.6em minmax(0,1fr);gap:4px 18px;padding:18px 0;border-top:1px solid var(--line);align-items:baseline}
+#results .pl:first-of-type{border-top:0}
+#results .pl>b{font-size:15.5px;font-weight:400;color:var(--hi);white-space:nowrap}
+#results .pl.p1>b{color:var(--blue)}
+#results .tms{display:flex;flex-direction:column;gap:10px;min-width:0}
+#results .tm{display:flex;align-items:baseline;gap:12px;min-width:0}
+#results .tm .no{flex:none;font-size:12.5px;letter-spacing:.04em;color:var(--dim-2);font-variant-numeric:tabular-nums}
+#results .tm .ti{font-size:17px;font-weight:300;line-height:1.45;color:var(--hi);overflow-wrap:anywhere}
+#results .pl.p1 .tm .ti{font-size:clamp(21px,2.3vw,27px);font-weight:200;letter-spacing:-.02em}
+#results .res-trk .foot{margin-top:auto;padding-top:14px;font-size:12.5px;color:var(--dim-2)}
+#results.show .res-trk{animation:resIn .9s var(--ease) both}
+#results.show .res-trk+.res-trk{animation-delay:.12s}
+@keyframes resIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@media (max-width:720px){ #results .res-grid{grid-template-columns:1fr} #results .pl{grid-template-columns:3.8em minmax(0,1fr)} }
+@media (prefers-reduced-motion:reduce){ #results.show .res-trk{animation:none} }
 /* 인앱 브라우저(카카오톡 등) 안내 띠 */
 .inapp{border-bottom:1px solid var(--line);background:var(--inapp)}
 .inapp .wrap{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;padding-block:12px}
@@ -1394,6 +1415,20 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
     <div data-anim style="--d:.15s"><span class="lab">장소</span><b>미래관 109호</b></div>
     <div data-anim style="--d:.25s" id="fact-round"><span class="lab">1차 모집</span><b>10.07 (수) – 10.31 (토) 23:59</b></div>
   </div>
+
+  <!-- 결과 발표 — 아래 '결과 발표' 스크립트가 채운다. 공개되기 전에는 절 자체가 숨겨진다 -->
+  <section id="results" hidden aria-labelledby="results-h">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <span class="lab blue">Results</span>
+          <h2 id="results-h">결과 발표</h2>
+        </div>
+        <p>심사위원 점수 85% · 참가자 투표 15% 를 합친 최종 점수 순서입니다. 수상한 모든 팀을 축하합니다.</p>
+      </div>
+      <div class="res-grid" id="results-grid"></div>
+    </div>
+  </section>
 
   <!-- 공지사항 — 공지 모듈이 채운다 (Notice.gs). 게시 중인 공지가 하나도 없으면 절 자체가 숨겨진다 -->
   <section id="notice" hidden>
@@ -2546,6 +2581,87 @@ window.EPUI = {
     if (lab) lab.textContent = '결과물 제출';
     if (b) b.textContent = '{due} 까지'.replace('{due}', DUE);
   }
+})();
+
+/* ==============================================================
+   결과 발표 — 심사와 두 트랙 투표가 모두 마감되고 발표 시각(14:30)이 지나면 제출 서버가 등수를 준다.
+   (서버 쪽 규칙: SUBMIT.md · PARAMS.md 의 RESULTS_AT · PRIZES. 운영진은 심사 종합 화면에서 '지금 공개' · '내리기')
+   해커톤 1등 1 · 2등 2 · 3등 3팀, 구현과제 1 – 4등 각 1팀을 최종 S 순서대로. 점수는 보이지 않는다.
+
+   [고칠 곳은 바로 아래 두 줄뿐입니다]
+     CHECK_FROM  이 시각 전에는 서버에 아무것도 묻지 않는다 (행사 중 서버를 아끼려고).
+     POLL_UNTIL  이 시각까지는 1분마다 다시 묻는다 — 발표 순간 새로 고치지 않아도 뜨게. 그 뒤에는 열 때 한 번만.
+   로컬에서는 ?results=demo 로 예시 결과를 볼 수 있다.
+   ============================================================== */
+(function () {
+  var CHECK_FROM = '2026-11-14T14:00:00+09:00';
+  var POLL_UNTIL = '2026-11-14T18:00:00+09:00';
+
+  var sec = document.getElementById('results'), grid = document.getElementById('results-grid');
+  if (!sec || !grid) return;
+  var G = window.EPGATE || {}, shown = '';
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  function paint(d) {
+    var html = d.tracks.map(function (tr) {
+      var rows = tr.places.filter(function (p) { return p.teams && p.teams.length; }).map(function (p) {
+        return '<div class="pl p' + p.place + '"><b>' + p.place + '등</b><div class="tms">' + p.teams.map(function (t) {
+          return '<div class="tm"><span class="no">' + esc(t.no) + '팀</span><span class="ti">' + esc(t.title || '—') + '</span></div>';
+        }).join('') + '</div></div>';
+      }).join('');
+      var lab = tr.key === 'H' ? '<span class="lab red">Hackathon track</span>' : '<span class="lab blue">' + esc(tr.name) + ' 트랙</span>';
+      return '<div class="res-trk" data-track="' + esc(tr.key) + '">' + lab + rows + '</div>';
+    }).join('');
+    if (html === shown) return;
+    shown = html;
+    grid.innerHTML = html;
+    sec.hidden = false;
+    sec.classList.remove('show');
+    void sec.offsetWidth;                                   // 다시 띄울 때도 애니메이션이 처음부터
+    sec.classList.add('show');
+    // 맨 위 단추도 결과로 (행사 중에는 '결과물 제출' 자리)
+    var a = document.querySelector('#v-home .hero-cta a.btn');
+    if (a) { a.setAttribute('href', '#results'); a.classList.remove('gated'); a.removeAttribute('aria-disabled'); a.removeAttribute('data-gate'); a.innerHTML = '<span>결과 보기</span>'; }
+  }
+  function hide() { shown = ''; sec.hidden = true; sec.classList.remove('show'); grid.innerHTML = ''; }
+
+  function ask() {
+    var url = (window.EPSUBMIT || {}).ENDPOINT;
+    if (!url || !window.fetch) return;
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'results.public' }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        if (d.state === 'open' && d.tracks) paint(d); else hide();
+      })['catch'](function () {});
+  }
+
+  function start() {
+    if (G.local && /[?&]results=demo/.test(location.search || '')) {
+      var T = function (no, title) { return { no: no, title: title }; };
+      paint({ tracks: [
+        { key: 'H', name: '해커톤', places: [{ place: 1, teams: [T('12', '코드 리뷰 도우미')] },
+          { place: 2, teams: [T('15', '운동 메이트 찾기'), T('11', '회의록 요약기')] },
+          { place: 3, teams: [T('17', '논문 한 줄 요약'), T('13', '중고 교재 장터'), T('19', '기숙사 세탁기 알림')] }] },
+        { key: 'A', name: '구현과제', places: [{ place: 1, teams: [T('04', '분실물 찾기 지도')] }, { place: 2, teams: [T('02', '시간표 짜기 도우미')] },
+          { place: 3, teams: [T('07', '길고양이 급식 지도')] }, { place: 4, teams: [T('01', '발표 연습 코치')] }] }] });
+      return;
+    }
+    var now = Date.now();
+    if (!(now >= Date.parse(CHECK_FROM))) return;
+    ask();
+    if (now < Date.parse(POLL_UNTIL)) {
+      (function next(first) {
+        setTimeout(function () {
+          if (Date.now() >= Date.parse(POLL_UNTIL)) return;
+          if (!document.hidden) ask();
+          next(false);
+        }, 60000 + Math.floor(Math.random() * (first ? 20000 : 5000)));   // 사람마다 어긋나게
+      })(true);
+    }
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && Date.now() < Date.parse(POLL_UNTIL)) ask(); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
 
 /* ==============================================================
