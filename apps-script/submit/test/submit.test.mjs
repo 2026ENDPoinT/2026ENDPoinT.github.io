@@ -1154,6 +1154,10 @@ describe('참가자 인기투표', () => {
     const cells = b.tab('투표').cells.flat().map(String);
     for (const sub of ['101', '601']) assert.ok(!cells.includes(sub), sub);       // 계정 식별자도 칸에 없다 (해시 속 우연한 숫자는 상관없다)
     assert.ok(!JSON.stringify(b.rows('기록').filter((r) => r['동작'] === 'vote.submit')).match(/0[12]팀|"01"|"02"/));   // 기록에도 대상 팀은 없다
+    // 기록에 누가 냈는지(이메일 · 팀)도 없다 — 같은 시각의 `투표` 탭 줄과 맞춰 보는 것만으로 익명이 깨지지 않게
+    const vlog = b.rows('기록').filter((r) => r['동작'] === 'vote.submit');
+    assert.ok(vlog.length > 0);
+    assert.ok(vlog.every((r) => r['누가'] === '(익명 투표)' && r['팀'] === ''), JSON.stringify(vlog));
     const rows = b.rows('투표');
     assert.ok(rows.every((r) => /^[0-9a-f]{32}$/.test(r['검증'])));
     let t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');

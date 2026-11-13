@@ -1065,7 +1065,8 @@ function actVoteSubmit_(body) {
         });
       });
       var v = voteCount_(t, salt), m = (v.by[voter] || {})[tr.key] || { teams: [], codes: {} };
-      log_(a, 'vote.submit', tr.name, pick.length + '표');           // 누구에게 줬는지는 기록하지 않는다
+      // `기록` 에는 누가 냈는지도 남기지 않는다 — 시각이 `투표` 탭과 같아서, 이메일을 적으면 두 탭을 맞춰 보는 것만으로 누가 누구에게 줬는지 드러난다
+      log_({ email: '(익명 투표)', team: '' }, 'vote.submit', tr.name, pick.length + '표');
       return { ok: true, track: tr.key, mine: m.teams, codes: m.codes };
     });
   });
