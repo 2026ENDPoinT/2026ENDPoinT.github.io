@@ -61,6 +61,13 @@ await scenario('참가자: 로그인 → 저장 → 올리기 → 다시 올리�
   const row = w.b.rows('팀').find((r) => r['팀'] === '03');
   R.eq('시트 `팀` 탭에 적힌다', [row['프로젝트'], row['배포 주소'], row['제출자']], ['분실물 찾기 지도', 'https://team03.example.app', 'a1@x.com']);
   R.eq('주소에 https:// 를 붙여 돌려준다', await page.inputValue('#f-url'), 'https://team03.example.app');
+  // 다시 열면 저장한 글자가 칸에 채워져 있어야 한다 (11-14 07시: 이름만 저장한 팀이 다시 열었더니 빈 칸으로 보였다)
+  await page.reload();
+  await page.waitForSelector('#steps:not([hidden])');
+  R.eq('다시 열어도 저장한 프로젝트 이름 · 설명 · 주소가 채워져 있다',
+    [await page.inputValue('#f-title'), await page.inputValue('#f-desc'), await page.inputValue('#f-url')],
+    ['분실물 찾기 지도', '캠퍼스에서 잃어버린 물건을 지도에 올립니다.', 'https://team03.example.app']);
+  R.eq('다시 열었을 때 저장할 것이 남았다고 하지 않는다', await page.locator('#save').isDisabled(), true);
 
   // 발표 자료: 20MB → 8MB 조각 셋으로 Drive 에 직접
   const deck1 = pdf(20 * 1024 * 1024 + 123, 3);
