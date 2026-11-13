@@ -32,7 +32,7 @@ EC · NL · 다락방 · Plum · TCP
 컴퓨터공학과 학부생이라면(복수전공 포함) 동아리 소속과 관계없이 신청할 수 있고(휴학생 제외) 최대 120명을 모집하며, 개발 경험이 적은 참가자도 함께할 수 있도록
 본 행사 전에 사전 교육과 연사·멘토링 세션을 나누어 운영합니다.
 
-이 저장소는 행사 안내 · 참가 신청 · 팀 모집 게시판을 담은 **공식 웹사이트**입니다.
+이 저장소는 행사 안내 · 참가 신청 · 팀 모집 게시판 · 결과물 제출을 담은 **공식 웹사이트**입니다.
 
 <br>
 
@@ -92,18 +92,23 @@ EC · NL · 다락방 · Plum · TCP
 ```
 .
 ├── index.html            메인 · 공지 · 참가 신청 폼 · 팀 모집 게시판 · 운영진 페이지(#/admin) (단일 파일 SPA)
+├── submit/index.html     결과물 제출 (본 해커톤 · 팀별 제출)
+├── judge/index.html      제출 현황판 (심사위원 · 운영진, 열람 링크로 입장)
 ├── privacy/index.html    개인정보처리방침
 ├── terms/index.html      이용약관
 ├── assets/
 │   ├── img/              동아리 로고 · 히어로 이미지
+│   ├── submit-*.js · judge-page.js · submit.css   제출 · 현황판 화면
 │   ├── legal.css         약관 페이지 스타일
 │   └── legal.js
 ├── apps-script/
 │   ├── Code.gs           신청서 수신 · 조회 · 수정 엔드포인트
 │   ├── Board.gs          팀 모집 게시판 (스프레드시트 DB)
 │   ├── Apply.gs          팀 지원 · 수락 · 메일
-│   └── Notice.gs         공지사항 · 운영진 판정 · 운영기록
-└── BACKEND.md            구글 OAuth · Apps Script 배포 가이드
+│   ├── Notice.gs         공지사항 · 운영진 판정 · 운영기록
+│   └── submit/           결과물 제출 백엔드 (별도 Apps Script 프로젝트) · 시험
+├── BACKEND.md            구글 OAuth · Apps Script 배포 가이드
+└── SUBMIT.md             결과물 제출 · 현황판 설치와 운영 가이드
 ```
 
 **프런트엔드** 는 빌드 도구 없이 순수 HTML · CSS · JavaScript로 작성했고, GitHub Pages로 배포합니다.
@@ -111,6 +116,10 @@ EC · NL · 다락방 · Plum · TCP
 신청서와 게시판은 구글 로그인(OAuth)으로 본인 확인을 거칩니다.
 운영진은 `#/admin` 에서 공지를 올리고 게시판 글을 숨길 수 있습니다. 주소를 안다고 권한이 생기지는 않고,
 Apps Script 의 `CONFIG.ADMINS` 에 적힌 구글 계정만 통과합니다 ([BACKEND.md 13절](BACKEND.md)).
+
+**결과물 제출** 은 본 해커톤 기간에 열립니다. 참가자는 구글 로그인으로 자기 팀의 배포 주소 · 프로그램 파일 · 발표 자료를 내고,
+파일은 운영진의 Google Drive 에 팀별로 쌓입니다. 심사위원은 열람 링크로 전체 팀의 제출물을 한 화면에서 봅니다.
+신청서와는 별도의 Apps Script 프로젝트이며, 설치와 당일 운영은 [SUBMIT.md](SUBMIT.md) 에 정리되어 있습니다.
 
 ## 로컬에서 보기
 
