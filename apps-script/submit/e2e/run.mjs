@@ -592,5 +592,57 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
   await sp.context().close();
 });
 
+/* ---------------------------------------------------------------- */
+await scenario('메뉴: 행사 페이지 네 곳이 같은 메뉴 · 메인과 정책 문서에서도 바로 간다', async (w) => {
+  const want = ['/', '/#prize', '/judge/', '/submit/', '/judge/vote/'];
+  const navOf = (page) => page.$$eval('header.top nav a, #top-bar nav a', (l) => l.filter((a) => !a.hidden && a.offsetParent !== null)
+    .map((a) => ({ t: a.innerText.trim(), h: new URL(a.href).pathname + new URL(a.href).hash, on: a.getAttribute('aria-current') === 'page' })));
+  const page = await newPage(browser);
+  for (const [path, cur] of [['/submit/', '/submit/'], ['/judge/', '/judge/'], ['/judge/vote/', '/judge/vote/'], ['/judge/score/', '/judge/score/']]) {
+    await page.goto(SITE + path);
+    const nav = await navOf(page);
+    R.eq(path + ' 메뉴: 홈 · 심사안내 · 제출·투표 현황 · 결과물 제출 · 투표', nav.slice(0, 5).map((x) => x.h), want);
+    R.eq(path + ' 메뉴 이름', nav.slice(0, 5).map((x) => x.t), ['홈', '심사안내', '제출·투표 현황', '결과물 제출', '투표']);
+    R.eq(path + ' 지금 페이지 표시', nav.filter((x) => x.on).map((x) => x.h), [cur]);
+    R.check(path + ' 바닥에 심사안내 · 정책 문서', /심사안내[\s\S]*개인정보처리방침[\s\S]*이용약관/.test(await text(page, 'footer .f-links')));
+  }
+  await page.goto(SITE + '/judge/');
+  R.match('현황 페이지 제목', await text(page, 'h1') + ' ' + await page.title(), /제출 · 투표 현황[\s\S]*제출 · 투표 현황 · ENDPoinT/);
+  // 메인 (행사 기간): 신청 안내 대신 심사안내 · 결과물 제출 · 투표. 로컬에서는 ?gate=after&submit=on 이 행사 기간 모습이다
+  const EVENT = '?gate=after&submit=on';
+  await page.goto(SITE + '/' + EVENT);
+  await page.waitForFunction(() => document.documentElement.classList.contains('ep-event'));
+  const main = (await navOf(page)).map((x) => x.t);
+  R.check('메인 메뉴에 심사안내 · 제출·투표 현황 · 결과물 제출 · 투표', ['심사안내', '제출·투표 현황', '결과물 제출', '투표'].every((t) => main.includes(t)), main.join(','));
+  R.check('메인 메뉴에서 신청 안내는 감춘다 (모집 끝)', !main.includes('신청 안내'), main.join(','));
+  await page.goto(SITE + '/en/' + EVENT);
+  await page.waitForFunction(() => document.documentElement.classList.contains('ep-event'));
+  const en = (await navOf(page)).map((x) => x.t);
+  R.check('영문 메인: Judging · Submissions & votes · Submit · Vote', ['Judging', 'Submissions & votes', 'Submit', 'Vote'].every((t) => en.includes(t)) && !en.includes('How to apply'), en.join(','));
+  // 정책 문서: 참가 신청 자리에 제출·투표 현황
+  for (const [path, label] of [['/privacy/', '제출·투표 현황'], ['/terms/', '제출·투표 현황'], ['/en/privacy/', 'Submissions & votes']]) {
+    await page.goto(SITE + path);
+    const nav = await navOf(page);
+    R.check(path + ' 참가 신청 대신 ' + label + ' → /judge/', nav.some((x) => x.t === label && x.h === '/judge/') && !nav.some((x) => /참가 신청|^Apply$/.test(x.t)), JSON.stringify(nav.map((x) => x.t)));
+  }
+  R.eq('화면 오류 없음', page.errs, []);
+  await page.context().close();
+  // 휴대폰: 긴 이름은 접고 (현황 · 제출 · 투표), 머리가 한 줄
+  const m = await newPage(browser, { mobile: true });
+  for (const path of ['/', '/submit/', '/judge/', '/judge/vote/']) {
+    await m.goto(SITE + path + (path === '/' ? '?gate=after&submit=on' : ''));
+    if (path === '/') await m.waitForFunction(() => document.documentElement.classList.contains('ep-event'));
+    const nav = (await navOf(m)).map((x) => x.t);
+    R.check('휴대폰 ' + path + ' 메뉴: 현황 · 제출 · 투표', ['현황', '제출', '투표'].every((t) => nav.includes(t)), nav.join(','));
+    const fit = await m.evaluate(() => {
+      const h = document.querySelector('header.top, #top-bar'), n = h && h.querySelector('nav');
+      return { wide: document.documentElement.scrollWidth - innerWidth, navRight: n ? Math.round(n.getBoundingClientRect().right) : 0, w: innerWidth, h: h ? Math.round(h.getBoundingClientRect().height) : 0 };
+    });
+    R.check('휴대폰 ' + path + ' 가로 넘침 없고 메뉴가 화면 안', fit.wide <= 0 && fit.navRight <= fit.w, JSON.stringify(fit));
+  }
+  await shot(m, 'e2e-nav-mobile-main');
+  await m.context().close();
+});
+
 await browser.close();
 process.exit(R.done() ? 1 : 0);

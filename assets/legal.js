@@ -7,6 +7,20 @@
     if (HAN.test(el.textContent)) el.classList.add('ko');
   });
 
+  // 본 해커톤 기간(메인의 결과물 제출 안내 블록과 같은 FROM – UNTIL)에는 머리의 '참가 신청'(모집 끝) 자리에 제출·투표 현황
+  var FROM  = '2026-11-13T00:00:00+09:00';
+  var UNTIL = '2026-11-15T00:00:00+09:00';
+  (function () {
+    var now = Date.now(), pill = document.querySelector('#top-bar nav a.apply'), me = document.currentScript;
+    if (!pill || !(now >= Date.parse(FROM) && now < Date.parse(UNTIL))) return;
+    var root = me && me.src ? new URL('../', me.src).href : '/';          // 이 파일은 /assets/ 에 있다
+    var a = document.createElement('a');
+    a.href = root + 'judge/';
+    a.textContent = document.documentElement.lang === 'en' ? 'Submissions & votes' : '제출·투표 현황';
+    pill.parentNode.insertBefore(a, pill);
+    pill.hidden = true;
+  })();
+
   var bar = document.getElementById('top-bar');
   var prog = document.getElementById('progress');
   var ticking = false;
