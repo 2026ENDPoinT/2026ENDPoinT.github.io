@@ -74,8 +74,10 @@ class FakeSpreadsheet {
 class FakeDrive {
   constructor() { this.folders = new Map(); this.files = new Map(); this.sessions = new Map(); this.calls = []; this.apiOff = false; this.full = false; this.plain = new Map(); this.quota = { limit: String(100 * 2 ** 30), usage: String(20 * 2 ** 30) }; this.n = 0; }
   newId(prefix = 'f') { return `${prefix}${++this.n}_${randomUUID().slice(0, 8)}`; }
-  addFolder(name, parent = null, id = this.newId('d')) { this.folders.set(id, { id, name, parent }); return id; }
-  childFolders(parent, name) { return [...this.folders.values()].filter((f) => f.parent === parent && f.name === name); }
+  addFolder(name, parent = null, id = this.newId('d')) { this.folders.set(id, { id, name, parent, trashed: false, created: ++this.n }); return id; }
+  // 진짜 DriveApp 처럼 휴지통에 든 것도 돌려준다 (걸러 내는 것은 스크립트의 몫)
+  childFolders(parent, name) { return [...this.folders.values()].filter((f) => f.parent === parent && (name === undefined || f.name === name)); }
+  live(parent, name) { return this.childFolders(parent, name).filter((f) => !f.trashed); }
   inFolder(folderId) { return [...this.files.values()].filter((f) => !f.trashed && f.parents.includes(folderId)).map((f) => f.name).sort(); }
 
   handle(method, url, opt = {}) {
@@ -191,7 +193,11 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
     if (!f) throw new Error('no folder ' + id);
     return {
       getId: () => f.id, getName: () => f.name,
+      isTrashed: () => !!f.trashed, setTrashed: (v) => { f.trashed = !!v; },
+      getDateCreated: () => new Date(Date.UTC(2026, 10, 13) + f.created * 1000),
       getFoldersByName: (name) => { const list = drive.childFolders(f.id, name); let i = 0; return { hasNext: () => i < list.length, next: () => folderObj(list[i++].id) }; },
+      getFolders: () => { const list = drive.childFolders(f.id); let i = 0; return { hasNext: () => i < list.length, next: () => folderObj(list[i++].id) }; },
+      getFiles: () => { const list = [...drive.files.values()].filter((x) => !x.trashed && x.parents.includes(f.id)); let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; },
       createFolder: (name) => folderObj(drive.addFolder(name, f.id)),
       getFilesByName: (name) => {
         const list = [];
@@ -295,6 +301,8 @@ export function loadBackend({ props = {}, tokens = {}, now = '2026-11-14T08:00:0
     at: (iso) => { clock.t = Date.parse(iso); },
     advance: (sec) => { clock.t += sec * 1000; },
     isLocked: () => locked,
+    /** 다른 실행이 잠금을 쥐고 있는 것처럼 */
+    hold: (on = true) => { locked = on; },
     setUi: (u) => { ui = u; },
     select: (sheetName, row) => { activeSheet = Object.assign(Object.create(ss.getSheetByName(sheetName)), { getActiveRange: () => ({ getRow: () => row }) }); activeRow = row; },
     /** 팀원 명단을 채운다: [[팀, 이름, 이메일, 계정 식별자, 역할, 상태]] */

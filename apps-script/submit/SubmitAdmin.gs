@@ -28,36 +28,97 @@ function onOpen() {
 /** 처음 한 번: 탭과 팀 폴더를 만들고, Drive 권한이 살아 있는지 확인한다. 다시 실행해도 안전하다. */
 function setup() {
   fresh_();
-  Object.keys(TABS).forEach(function (k) { table_(k); });
+  // 한 번에 하나만 돈다. 권한 승인 직후에 저절로 이어서 돈 실행과 다시 누른 실행이 겹치면
+  // 둘 다 "없네" 하고 같은 이름의 폴더를 하나씩 만들 수 있다 (2026-11-13 에 실제로 겪었다).
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(120000)) return say_('다른 실행이 지금 처음 설정을 하고 있습니다. 1–2분 뒤에 다시 눌러 주세요.');
+  var root, made = 0, cleaned = [], busy = [];
+  try {
+    Object.keys(TABS).forEach(function (k) { table_(k); });
 
-  // 새 스프레드시트에 딸려 오는 빈 기본 탭은 지운다
-  var ss = ss_();
-  ss.getSheets().forEach(function (sh) {
-    if (/^(시트\s*1|Sheet\s*1)$/i.test(sh.getName()) && sh.getLastRow() === 0 && ss.getSheets().length > 1) {
-      try { ss.deleteSheet(sh); } catch (e) {}
-    }
-  });
+    // 새 스프레드시트에 딸려 오는 빈 기본 탭은 지운다
+    var ss = ss_();
+    ss.getSheets().forEach(function (sh) {
+      if (/^(시트\s*1|Sheet\s*1)$/i.test(sh.getName()) && sh.getLastRow() === 0 && ss.getSheets().length > 1) {
+        try { ss.deleteSheet(sh); } catch (e) {}
+      }
+    });
 
-  // 팀 폴더를 미리 만들어 둔다 — 첫 업로드가 폴더를 만드느라 느려지지 않게
-  var root = rootFolder_();
-  var p = PropertiesService.getScriptProperties().getProperties() || {}, set = {}, made = 0;
-  teamList_(true).forEach(function (tm) {
-    var f = p['F_' + tm.no], o = p['O_' + tm.no];
-    if (f && o) return;
-    if (!f) { f = childFolder_(root, 'team' + tm.no).getId(); made++; }
-    if (!o) o = childFolder_(DriveApp.getFolderById(f), OLD_NAME).getId();
-    set['F_' + tm.no] = f; set['O_' + tm.no] = o;
-  });
-  if (Object.keys(set).length) PropertiesService.getScriptProperties().setProperties(set, false);
-  propsDrop_();
+    // 팀 폴더를 미리 만들어 둔다 — 첫 업로드가 폴더를 만드느라 느려지지 않게.
+    // 같은 이름의 폴더가 여럿이면 스크립트가 쓰던 것(없으면 가장 먼저 만든 것)만 남기고, 빈 것은 휴지통으로 보낸다.
+    root = rootFolder_();
+    var store = PropertiesService.getScriptProperties(), p = store.getProperties() || {}, set = {};
+    teamList_(true).forEach(function (tm) {
+      var t = pickFolder_(root, 'team' + tm.no, p['F_' + tm.no], cleaned, busy);
+      if (t.made) made++;
+      var o = pickFolder_(t.folder, OLD_NAME, p['O_' + tm.no], cleaned, busy);
+      set['F_' + tm.no] = t.folder.getId();
+      set['O_' + tm.no] = o.folder.getId();
+    });
+    store.setProperties(set, false);
+    propsDrop_();
+  } finally {
+    lock.releaseLock();
+  }
 
   voteSalt_();                                 // 투표 검증에 쓰는 비밀 솔트 (한 번만 만든다)
   var who = driveCheck_();
   say_('준비됐습니다.\n\n' +
     '· 탭: ' + Object.keys(TABS).map(function (k) { return TABS[k].name; }).join(', ') + '\n' +
     '· 제출 폴더: ' + root.getName() + ' (팀 폴더 ' + made + '개를 새로 만들었습니다)\n' +
+    (cleaned.length ? '· 같은 이름으로 겹쳐 생긴 빈 폴더 ' + cleaned.length + '개를 휴지통으로 보냈습니다: ' + cleaned.join(', ') + '\n' : '') +
+    (busy.length ? '! 같은 이름의 폴더가 더 있지만 안에 무언가 있어 그대로 두었습니다 (확인해 주세요): ' + busy.join(', ') + '\n' : '') +
     '· Drive 계정: ' + who + '\n\n' +
     '다음: ② 명단 만들기 → 배포(웹 앱) → ③ 열람 링크 만들기');
+}
+
+/**
+ * parent 안의 name 폴더를 하나로 정한다: 스크립트가 쓰던 것(id) → 없으면 가장 먼저 만든 것 → 그것도 없으면 새로.
+ * 같은 이름의 나머지 폴더는 비어 있으면 휴지통으로 보내고(cleaned), 무언가 들어 있으면 건드리지 않는다(busy).
+ */
+function pickFolder_(parent, name, id, cleaned, busy) {
+  var list = [], it = parent.getFoldersByName(name);
+  while (it.hasNext()) { var f = it.next(); if (!f.isTrashed()) list.push(f); }
+  var keep = null;
+  list.forEach(function (f) { if (id && f.getId() === id) keep = f; });
+  if (!keep && list.length) {
+    list.sort(function (a, b) { return a.getDateCreated().getTime() - b.getDateCreated().getTime(); });
+    keep = list[0];
+  }
+  var made = false;
+  if (!keep) { keep = parent.createFolder(name); made = true; }
+  list.forEach(function (f) {
+    if (f.getId() === keep.getId()) return;
+    var where = (name === OLD_NAME ? parent.getName() + '/' : '') + name;
+    if (folderEmpty_(f)) { f.setTrashed(true); cleaned.push(where); }
+    else busy.push(where);
+  });
+  return { folder: keep, made: made };
+}
+
+/** 비었는가: 파일이 없고, 안의 폴더도 모두 비었다 (빈 '옛날 자료' 만 든 팀 폴더도 빈 것으로 본다) */
+function folderEmpty_(f) {
+  if (f.getFiles().hasNext()) return false;
+  var it = f.getFolders();
+  while (it.hasNext()) { var c = it.next(); if (!c.isTrashed() && !folderEmpty_(c)) return false; }
+  return true;
+}
+
+/** 같은 이름으로 겹친 팀 폴더 · 옛날 자료 폴더 (설정 점검이 알린다) */
+function folderDups_() {
+  var out = [], root = rootFolder_(), p = props_();
+  var count = function (parent, name) {
+    var n = 0, it = parent.getFoldersByName(name);
+    while (it.hasNext()) { if (!it.next().isTrashed()) n++; }
+    return n;
+  };
+  teamList_(true).forEach(function (tm) {
+    if (count(root, 'team' + tm.no) > 1) out.push('team' + tm.no);
+    if (p['F_' + tm.no]) {
+      try { if (count(DriveApp.getFolderById(p['F_' + tm.no]), OLD_NAME) > 1) out.push('team' + tm.no + '/' + OLD_NAME); } catch (e) {}
+    }
+  });
+  return out;
 }
 
 /** Drive REST 가 이 스크립트 토큰으로 되는지 확인한다. 되면 계정 주소를 돌려준다. */
@@ -369,6 +430,10 @@ function doctor() {
   var ok = function (b, text) { if (!b) bad++; lines.push((b ? '✔ ' : '✘ ') + text); };
   ok(!!CONFIG.CLIENT_ID, '로그인 클라이언트 ID');
   try { ok(true, '제출 폴더: ' + rootFolder_().getName()); } catch (e) { ok(false, '제출 폴더 — ' + e.message); }
+  try {
+    var dups = folderDups_();
+    ok(!dups.length, dups.length ? '같은 이름의 폴더가 겹쳐 있습니다: ' + dups.join(', ') + ' — ① 처음 설정을 다시 누르면 빈 것은 정리합니다' : '팀 폴더: 겹친 것 없음');
+  } catch (e7) {}
   try { ok(true, 'Drive API: ' + driveCheck_()); } catch (e2) { ok(false, String(e2.message)); }
   try {
     var q = driveQuota_();

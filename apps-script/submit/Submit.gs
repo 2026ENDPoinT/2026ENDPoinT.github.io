@@ -1502,8 +1502,12 @@ function folders_(no) {
   });
 }
 function childFolder_(parent, name) {
-  var it = parent.getFoldersByName(name);
-  return it.hasNext() ? it.next() : parent.createFolder(name);
+  var it = parent.getFoldersByName(name), first = null;
+  while (it.hasNext()) {                                       // 휴지통에 든 것은 빼고, 여럿이면 가장 먼저 만든 것
+    var f = it.next();
+    if (!f.isTrashed() && (!first || f.getDateCreated().getTime() < first.getDateCreated().getTime())) first = f;
+  }
+  return first || parent.createFolder(name);
 }
 function rootFolder_() {
   var id = conf_('ROOT_FOLDER_ID') || props_().ROOT_AUTO;

@@ -777,6 +777,41 @@ describe('운영진 메뉴', () => {
     assert.equal(b.store.VOTE_SALT, salt);                    // 비밀값도 바뀌지 않는다
   });
 
+  test('처음 설정: 두 실행이 겹쳐 생긴 같은 이름 폴더는, 쓰던 것만 남기고 빈 것은 휴지통으로', () => {
+    const b = loadBackend({ tokens: TOKENS });
+    b.run('setup');
+    const d = b.drive, keep00 = b.store.F_00, keep15 = b.store.F_15, keepOld06 = b.store.O_06;
+    // 겹쳐 돈 실행이 만든 것: team00 · team15 하나씩 더, team06 안에 옛날 자료 하나 더
+    const dup00 = d.addFolder('team00', b.rootId); d.addFolder('옛날 자료', dup00);
+    const dup15 = d.addFolder('team15', b.rootId); d.addFolder('옛날 자료', dup15);
+    const dupOld06 = d.addFolder('옛날 자료', keep15 && b.store.F_06);
+    // 무언가 들어 있는 겹친 폴더는 건드리지 않는다
+    const dup07 = d.addFolder('team07', b.rootId);
+    d.files.set('fx', { id: 'fx', name: 'note.txt', parents: [dup07], mimeType: 'text/plain', bytes: Buffer.from('x'), trashed: false });
+    b.run('doctor');
+    assert.match(b.logs.at(-1), /같은 이름의 폴더가 겹쳐 있습니다: team06\/옛날 자료, team07, team15, team00/);
+
+    b.run('setup');
+    assert.match(b.logs.at(-1), /빈 폴더 3개를 휴지통으로 보냈습니다: team06\/옛날 자료, team15, team00/);
+    assert.match(b.logs.at(-1), /안에 무언가 있어 그대로 두었습니다 \(확인해 주세요\): team07/);
+    assert.deepEqual([d.folders.get(dup00).trashed, d.folders.get(dup15).trashed, d.folders.get(dupOld06).trashed, d.folders.get(dup07).trashed], [true, true, true, false]);
+    assert.deepEqual([b.store.F_00, b.store.F_15, b.store.O_06], [keep00, keep15, keepOld06]);    // 쓰던 것은 그대로
+    assert.equal(d.live(b.rootId, 'team00').length, 1);
+    // 그 뒤 업로드도 쓰던 폴더로 간다
+    b.roster([['00', '연습', 'op@x.com', '501', '', '']]);
+  });
+
+  test('처음 설정: 다른 실행이 돌고 있으면 기다리라고 하고 아무것도 만들지 않는다', () => {
+    const b = loadBackend({ tokens: TOKENS });
+    b.hold(true);
+    b.run('setup');
+    assert.match(b.logs.at(-1), /다른 실행이 지금 처음 설정을 하고 있습니다/);
+    assert.equal(b.drive.folders.size, 1);                     // 제출 폴더만
+    b.hold(false);
+    b.run('setup');
+    assert.equal(b.drive.folders.size, 1 + 21 * 2);
+  });
+
   test('명단 만들기: 신청서와 팀편성을 이름으로 잇는다', () => {
     const b = loadBackend({ tokens: TOKENS });
     b.apply.fill('웹신청', [
@@ -1104,7 +1139,9 @@ describe('참가자 인기투표', () => {
     vote(b, 'tok-a1', 'A', ['01', '02']);
     vote(b, 'tok-c1', 'A', ['01']);
     const sheet = JSON.stringify(b.tab('투표').cells);
-    for (const s of ['a1@x.com', 'c1@x.com', '가나다', '차카타', '101', '601']) assert.ok(!sheet.includes(s), s);
+    for (const s of ['a1@x.com', 'c1@x.com', '가나다', '차카타']) assert.ok(!sheet.includes(s), s);
+    const cells = b.tab('투표').cells.flat().map(String);
+    for (const sub of ['101', '601']) assert.ok(!cells.includes(sub), sub);       // 계정 식별자도 칸에 없다 (해시 속 우연한 숫자는 상관없다)
     assert.ok(!JSON.stringify(b.rows('기록').filter((r) => r['동작'] === 'vote.submit')).match(/0[12]팀|"01"|"02"/));   // 기록에도 대상 팀은 없다
     const rows = b.rows('투표');
     assert.ok(rows.every((r) => /^[0-9a-f]{32}$/.test(r['검증'])));
