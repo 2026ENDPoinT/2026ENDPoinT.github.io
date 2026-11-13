@@ -12,12 +12,28 @@
   --gut:clamp(20px,5vw,76px);
   --maxw:1340px;
 }
+/* 화면 테마: 어두운 화면(기본)은 위 값. 머리의 해 · 달 단추가 <html data-theme="light"> 를 붙이면 아래 값 */
+:root{
+  --hi:#fff; --on-hi:#151515; --tint:255,255,255; --glow:#fff;
+  --bg-0:#171717; --bg-1:#1A1A1A; --bg-2:#1D1D1D; --bg-3:#212121; --bg-4:#242424;
+}
+:root[data-theme="light"]{
+  --ink:#F4F4F2; --ink-2:#FFFFFF; --ink-3:#EAEAE7;
+  --fg:#262626; --dim:#595959; --dim-2:#6F6F6F;
+  --line:rgba(0,0,0,.14);
+  --blue:#1655AD; --red:#BA000C;
+  --hi:#111111; --on-hi:#FFFFFF; --tint:0,0,0; --glow:#00387F;
+  --hdr-rgb:248,248,246;
+  --bg-0:#FAFAF9; --bg-1:#F7F7F6; --bg-2:#F4F4F2; --bg-3:#F1F1EF; --bg-4:#EEEEEC;
+  color-scheme:light;
+}
+:root[data-theme="light"] img[src*="img/mark-"],:root[data-theme="light"] img[src*="seoultech-cse"]{filter:invert(1)}
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;background:linear-gradient(180deg,#171717 0%,#1A1A1A 30%,#1D1D1D 60%,#212121 85%,#242424 100%);background-repeat:no-repeat;min-height:100vh;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html{scroll-behavior:smooth;background:linear-gradient(180deg,var(--bg-0) 0%,var(--bg-1) 30%,var(--bg-2) 60%,var(--bg-3) 85%,var(--bg-4) 100%);background-repeat:no-repeat;min-height:100vh;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{margin:0;color:var(--fg);font-family:var(--font);font-weight:300;font-size:16px;line-height:1.85;
   letter-spacing:-.005em;-webkit-font-smoothing:antialiased;overflow-x:clip}
 img{max-width:100%;display:block}
-h1,h2,h3{margin:0;font-weight:200;letter-spacing:-.02em;line-height:1.14;color:#fff}
+h1,h2,h3{margin:0;font-weight:200;letter-spacing:-.02em;line-height:1.14;color:var(--hi)}
 p{margin:0}
 a{color:inherit}
 strong,b{font-weight:500}
@@ -35,24 +51,24 @@ header.top{position:sticky;top:0;z-index:60;background:rgba(var(--hdr-rgb),.78);
 header.top.scrolled{border-bottom-color:var(--line);background:rgba(var(--hdr-rgb),.94)}
 .top-in{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:72px}
 .mark{text-decoration:none;display:block;line-height:1.4}
-.mark b{display:block;font-size:16px;font-weight:400;letter-spacing:.01em;color:#fff}
+.mark b{display:block;font-size:16px;font-weight:400;letter-spacing:.01em;color:var(--hi)}
 .mark span{display:block;font-size:9px;letter-spacing:.28em;text-transform:uppercase;color:var(--dim-2);font-weight:400}
 .top nav{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 .top nav a{position:relative;font-size:13.5px;font-weight:400;color:var(--dim);text-decoration:none;padding:8px 14px;transition:color .3s var(--ease)}
-.top nav a::after{content:"";position:absolute;left:14px;right:14px;bottom:2px;height:1px;background:#fff;
+.top nav a::after{content:"";position:absolute;left:14px;right:14px;bottom:2px;height:1px;background:var(--hi);
   transform:scaleX(0);transform-origin:right;transition:transform .45s var(--ease)}
-.top nav a:hover{color:#fff}
+.top nav a:hover{color:var(--hi)}
 .top nav a:hover::after{transform:scaleX(1);transform-origin:left}
-.top nav a.apply{margin-left:14px;background:#fff;color:#151515;font-weight:500;padding:11px 20px}
+.top nav a.apply{margin-left:14px;background:var(--hi);color:var(--on-hi);font-weight:500;padding:11px 20px}
 .top nav a.apply::after{display:none}
 .top nav a.apply:hover{background:var(--dim)}
 .top nav a.lang{margin-left:8px;padding:5px 9px;font-size:11.5px;letter-spacing:.1em;border:1px solid var(--line)}
 .top nav a.lang::after{display:none}
-.top nav a.lang:hover{border-color:rgba(255,255,255,.5)}
+.top nav a.lang:hover{border-color:rgba(var(--tint),.5)}
 /* 영문 문서: 한글용 글자 단위 줄바꿈이 영어 단어를 쪼개지 않게 */
 html[lang=en] .art a,html[lang=en] .stack b{word-break:normal;overflow-wrap:anywhere}
 .progress{position:fixed;top:0;left:0;height:2px;width:100%;transform:scaleX(0);transform-origin:left;
-  background:linear-gradient(90deg,var(--blue),#fff);z-index:70;pointer-events:none}
+  background:linear-gradient(90deg,var(--blue),var(--glow));z-index:70;pointer-events:none}
 
 /* ================= page head ================= */
 .lhead{padding-top:clamp(52px,7vw,100px)}
@@ -62,22 +78,22 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .stack{border:1px solid var(--line)}
 .stack>div{padding:20px 24px;border-bottom:1px solid var(--line)}
 .stack>div:last-child{border-bottom:0}
-.stack b{display:block;font-size:16px;font-weight:200;color:#fff;margin-top:6px}
+.stack b{display:block;font-size:16px;font-weight:200;color:var(--hi);margin-top:6px}
 
 /* 문서 전환 탭 — index 의 .tabs 와 같은 모양 */
 .ltabs{display:flex;border-bottom:1px solid var(--line);margin-top:clamp(40px,5vw,68px)}
 .ltabs a{position:relative;font-size:15px;font-weight:400;color:var(--dim-2);padding:16px 0;margin-right:32px;
   text-decoration:none;transition:color .35s var(--ease)}
-.ltabs a::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:#fff;
+.ltabs a::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--hi);
   transform:scaleX(0);transform-origin:right;transition:transform .45s var(--ease)}
-.ltabs a:hover{color:#fff}
-.ltabs a[aria-current="page"]{color:#fff}
+.ltabs a:hover{color:var(--hi)}
+.ltabs a[aria-current="page"]{color:var(--hi)}
 .ltabs a[aria-current="page"]::after{transform:scaleX(1);transform-origin:left}
 
 /* 한눈에 보기 */
 .lsum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:clamp(28px,3.4vw,44px)}
 .lsum>div{box-shadow:0 0 0 1px var(--line);padding:22px;display:flex;flex-direction:column;gap:8px}
-.lsum b{font-size:15px;font-weight:400;color:#fff;line-height:1.6}
+.lsum b{font-size:15px;font-weight:400;color:var(--hi);line-height:1.6}
 .lsum p{font-size:13px;color:var(--dim);line-height:1.8}
 
 /* ================= document ================= */
@@ -90,8 +106,8 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
   font-size:13.5px;line-height:1.6;color:var(--dim-2);text-decoration:none;
   transition:color .3s var(--ease),border-color .3s var(--ease)}
 .toc a i{font-style:normal;font-size:10.5px;letter-spacing:.12em;font-weight:500;min-width:20px;padding-top:2px;opacity:.75}
-.toc a:hover{color:#fff}
-.toc a.on{color:#fff;border-left-color:var(--blue)}
+.toc a:hover{color:var(--hi)}
+.toc a.on{color:var(--hi);border-left-color:var(--blue)}
 
 .toc,.prose{min-width:0}
 .prose{max-width:780px}
@@ -99,10 +115,10 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .art:first-child{border-top:0;padding-top:0}
 .art>.lab{display:block;margin-bottom:12px;letter-spacing:.16em}
 .art h2{font-size:clamp(21px,2.4vw,27px);font-weight:200;letter-spacing:-.025em;margin-bottom:18px}
-.art h3{font-size:15px;font-weight:400;color:#fff;letter-spacing:-.01em;margin:24px 0 8px}
+.art h3{font-size:15px;font-weight:400;color:var(--hi);letter-spacing:-.01em;margin:24px 0 8px}
 .art p,.art li{font-size:15px;line-height:1.85;color:var(--dim)}
 .art p+p,.art p+ul,.art p+ol,.art ul+p,.art ol+p{margin-top:12px}
-.art strong{color:#fff;font-weight:400}
+.art strong{color:var(--hi);font-weight:400}
 .art a{color:var(--blue);text-decoration:underline;text-underline-offset:3px}
 .art ul,.art ol{margin:12px 0 0;padding:0;list-style:none}
 .art li{position:relative;padding-left:20px}
@@ -119,7 +135,7 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .tbl th,.tbl td{padding:14px 18px 14px 0;text-align:left;vertical-align:top;line-height:1.8;border-bottom:1px solid var(--line)}
 .tbl thead th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:500;color:var(--dim-2);padding-top:16px}
 .tbl td{color:var(--dim)}
-.tbl td:first-child,.tbl tbody th{color:#fff;font-weight:400;white-space:nowrap}
+.tbl td:first-child,.tbl tbody th{color:var(--hi);font-weight:400;white-space:nowrap}
 .tbl:not(.kv) td:last-child,.tbl:not(.kv) thead th:last-child{white-space:nowrap;padding-right:0}
 .tbl.kv{min-width:0}
 .tbl.kv th{width:132px;font-size:13.5px}
@@ -139,16 +155,16 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em;m
 .lnext{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:clamp(40px,5vw,64px)}
 .lnext a{box-shadow:0 0 0 1px var(--line);padding:24px;display:flex;flex-direction:column;gap:8px;text-decoration:none;
   transition:background .45s var(--ease)}
-.lnext a:hover{background:rgba(255,255,255,.05)}
-.lnext b{font-size:17px;font-weight:300;color:#fff;letter-spacing:-.015em}
+.lnext a:hover{background:rgba(var(--tint),.05)}
+.lnext b{font-size:17px;font-weight:300;color:var(--hi);letter-spacing:-.015em}
 
 /* ================= footer ================= */
 footer{padding:clamp(44px,5vw,72px) 0 clamp(52px,6vw,80px);color:var(--dim-2);font-size:13px;line-height:1.95;font-weight:300}
 footer .f-in{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:start;margin-top:clamp(30px,4vw,46px)}
 footer a{color:var(--dim);text-decoration:none;transition:color .3s var(--ease)}
-footer a:hover{color:#fff}
+footer a:hover{color:var(--hi)}
 .f-links{display:flex;gap:30px;flex-wrap:wrap}
-.f-links a.pp{color:#fff;font-weight:500}
+.f-links a.pp{color:var(--hi);font-weight:500}
 .host{display:flex;align-items:center;gap:22px;margin-top:30px;padding-top:26px;border-top:1px solid var(--line);flex-wrap:wrap}
 /* 주관(동아리) 줄 밑에 주최(학과) 줄이 이어진다 — 두 줄 사이에는 선을 다시 긋지 않는다 */
 .host-by+.host{margin-top:16px;padding-top:0;border-top:0}
@@ -166,10 +182,11 @@ html[lang=en] .host>.lab{min-width:10.8em}   /* 'HOSTED BY' · 'ORGANIZED BY' �
 @media (max-width:720px){.host-clubs{gap:4px 16px}.host-club img{height:25px}.hc-ec img{height:38px}.hc-plum img{height:30px}.hc-tcp img{height:27px}}
 .dept{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
 .dept-mark{height:48px;width:auto;opacity:.92}
-.dept-name,.dept-sub{font-size:17px;font-weight:600;color:#fff;letter-spacing:-.02em;line-height:1.2}
-.dept-bar{width:1px;height:19px;background:rgba(255,255,255,.34)}
+.dept-name,.dept-sub{font-size:17px;font-weight:600;color:var(--hi);letter-spacing:-.02em;line-height:1.2}
+.dept-bar{width:1px;height:19px;background:rgba(var(--tint),.34)}
 
 /* ================= responsive ================= */
+.top nav span.sm-only{display:none}   /* 좁은 화면에서만 보이는 짧은 이름 (아래 720px 규칙이 연다) */
 @media (max-width:1060px){
   .pagehead{grid-template-columns:1fr}
   .lsum{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -183,6 +200,8 @@ html[lang=en] .host>.lab{min-width:10.8em}   /* 'HOSTED BY' · 'ORGANIZED BY' �
   .top nav a{padding:7px 8px;font-size:12.5px}
   .top nav a.apply{padding:10px 14px;margin-left:6px}
   .top nav a.sm-hide{display:none}
+  .top nav span.sm-hide{display:none}
+  .top nav span.sm-only{display:inline}
   .mark span{display:none}
   .top-in{min-height:60px;gap:10px}
   .lsum,.lnext{grid-template-columns:1fr}
@@ -215,9 +234,9 @@ body{word-break:keep-all;overflow-wrap:break-word}
 }
 
 /* 주최 링크 (새 창) */
-.dept-link{display:inline-flex;align-items:center;gap:15px;color:#fff}
+.dept-link{display:inline-flex;align-items:center;gap:15px;color:var(--hi)}
 .dept-link .dept-name,.dept-link .dept-sub{text-decoration:underline;text-decoration-color:transparent;text-underline-offset:5px;text-decoration-thickness:1px;transition:text-decoration-color .3s var(--ease)}
-.dept-link:hover .dept-name,.dept-link:hover .dept-sub,.dept-link:focus-visible .dept-name,.dept-link:focus-visible .dept-sub{text-decoration-color:rgba(255,255,255,.55)}
+.dept-link:hover .dept-name,.dept-link:hover .dept-sub,.dept-link:focus-visible .dept-name,.dept-link:focus-visible .dept-sub{text-decoration-color:rgba(var(--tint),.55)}
 .dept-link:hover .dept-mark{opacity:1}
 @media (max-width:560px){.dept-link{gap:11px}}
 
@@ -340,3 +359,11 @@ html[lang=en] .art p,html[lang=en] .art li,html[lang=en] .note{max-width:70ch}
     .progress{height:calc(2px * var(--z))}
   }
 }
+
+/* 화면 테마 단추 (머리 메뉴 끝, EN 옆) — assets/theme.js 가 단다 */
+.theme-tg{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;margin-left:8px;padding:0;flex-shrink:0;
+  background:transparent;border:1px solid var(--line);color:var(--dim);cursor:pointer;transition:color .3s var(--ease),border-color .3s var(--ease)}
+.theme-tg:hover{color:var(--hi);border-color:rgba(var(--tint),.5)}
+.theme-tg:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.theme-tg svg{display:block}
+@media (max-width:720px){ .theme-tg{width:28px;height:28px;margin-left:4px} }
