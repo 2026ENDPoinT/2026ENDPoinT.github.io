@@ -141,6 +141,7 @@ header.top.scrolled{border-bottom-color:var(--line);background:rgba(var(--hdr-rg
 /* language switch (KO / EN) */
 .top nav a.lang{margin-left:8px;padding:5px 9px;font-size:11.5px;letter-spacing:.1em;border:1px solid var(--line)}
 .top nav a.lang::after{display:none}
+.top nav span.sm-only{display:none}
 .top nav a.lang:hover{border-color:rgba(255,255,255,.5)}
 .top nav a.apply.gated svg{opacity:.75}
 .progress{position:fixed;top:0;left:0;height:2px;width:100%;transform:scaleX(0);transform-origin:left;
@@ -618,6 +619,8 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
   .top nav a{padding:7px 8px;font-size:12.5px}
   .top nav a.apply{padding:10px 14px;margin-left:6px}
   .top nav a.sm-hide{display:none}
+  .top nav span.sm-hide{display:none}
+  .top nav span.sm-only{display:inline}
   .mark span{display:none}
   /* 좁은 화면: 양옆은 제 너비만 쓰고 가운데 위젯이 남은 공간 중앙에 온다 (메뉴가 줄바꿈되지 않게) */
   .top-in{min-height:60px;gap:8px;grid-template-columns:auto 1fr auto}
@@ -1298,8 +1301,11 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <a href="#schedule" class="sm-hide">Schedule</a>
       <a href="#notice" class="sm-hide" id="nav-notice" hidden>Notices</a>
       <a href="#/teams" data-nav="/teams">Team board</a>
-      <a href="#/apply" data-nav="/apply">How to apply</a>
-      <a href="../judge/" id="nav-judge">Submissions &amp; votes</a>
+      <a href="#/apply" data-nav="/apply" id="nav-apply">How to apply</a>
+      <a href="#prize" id="nav-prize" class="sm-hide" hidden>Judging</a>
+      <a href="../judge/" id="nav-judge"><span class="sm-hide">Submissions &amp; votes</span><span class="sm-only">Status</span></a>
+      <a href="../submit/" id="nav-submit" hidden>Submit</a>
+      <a href="../judge/vote/" id="nav-vote" hidden>Vote</a>
       <a class="lang" href="../" hreflang="ko" lang="ko" title="한국어">KO</a>
       <a class="apply" href="#/apply" data-gate="apply" data-gate-label="Oct 7">Apply</a>
     </nav>
@@ -2467,6 +2473,10 @@ window.EPUI = {
   if (pill) pill.hidden = true;
   var board = document.querySelector('#top-bar nav a[data-nav="/teams"]');
   if (board) board.classList.add('sm-hide');            // 좁은 화면에서는 메뉴 자리가 모자라다
+  // Same header menu as the submit / vote pages: Judging · Submit · Vote instead of How to apply (applications are closed)
+  ['nav-prize', 'nav-submit', 'nav-vote'].forEach(function (id) { var x = document.getElementById(id); if (x) x.hidden = false; });
+  var applyNav = document.getElementById('nav-apply');
+  if (applyNav) applyNav.hidden = true;
   window.EPEVENT = { on: true };
   document.documentElement.classList.add('ep-event');
   revive(document.querySelector('#v-home .hero-cta a[data-gate="apply"]'), '<span>Submit your project</span>');

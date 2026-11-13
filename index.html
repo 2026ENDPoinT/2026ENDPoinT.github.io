@@ -616,6 +616,7 @@ h1.ptitle{font-size:clamp(32px,5vw,58px);font-weight:100;letter-spacing:-.04em}
   .top nav a{padding:7px 8px;font-size:12.5px}
   .top nav a.apply{padding:10px 14px;margin-left:6px}
   .top nav a.sm-hide{display:none}
+  .top nav span.sm-hide{display:none}
   .mark span{display:none}
   /* 좁은 화면: 양옆은 제 너비만 쓰고 가운데 위젯이 남은 공간 중앙에 온다 (메뉴가 줄바꿈되지 않게) */
   .top-in{min-height:60px;gap:8px;grid-template-columns:auto 1fr auto}
@@ -1296,8 +1297,11 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <a href="#schedule" class="sm-hide">일정</a>
       <a href="#notice" class="sm-hide" id="nav-notice" hidden>공지</a>
       <a href="#/teams" data-nav="/teams">팀 모집</a>
-      <a href="#/apply" data-nav="/apply">신청 안내</a>
-      <a href="judge/" id="nav-judge">제출·투표 현황</a>
+      <a href="#/apply" data-nav="/apply" id="nav-apply">신청 안내</a>
+      <a href="#prize" id="nav-prize" class="sm-hide" hidden>심사안내</a>
+      <a href="judge/" id="nav-judge"><span class="sm-hide">제출·투표 </span>현황</a>
+      <a href="submit/" id="nav-submit" hidden><span class="sm-hide">결과물 </span>제출</a>
+      <a href="judge/vote/" id="nav-vote" hidden>투표</a>
       <a class="lang" href="en/" hreflang="en" lang="en" title="English version">EN</a>
       <a class="apply" href="#/apply" data-gate="apply" data-gate-label="10.07 오픈">참가 신청</a>
     </nav>
@@ -2482,6 +2486,10 @@ window.EPUI = {
   if (pill) pill.hidden = true;
   var board = document.querySelector('#top-bar nav a[data-nav="/teams"]');
   if (board) board.classList.add('sm-hide');            // 좁은 화면에서는 메뉴 자리가 모자라다
+  // 머리 메뉴를 제출 · 투표 페이지와 같게: 신청 안내(모집 끝) 대신 심사안내 · 결과물 제출 · 투표
+  ['nav-prize', 'nav-submit', 'nav-vote'].forEach(function (id) { var x = document.getElementById(id); if (x) x.hidden = false; });
+  var applyNav = document.getElementById('nav-apply');
+  if (applyNav) applyNav.hidden = true;
   window.EPEVENT = { on: true };
   document.documentElement.classList.add('ep-event');
   revive(document.querySelector('#v-home .hero-cta a[data-gate="apply"]'), '<span>결과물 제출</span>');

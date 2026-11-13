@@ -472,6 +472,7 @@ footer a:hover{color:#fff}
   .top nav a{padding:7px 9px;font-size:12.5px}
   .top nav a::after{left:9px;right:9px}
   .top nav a.sm-hide{display:none}
+  .top nav span.sm-hide{display:none}
   .posts,.qgrid{grid-template-columns:1fr}
   .stack.row3{grid-template-columns:1fr}
   .stack.row3>div{border-left:0;border-bottom:1px solid var(--line)}
