@@ -11,7 +11,7 @@ window.EPSUBMIT = {
   CLIENT_ID: '100824066944-7s6di7cbhsedtnms675fka8bbbka3u7p.apps.googleusercontent.com',
 
   // 제출용 Apps Script 웹 앱 주소 (…/exec). 신청서 백엔드(EPCONFIG.ENDPOINT)와는 다른 주소입니다.
-  ENDPOINT: 'https://script.google.com/macros/s/AKfycbwWtxx_pF7GM0UpiBlJ_hkVtiHGkn2IQWehNTRRr6-M4xK57sDVRIeZIFw8wALO-1aF/exec',
+  ENDPOINT: 'https://script.google.com/macros/s/AKfycbxHOQvmO0VlEUEAab9Qs6oBnYj5Dx2X_gl2C1R1sIlSjWB6HIiXOPCMCzf4nZOXnzFM/exec',
 
   // 서버 응답을 받기 전에 화면에 보여 줄 마감 시각. 실제 판정은 서버가 합니다.
   DEADLINE: '2026-11-14T10:00:00+09:00'
