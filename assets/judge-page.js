@@ -361,6 +361,34 @@
   /* ------------------------------ 심사위원: 팀마다 한 줄 · 점수 · 코멘트 ------------------------------ */
   function judgeMode() { var d = st.data; return !!(d && d.role === '심사위원' && d.criteria && d.criteria.length); }
   function infoCard(t) { return card(t).replace(/ id="card-[^"]*"/, ''); }
+  /** 목록을 통째로 다시 그리기 전에 저장하지 않은 점수 · 코멘트와 커서를 챙긴다 (나란히 보기로 옮겨 간 칸은 putFormBack 이 지킨다) */
+  function keepDrafts() {
+    var out = { forms: {}, focus: null };
+    Array.prototype.forEach.call(list.querySelectorAll('form.jscore'), function (f) {
+      var no = f.getAttribute('data-no');
+      if (!st.jdirty[no]) return;
+      var vals = {};
+      Array.prototype.forEach.call(f.elements, function (el) { if (el.name) vals[el.name] = el.value; });
+      out.forms[no] = vals;
+    });
+    var ae = document.activeElement;
+    if (ae && ae.form && ae.name && list.contains(ae)) {
+      out.focus = { no: ae.form.getAttribute('data-no'), name: ae.name, sel: null };
+      try { if (typeof ae.selectionStart === 'number') out.focus.sel = [ae.selectionStart, ae.selectionEnd]; } catch (e) {}
+    }
+    return out;
+  }
+  function putDrafts(k) {
+    Object.keys(k.forms).forEach(function (no) {
+      var f = list.querySelector('form.jscore[data-no="' + no + '"]');
+      if (!f) return;
+      Object.keys(k.forms[no]).forEach(function (name) { var el = f.elements[name]; if (el && !el.disabled) el.value = k.forms[no][name]; });
+      refreshForm(f);
+    });
+    if (!k.focus) return;
+    var f2 = list.querySelector('form.jscore[data-no="' + k.focus.no + '"]'), el = f2 && f2.elements[k.focus.name];
+    if (el) { try { el.focus({ preventScroll: true }); if (k.focus.sel) el.setSelectionRange(k.focus.sel[0], k.focus.sel[1]); } catch (e) {} }
+  }
   /** 발표 순서만 바뀌었을 때: 카드(점수 칸 포함)를 그대로 두고 자리만 옮긴다. 입력 중이던 칸의 커서도 되돌린다 */
   function reorderJudge(tracks) {
     var ae = document.activeElement, sel = null;
@@ -484,6 +512,7 @@
       if (n && tr) n.outerHTML = ordNote(tr);
     });
     if (shape !== st.shape) {
+      var drafts = keepDrafts();                                     // 팀이 다른 트랙으로 옮겨지는 등 통째로 다시 그려도 저장 전 입력은 남게
       st.shape = shape; st.sig = {}; st.jorder = order;
       list.innerHTML = tracks.map(function (tr, i) {
         return '<section class="trk"><div class="trk-hd"><h2>' + esc(tr.name) + ' 트랙</h2><small id="trk-n-' + i + '"></small>' + ordNote(tr) + '</div>' +
@@ -491,6 +520,7 @@
                            : '<div class="empty-all">아직 제출한 팀이 없습니다.</div>') + '</section>';
       }).join('') || '<div class="empty-all">보여 줄 팀이 없습니다.</div>';
       Array.prototype.forEach.call(list.querySelectorAll('form.jscore'), refreshForm);
+      putDrafts(drafts);
     } else {
       tracks.forEach(function (tr) {
         tr.teams.forEach(function (t) {

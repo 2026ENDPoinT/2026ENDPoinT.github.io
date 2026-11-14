@@ -597,6 +597,23 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
   await page.fill(`${h} input[name="idea"]`, '');
   await page.fill(`${h} textarea[name="comment"]`, '');
 
+  // 9팀을 해커톤으로 옮기면(스크립트 속성 TRACK_MOVES) 목록을 통째로 다시 그린다 — 입력 중이던 점수 · 커서는 남아야 한다
+  const k5 = 'form.jscore[data-no="05"]';
+  await page.fill(`${k5} input[name="done"]`, '17.5');
+  await page.focus(`${k5} input[name="done"]`);
+  w.b.store.TRACK_MOVES = '09:H'; w.b.run('cacheClear');
+  await page.evaluate(() => document.getElementById('reload').click());
+  await page.waitForFunction(() => !!document.querySelector('#list .trk')?.querySelector('.jrow[data-no="09"]'));
+  R.check('9팀 카드가 해커톤 칸으로 옮겨진다', true);
+  R.eq('통째로 다시 그려도 입력 중이던 점수와 커서는 그대로',
+    [await page.inputValue(`${k5} input[name="done"]`), await page.evaluate(() => document.activeElement?.closest('form')?.getAttribute('data-no'))], ['17.5', '05']);
+  R.match('저장하지 않았다는 표시도 그대로 (옮길 때)', await text(page, `${k5} [data-state]`), /저장하지 않은 내용/);
+  R.eq('저장해 둔 03팀 점수도 그대로', await page.inputValue(`${f} input[name="arch"]`), '22.75');
+  delete w.b.store.TRACK_MOVES; w.b.run('cacheClear');                    // 되돌리기
+  await page.fill(`${k5} input[name="done"]`, '');
+  await page.evaluate(() => document.getElementById('reload').click());
+  await page.waitForFunction(() => !document.querySelector('#list .trk')?.querySelector('.jrow[data-no="09"]'));
+
   // 제출 마감(10:00)이 지나면 그 자리에 심사 마감(14:25)이 보이고, 14:25 가 지나면 입력 칸이 저절로 닫힌다
   w.at('2026-11-14T14:24:50+09:00');
   await page.reload();
