@@ -642,7 +642,7 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
 });
 
 /* ---------------------------------------------------------------- */
-await scenario('결과 발표: 심사 마감 단추 → 메인에 해커톤 1 – 3등 · 구현과제 1 – 4등, 교수님 종합 보기, 시상 화면 (스페이스로 4 → 1, 3 → 1)', async (w) => {
+await scenario('결과 발표: 심사 마감 단추(투표도 마감) → 메인에 해커톤 1 – 3등 · 구현과제 1 – 4등, 교수님 종합 보기, 시상 화면 (스페이스로 4 → 1, 3 → 1)', async (w) => {
   w.b.run('setup');
   const prof = w.b.viewer('가 교수님', '심사위원'), staffKey = w.b.viewer('운영 담당', '운영진');
   w.at('2026-11-14T13:00:00+09:00');
@@ -671,11 +671,12 @@ await scenario('결과 발표: 심사 마감 단추 → 메인에 해커톤 1 �
   sp.once('dialog', (d) => d.accept());
   await sp.click('#lock');
   await sp.waitForFunction(() => /다시 열기/.test(document.getElementById('lock').textContent));
-  R.match('투표가 남았으면 투표가 끝나는 대로', await text(sp, '#s-res'), /투표가 끝나는 대로 공개/);
+  R.match('누르면 열려 있던 구현과제 투표도 마감되고 바로 공개', await text(sp, '#s-res'), /메인에 공개 중/);
   R.eq('시상 화면으로 가는 단추는 어디에도 없다 (운영진이 주소로 연다)', await sp.locator('a[href*="award"]').count(), 0);
-  R.eq('구현과제 투표 중에는 메인에 아직 없다', await mainHidden('2026-11-14T14:21:00+09:00'), true);
+  R.eq('투표를 기다리지 않고 메인에 바로 뜬다 (14:21)', await mainHidden('2026-11-14T14:21:00+09:00'), false);
+  R.eq('투표도 마감됐다', w.b.ctx.voteState_('A'), 'closed');
 
-  // 14:26 — 투표도 끝났다 → 메인에 뜬다
+  // 14:26 — 메인 화면 내용
   w.at('2026-11-14T14:26:00+09:00');
   const page = await newPage(browser);
   await clock(page, '2026-11-14T14:26:00+09:00');

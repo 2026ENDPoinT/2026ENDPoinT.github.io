@@ -177,13 +177,13 @@
   // 마감 · 다시 열기(10분 뒤 저절로 마감) · 시간표대로. 서버는 SCORE_UNTIL 속성에 시각을 적는다
   function lockOp(op) {
     if (!st.d || st.busy) return;
-    var ask = { close: '심사를 지금 마감하고 메인 페이지에 결과를 띄울까요?\n심사위원이 더 고칠 수 없게 되고(다시 열 수 있습니다), 시상 화면을 열 수 있습니다.\n구현과제 투표가 아직이면 결과는 투표가 끝나는 대로 뜹니다.',
+    var ask = { close: '심사와 투표를 지금 마감하고 메인 페이지에 결과를 띄울까요?' + votesNote() + '\n심사는 다시 열 수 있습니다.',
                 open: '심사를 다시 열까요?\n10분 뒤 저절로 마감됩니다.', auto: '심사 마감 시각을 시간표대로 되돌릴까요?' }[op];
     if (!window.confirm(ask)) return;
     st.busy = true;
     EP.api('score.state', { op: op }, { key: st.key, tries: 2 }).then(function (r) {
       st.busy = false;
-      if (r && r.ok) { EP.toast({ close: '심사를 마감했습니다 · 메인에 결과를 띄웁니다', open: '심사를 다시 열었습니다 (결과는 메인에서 내려갑니다)', auto: '시간표대로 되돌렸습니다' }[op]); load(true); }
+      if (r && r.ok) { EP.toast({ close: '심사' + (r.votesClosed && r.votesClosed.length ? ' · 투표(' + r.votesClosed.join(' · ') + ')' : '') + '를 마감했습니다 · 메인에 결과를 띄웁니다', open: '심사를 다시 열었습니다 (결과는 메인에서 내려갑니다)', auto: '시간표대로 되돌렸습니다' }[op]); load(true); }
       else EP.toast(EP.say(r));
     }, function (e) { st.busy = false; EP.toast(EP.say(e)); });
   }
@@ -205,15 +205,24 @@
     btn.textContent = on ? '결과 내리기' : '결과 발표';
     btn.setAttribute('data-op', on ? 'hide' : 'now');
   }
+  /** 확인 창에 덧붙일 투표 상태: 아직 닫히지 않은 투표는 이 단추로 함께 마감된다 (열리기 전이면 열리지 않고 끝난다) */
+  function votesNote() {
+    var open = [], ready = [];
+    ((st.d && st.d.tracks) || []).forEach(function (tr) { if (tr.vote === 'open') open.push(tr.name); else if (tr.vote === 'ready') ready.push(tr.name); });
+    var t = '';
+    if (open.length) t += '\n지금 투표 중인 ' + open.join(' · ') + ' 투표도 함께 마감됩니다.';
+    if (ready.length) t += '\n아직 열리지 않은 ' + ready.join(' · ') + ' 투표는 열리지 않고 끝납니다.';
+    return t;
+  }
   function resOp(op) {
     if (!st.d || st.busy) return;
-    var ask = { now: '메인 페이지에 결과(해커톤 1 – 3등 · 구현과제 1 – 4등)를 띄울까요?\n투표가 아직이면 투표가 끝나는 대로 뜹니다.',
+    var ask = { now: '메인 페이지에 결과(해커톤 1 – 3등 · 구현과제 1 – 4등)를 띄울까요?' + votesNote(),
                 hide: '메인 페이지에서 결과를 내릴까요?\n다시 띄울 때까지 보이지 않습니다.' }[op];
     if (!window.confirm(ask)) return;
     st.busy = true;
     EP.api('results.state', { op: op }, { key: st.key, tries: 2 }).then(function (r) {
       st.busy = false;
-      if (r && r.ok) { EP.toast({ now: '메인에 결과를 띄웠습니다 (1분 안에 보입니다)', hide: '메인에서 결과를 내렸습니다' }[op]); load(true); }
+      if (r && r.ok) { EP.toast({ now: (r.votesClosed && r.votesClosed.length ? '투표(' + r.votesClosed.join(' · ') + ')를 마감하고 ' : '') + '메인에 결과를 띄웠습니다 (1분 안에 보입니다)', hide: '메인에서 결과를 내렸습니다' }[op]); load(true); }
       else EP.toast(EP.say(r));
     }, function (e) { st.busy = false; EP.toast(EP.say(e)); });
   }
