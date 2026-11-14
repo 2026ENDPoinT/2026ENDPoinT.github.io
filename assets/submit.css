@@ -364,6 +364,13 @@ select.tin option{background:var(--ink-2);color:var(--hi)}
 /* ================= 참가자 투표 (/judge/vote/) ================= */
 .vnote{border:1px solid var(--line);border-left:2px solid var(--blue);padding:14px 18px;font-size:14px;color:var(--dim);line-height:1.8;margin-top:clamp(22px,3vw,30px)}
 .vnote b{color:var(--hi);font-weight:400}
+/* 투표하는 사람 — 한 창에서 팀원이 번갈아 투표하다 앞사람 계정으로 내지 않게 늘 크게 */
+.vwho{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 12px;margin-top:clamp(22px,3vw,30px);padding:14px 18px;border:1px solid var(--blue);background:rgba(var(--blue-rgb),.08)}
+.vwho span{font-size:11px;letter-spacing:.18em;color:var(--blue);font-weight:500}
+.vwho b{font-size:20px;font-weight:300;color:var(--hi)}
+.vwho small{font-size:13px;color:var(--dim-2)}
+.vwho em{font-style:normal;font-size:13px;color:var(--dim);margin-left:auto}
+.vwho+.vnote{margin-top:10px}
 .tab .cnt.live{color:var(--blue)}
 .ballot{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(12px,1.6vw,20px);margin-top:clamp(18px,2.4vw,26px)}
 /* 고르기 전에는 가는 선의 어두운 카드, 고르면 원래 사이트의 흰 카드 */
