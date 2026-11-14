@@ -903,17 +903,19 @@ function actScoreState_(body) {
   if (v.role !== '운영진') return fail_('NOT_STAFF');
   var op = String(body.op || '');
   if (op !== 'close' && op !== 'open' && op !== 'auto') return fail_('BAD_OP');
-  var now = nowMs_();
+  var now = nowMs_(), votes = [];
   withLock_(function () {
     var P = PropertiesService.getScriptProperties(), u = cutMs_('SCORE_UNTIL');
     P.deleteProperty('SCORE_CLOSED');                     // 예전 마감 버튼이 남긴 값
-    if (op === 'close') { P.setProperty('SCORE_UNTIL', iso_(now)); P.setProperty('RESULTS_AT', iso_(now)); }   // 마감 = 결과 발표 (투표가 남았으면 투표 마감 때)
+    // 마감 = 결과 발표: 심사를 닫고, 아직 닫히지 않은 투표도 지금 닫고, 메인에 결과를 띄운다
+    if (op === 'close') { P.setProperty('SCORE_UNTIL', iso_(now)); P.setProperty('RESULTS_AT', iso_(now)); votes = voteCloseAll_(P, now); }
     else if (op === 'open') P.setProperty('SCORE_UNTIL', iso_(Math.max(now + reopenMin_() * 60000, u > now ? u : 0)));
     else P.deleteProperty('SCORE_UNTIL');
   });
   propsDrop_();
-  log_({ email: '열람:' + v.name, team: '' }, 'score.' + op, '', '');
-  return { ok: true, scoring: scoreState_(), scoreUntil: scoreUntil_(), scoreCustom: !!str_(props_().SCORE_UNTIL) };
+  cacheDrop_('votes1');
+  log_({ email: '열람:' + v.name, team: '' }, 'score.' + op, '', votes.length ? '투표도 마감: ' + votes.join(', ') : '');
+  return { ok: true, scoring: scoreState_(), scoreUntil: scoreUntil_(), scoreCustom: !!str_(props_().SCORE_UNTIL), votesClosed: votes };
 }
 
 /* ================================================================
@@ -993,16 +995,17 @@ function actResultsState_(body) {
   if (op !== 'now' && op !== 'hide' && op !== 'auto') return fail_('BAD_OP');
   // 심사가 마감돼 있어야 한다. 투표가 아직이면 투표가 마감되는 대로 뜬다 ('심사 마감' 단추와 같게)
   if (op === 'now' && scoreState_() !== 'closed') return fail_('RESULTS_NOT_READY', { results: resultsInfo_() });
-  var now = nowMs_();
+  var now = nowMs_(), votes = [];
   withLock_(function () {
     var P = PropertiesService.getScriptProperties();
-    if (op === 'now') P.setProperty('RESULTS_AT', iso_(now));
+    if (op === 'now') { P.setProperty('RESULTS_AT', iso_(now)); votes = voteCloseAll_(P, now); }   // 결과 발표 = 남은 투표도 지금 마감
     else if (op === 'hide') P.setProperty('RESULTS_AT', 'off');
     else P.deleteProperty('RESULTS_AT');
   });
   propsDrop_();
-  log_({ email: '열람:' + v.name, team: '' }, 'results.' + op, '', '');
-  return { ok: true, results: resultsInfo_() };
+  cacheDrop_('votes1');
+  log_({ email: '열람:' + v.name, team: '' }, 'results.' + op, '', votes.length ? '투표도 마감: ' + votes.join(', ') : '');
+  return { ok: true, results: resultsInfo_(), votesClosed: votes };
 }
 
 /** 트랙별 순위표. 심사위원 목록은 `열람` 탭의 심사위원 + 점수를 낸 사람 */
@@ -1099,6 +1102,21 @@ function voteState_(key, at) {
   var w = voteWin_(key), now = at || nowMs_();
   if (w.from && now >= w.from && (!w.until || now < w.until)) return 'open';
   return w.from && w.until && now >= w.until ? 'closed' : 'ready';
+}
+/**
+ * 아직 닫히지 않은 투표를 지금 닫는다 ('심사 마감 · 결과 발표' · '결과 발표'). 열리기 전이면 열지 않고 그대로 끝낸다.
+ * 잠금 안에서 부른다. 닫은 트랙 이름 목록을 돌려준다.
+ */
+function voteCloseAll_(P, now) {
+  var done = [];
+  voteTracks_().forEach(function (tr) {
+    if (voteState_(tr.key, now) === 'closed') return;
+    var w = voteWin_(tr.key);
+    if (!w.from || w.from > now) P.setProperty('VOTE_' + tr.key + '_FROM', iso_(now));
+    P.setProperty('VOTE_' + tr.key + '_UNTIL', iso_(now));
+    done.push(tr.name);
+  });
+  return done;
 }
 function voteMax_() { var n = Number(conf_('VOTE_MAX')); return n >= 1 && n <= 10 ? Math.floor(n) : 3; }
 function voteSelf_() { return /^(1|true|yes|o|on)$/i.test(String(conf_('VOTE_SELF'))); }

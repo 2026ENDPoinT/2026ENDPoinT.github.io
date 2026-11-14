@@ -1865,15 +1865,32 @@ describe('결과 발표 — 운영진이 심사 마감(결과 발표)을 누르�
     assert.deepEqual(r.tracks.map((t) => [t.key, t.name]), [['H', '해커톤'], ['A', '구현과제']]);
   });
 
-  test("'심사 마감' 단추 = 결과 발표 — 구현과제 투표가 아직이면 투표가 마감되는 순간 뜬다", () => {
+  test("'심사 마감 · 결과 발표' = 심사 마감 + 열려 있던 투표도 지금 마감 + 메인에 바로 결과", () => {
     const { b, op } = rb();
     b.at('2026-11-14T14:20:00+09:00');                                   // 구현과제 투표 14:15 – 14:25 진행 중
-    assert.equal(b.post({ action: 'score.state', key: op, op: 'close' }).scoring, 'closed');
-    assert.equal(b.store.RESULTS_AT, '2026-11-14T14:20:00+09:00');
-    assert.equal(pub(b).state, 'judging');                                // 투표가 끝나야 P 가 정해진다
-    b.at('2026-11-14T14:25:00+09:00');
-    assert.equal(pub(b).state, 'open');
+    const r = b.post({ action: 'score.state', key: op, op: 'close' });
+    assert.deepEqual([r.scoring, r.votesClosed], ['closed', ['구현과제']]);
+    assert.deepEqual([b.store.RESULTS_AT, b.store.VOTE_A_UNTIL], ['2026-11-14T14:20:00+09:00', '2026-11-14T14:20:00+09:00']);
+    assert.equal(pub(b).state, 'open');                                   // 투표를 기다리지 않고 바로
+    assert.equal(b.post({ action: 'vote.submit', idToken: 'tok-a1', track: 'A', teams: ['01'] }).error, 'VOTE_CLOSED');
     assert.equal(b.post({ action: 'score.summary', key: op }).results.state, 'open');
+    assert.ok(b.rows('기록').some((l) => l['동작'] === 'score.close' && /투표도 마감: 구현과제/.test(l['메모'])));
+  });
+
+  test('아직 열리지 않은 투표는 열리지 않고 끝난다 (일찍 누른 경우) · 결과 발표 단추도 투표를 닫는다', () => {
+    const { b, op } = rb();
+    b.at('2026-11-14T11:00:00+09:00');                                   // 해커톤 12:12 · 구현과제 14:15 둘 다 열리기 전
+    assert.deepEqual(b.post({ action: 'score.state', key: op, op: 'close' }).votesClosed, ['해커톤', '구현과제']);
+    assert.deepEqual([b.ctx.voteState_('H'), b.ctx.voteState_('A')], ['closed', 'closed']);
+    assert.equal(pub(b).state, 'open');
+    b.at('2026-11-14T12:15:00+09:00');                                   // 원래 시간표가 와도 다시 열리지 않는다
+    assert.equal(b.ctx.voteState_('H'), 'closed');
+
+    const c = rb();                                                       // 심사는 이미(시각으로) 닫혔고 구현과제 투표 중에 '결과 발표'
+    c.b.store.SCORE_UNTIL = '2026-11-14 14:00'; c.b.ctx.propsDrop_();
+    c.b.at('2026-11-14T14:20:00+09:00');
+    const s = c.b.post({ action: 'results.state', key: c.op, op: 'now' });
+    assert.deepEqual([s.results.state, s.votesClosed], ['open', ['구현과제']]);
   });
 
   test('최종 S 순서대로 상금표에 맞춰 — 해커톤 1등 1 · 2등 2 · 3등 3, 구현과제 1 – 4등 (동점은 같은 등수, 덜 채운 팀은 빠진다)', () => {
