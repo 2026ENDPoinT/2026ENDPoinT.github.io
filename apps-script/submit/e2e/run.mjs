@@ -503,8 +503,14 @@ await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3�
   R.eq('우리 팀(03)은 고를 수 없다', await page.locator('.vcard[data-no="03"] .pick').count(), 0);
   for (const no of ['01', '02', '04']) await page.click(`.vcard[data-no="${no}"] .pick`);
   R.eq('3팀을 고르면 나머지는 막힌다', await page.locator('.vcard[data-no="05"] .pick[disabled]').count(), 1);
+  // 한 창에서 팀원이 번갈아 투표하다 앞사람 계정으로 내지 않게: 누구 계정인지 늘 보이고, 내기 전에 본인인지 묻는다
+  R.match('투표하는 사람(이름 · 계정)이 크게 보인다', await text(page, '#ballot .vwho'), /투표하는 사람[\s\S]*가나다[\s\S]*a1@x\.com[\s\S]*로그아웃/);
+  R.match('머리에도 투표하는 사람', await text(page, '#h-team'), /^가나다 · 03팀$/);
+  let asked = '';
+  page.once('dialog', (dg) => { asked = dg.message(); dg.accept(); });
   await page.click('[data-act="submit"]');
   await page.waitForSelector('.vcard .code');
+  R.match('내기 전에 본인인지 묻는다', asked, /가나다 님 \(a1@x\.com\) 계정으로 구현과제 투표를 냅니다[\s\S]*본인이 아니면/);
   const codes = await page.$$eval('.vcard .code b', (l) => l.map((e) => e.textContent).sort());
   const rows = w.b.rows('투표');
   R.eq('시트 `투표` 탭에 표 3장', rows.length, 3);
@@ -514,7 +520,7 @@ await scenario('인기투표: 명단에 있는 참가자만 · 트랙별 1인 3�
 
   await page.click('[data-act="edit"]');
   await page.click('.vcard[data-no="04"] .pick');
-  page.once('dialog', (d) => d.accept());                    // 2팀만 골랐다는 확인
+  page.once('dialog', (d) => d.accept());                    // 본인 확인 (2팀만 골랐다는 말도 함께)
   await page.click('[data-act="submit"]');
   await page.waitForFunction(() => document.querySelectorAll('.vcard .code').length === 2);
   const tally = () => w.b.post({ action: 'vote.me', idToken: opTok }).tally.find((t) => t.key === 'A');

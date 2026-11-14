@@ -117,7 +117,7 @@
   /* ------------------------------ 그리기 ------------------------------ */
   function paintHead() {
     var d = st.d;
-    $('h-team').textContent = d.me ? d.me.team + '팀 · ' + d.me.track : (d.admin ? '운영진 계정' : '—');
+    $('h-team').textContent = d.me ? (d.me.name ? d.me.name + ' · ' : '') + d.me.team + '팀' : (d.admin ? '운영진 계정' : '—');
     d.tracks.forEach(function (tr) {
       var el = $('h-' + tr.key);
       if (el) el.textContent = stateTxt(tr) + (d.me && tr.mine.length ? ' · ' + tr.mine.length + '표 투표함' : '');
@@ -146,7 +146,13 @@
     var editing = open && member && (!voted || !!st.editing[tr.key]);
     var sel = st.sel[tr.key] || [];
 
-    var head;
+    var head, who = '';
+    if (member) {
+      var u = S.get() || {};
+      // 한 창(팀 노트북)에서 앞사람이 로그인한 채로 다른 사람이 투표하면 앞사람 표를 덮어쓴다 — 누구 계정인지 늘 크게 보여 준다
+      who = '<div class="vwho"><span>투표하는 사람</span><b>' + esc(d.me.name || u.name || '') + '</b><small>' + esc(u.email || '') + '</small>' +
+        '<em>본인이 아니면 → </em><button class="mini" type="button" data-act="logout">로그아웃하고 본인 계정으로</button></div>';
+    }
     if (!member) head = note('<b>운영진 계정은 투표하지 않습니다.</b> 위에서 트랙별로 투표를 열고 닫을 수 있습니다.');
     else if (tr.state === 'ready') head = note(tr.from ? '<b>' + esc(tr.name) + ' 투표는 ' + hm(tr.from) + '에 열립니다.</b>' + (tr.until ? ' ' + hm(tr.until) + ' 마감' : '')
                                                        : '<b>' + esc(tr.name) + ' 트랙 발표가 끝나면 투표가 열립니다.</b>');
@@ -155,6 +161,7 @@
     else head = note('<b>좋았던 팀을 ' + d.max + '곳까지 골라 주세요.</b> 한 팀에 1표' + (d.self ? '' : ', 우리 팀(' + esc(myTeam) + ')은 고를 수 없습니다') + '.' +
                      (tr.until ? ' <b>' + hm(tr.until) + ' 마감</b>' : ''));
 
+    head = who + head;
     var cards = tr.teams.map(function (t) {
       var self = !d.self && t.no === myTeam;
       var on = editing ? sel.indexOf(t.no) !== -1 : tr.mine.indexOf(t.no) !== -1;
@@ -249,7 +256,10 @@
     if (!tr || st.busy) return;
     var sel = (st.sel[tr.key] || []).slice();
     if (!sel.length) return;
-    if (sel.length < d.max && !window.confirm(sel.length + '팀만 골랐습니다. 이대로 낼까요?\n(' + d.max + '팀까지 고를 수 있습니다)')) return;
+    var u = S.get() || {}, nm = (d.me && d.me.name) || u.name || '';
+    var ask = nm + ' 님' + (u.email ? ' (' + u.email + ')' : '') + ' 계정으로 ' + tr.name + ' 투표를 냅니다.\n본인이 아니면 [취소] 를 누르고, 로그아웃한 뒤 본인 계정으로 로그인해 주세요.' +
+      (sel.length < d.max ? '\n\n' + sel.length + '팀만 골랐습니다 (' + d.max + '팀까지 고를 수 있습니다).' : '');
+    if (!window.confirm(ask)) return;
     st.busy = true;
     paintBallot();
     EP.api('vote.submit', { track: tr.key, teams: sel }, { nonce: EP.nonce(), tries: 3 }).then(function (r) {
@@ -294,6 +304,7 @@
       var act = b.getAttribute('data-act');
       if (act === 'pick') toggle(b.getAttribute('data-no'));
       else if (act === 'submit') submit();
+      else if (act === 'logout') { S.signOut(); }
       else if (act === 'edit') { var tr = trackOf(st.tab); if (tr) { st.editing[tr.key] = true; st.sel[tr.key] = tr.mine.slice(); paintBallot(); } }
       else if (act === 'keep') { var tk = trackOf(st.tab); if (tk) { st.editing[tk.key] = false; st.sel[tk.key] = tk.mine.slice(); paintBallot(); } }
       else if (act === 'admin') adminOp(b.getAttribute('data-track'), b.getAttribute('data-op'));
