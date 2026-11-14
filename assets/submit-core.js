@@ -109,6 +109,7 @@
     NOT_CONVERTIBLE: '이 형식은 PDF 로 바꿀 수 없습니다.',
     PDF_FAILED: 'PDF 로 바꾸지 못했습니다. 원본은 제출되어 있습니다.',
     PDF_BUSY: 'PDF 로 바꾸는 중입니다. 잠시 뒤 다시 열어 주세요.',
+    RESULTS_NOT_READY: '심사와 두 트랙 투표가 모두 마감된 뒤 공개할 수 있습니다.',
     NO_PDF: '아직 보기용 PDF 가 없습니다.',
     BAD_SCORE: '점수를 확인해 주세요 (문항마다 0 – 25).',
     BAD_TEAM: '팀을 다시 골라 주세요.',
@@ -720,6 +721,13 @@
                 { key: 'ux', name: '사용자 경험', max: 25 }, { key: 'arch', name: '구조적 이해', max: 25 }];
     var SM = {}, SCORING = 'open', STAFF = LOCAL && /[?&]staff=1/.test(loc.search || '');
     var SCORE_UNTIL0 = Date.now() + 3 * 3600000, SCORE_UNTIL = SCORE_UNTIL0;
+    // 결과 발표 (미리보기): 심사를 마감하면 5분 뒤 공개 예정, '지금 공개' · '내리기' · '시간표대로'
+    var RES = { custom: false, at: 0 };
+    function resInfo() {
+      var at = RES.custom ? RES.at : SCORE_UNTIL + 5 * 60000;
+      var state = SCORING !== 'closed' ? 'judging' : (at !== -1 && Date.now() >= at ? 'open' : 'ready');
+      return { state: state, at: at, custom: RES.custom };
+    }
     function scoreRec(s, comment, at) {
       var total = 0, filled = 0;
       CRIT.forEach(function (c) { if (s[c.key] !== '' && s[c.key] !== undefined) { total += s[c.key]; filled++; } });
@@ -931,9 +939,14 @@
         case 'score.summary': {
           var ds = demoSummary();
           r.name = '미리보기'; r.role = '운영진'; r.criteria = CRIT; r.weight = 0.85; r.popMax = 15; r.scoring = SCORING; r.judges = ds.judges; r.tracks = ds.tracks;
-          r.scoreUntil = SCORE_UNTIL; r.scoreCustom = SCORE_UNTIL !== SCORE_UNTIL0;
+          r.scoreUntil = SCORE_UNTIL; r.scoreCustom = SCORE_UNTIL !== SCORE_UNTIL0; r.results = resInfo();
           return r;
         }
+        case 'results.state':
+          if (b.op === 'now' && SCORING !== 'closed') return { ok: false, error: 'RESULTS_NOT_READY' };
+          RES = b.op === 'now' ? { custom: true, at: Date.now() } : b.op === 'hide' ? { custom: true, at: -1 } : { custom: false, at: 0 };
+          r.results = resInfo();
+          return r;
         case 'score.state':
           if (b.op === 'close') { SCORING = 'closed'; SCORE_UNTIL = Date.now(); }
           else if (b.op === 'open') { SCORING = 'open'; SCORE_UNTIL = Date.now() + 10 * 60000; }
