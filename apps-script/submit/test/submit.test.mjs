@@ -1952,3 +1952,76 @@ describe('결과 발표 — 운영진이 심사 마감(결과 발표)을 누르�
     assert.equal(pub(b).state, 'open');
   });
 });
+
+describe('트랙 옮기기 — 스크립트 속성 TRACK_MOVES (예: 9팀을 해커톤으로)', () => {
+  const T = { ...TOKENS, 'tok-n1': token('n1@x.com', '901'), 'tok-d1': token('d1@x.com', '701') };
+  function mb() {
+    const b = loadBackend({ props: { ADMINS: 'op@x.com' }, tokens: T });
+    b.roster([['03', '가나다', 'a1@x.com', '101', '조장', ''], ['09', '구팀', 'n1@x.com', '901', '조장', ''],
+              ['12', '사아자', 'b1@x.com', '201', '조장', ''], ['15', '마바사', 'd1@x.com', '701', '조장', '']]);
+    b.run('setup');
+    return b;
+  }
+  const move = (b, v) => { if (v === undefined) delete b.store.TRACK_MOVES; else b.store.TRACK_MOVES = v; b.run('cacheClear'); };
+  const nos = (r, name) => r.tracks.find((t) => t.name === name).teams.map((t) => t.no);
+  const four = (n) => ({ idea: n, done: n, ux: n, arch: n });
+
+  test('09:H — 9팀이 해커톤으로: 현황판 · 공개 현황판 · 투표 화면 · 심사 종합이 따라가고, 저장된 교수님 점수는 그대로 · 지우면 원래대로', () => {
+    const b = mb();
+    b.at('2026-11-14T09:00:00+09:00');
+    assert.equal(b.post({ action: 'info.save', idToken: 'tok-n1', data: { title: '구팀 서비스' } }).ok, true);
+    b.at('2026-11-14T09:30:00+09:00');
+    assert.equal(b.post({ action: 'info.save', idToken: 'tok-b1', data: { title: '십이팀' } }).ok, true);
+    b.at('2026-11-14T10:30:00+09:00');
+    const prof = b.viewer('홍길동 교수님', '심사위원'), op = b.viewer('운영 담당', '운영진');
+    assert.equal(b.post({ action: 'score.save', key: prof, team: '09', scores: four(20), comment: '옮기기 전 점수' }).ok, true);
+    assert.ok(nos(b.post({ action: 'view.list', key: prof }), '구현과제').includes('09'));
+
+    move(b, '09:H');
+    const r = b.post({ action: 'view.list', key: prof });
+    assert.deepEqual(nos(r, '해커톤').slice(0, 2), ['12', '09']);                 // 해커톤에서 낸 팀 뒤 (안 낸 팀 앞)
+    assert.ok(!nos(r, '구현과제').includes('09'));
+    assert.equal(r.tracks.find((t) => t.name === '해커톤').teams.find((t) => t.no === '09').track, '해커톤');
+    assert.deepEqual([r.mine['09'].complete, r.mine['09'].comment], [true, '옮기기 전 점수']);   // 교수님 점수는 그대로
+    const sum = b.post({ action: 'score.summary', key: op });
+    assert.ok(sum.tracks.find((t) => t.key === 'H').rows.some((x) => x.no === '09' && x.J === 80));
+    assert.ok(!sum.tracks.find((t) => t.key === 'A').rows.some((x) => x.no === '09'));
+    const pub = b.post({ action: 'status.public' });
+    assert.equal(pub.submit.teams.find((t) => t.no === '09').track, 'H');
+    const me = b.post({ action: 'vote.me', idToken: 'tok-a1' });
+    assert.ok(me.tracks.find((t) => t.key === 'H').teams.some((t) => t.no === '09'));
+    assert.ok(!me.tracks.find((t) => t.key === 'A').teams.some((t) => t.no === '09'));
+    assert.equal(b.post({ action: 'me', idToken: 'tok-n1' }).team.track, '해커톤');
+
+    move(b);                                                                    // 속성을 지우면 원래대로
+    assert.ok(nos(b.post({ action: 'view.list', key: prof }), '구현과제').includes('09'));
+  });
+
+  test('옮기기 전에 낸 투표지: 옮긴 팀 표만 빠지고 같은 투표지의 나머지 표는 산다', () => {
+    const b = mb();
+    b.at('2026-11-14T14:16:00+09:00');                                          // 구현과제 투표 중
+    assert.equal(b.post({ action: 'vote.submit', idToken: 'tok-a1', track: 'A', teams: ['09', '01', '02'] }).ok, true);
+    const tally = (key) => b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === key);
+    let A = tally('A');
+    assert.deepEqual([A.votes, A.voters], [3, 1]);
+
+    move(b, '09:H');
+    A = tally('A');
+    assert.deepEqual([A.votes, A.voters, A.rows.some((x) => x.no === '09')], [2, 1, false]);   // 01 · 02 표는 그대로
+    const H = tally('H');
+    assert.equal(H.rows.find((x) => x.no === '09').votes, 0);
+    assert.deepEqual(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks.find((t) => t.key === 'A').mine, ['01', '02']);
+    // 9팀 팀원은 해커톤에서 자기 팀(09)을 고를 수 없다
+    b.at('2026-11-14T14:20:00+09:00');
+    b.store.VOTE_H_FROM = '2026-11-14 14:00'; b.store.VOTE_H_UNTIL = '2026-11-14 15:00'; b.ctx.propsDrop_();
+    assert.equal(b.post({ action: 'vote.submit', idToken: 'tok-n1', track: 'H', teams: ['09'] }).error, 'VOTE_SELF');
+    assert.equal(b.post({ action: 'vote.submit', idToken: 'tok-n1', track: 'H', teams: ['12'] }).ok, true);
+  });
+
+  test('적는 법: 9:해커톤 · 09=H; 03:A — 틀린 줄은 무시', () => {
+    const b = mb();
+    b.store.TRACK_MOVES = '9:해커톤; 03 → A, 엉뚱한 줄, 15:X'; b.ctx.propsDrop_();
+    vm.runInContext('MEMO = {}', b.ctx);
+    assert.deepEqual(JSON.parse(JSON.stringify(b.ctx.trackMoves_())), { '09': 'H', '03': 'A' });
+  });
+});

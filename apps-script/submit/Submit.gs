@@ -95,6 +95,9 @@ var CONFIG = {
   RESULTS_AT: 'off',
   // 등수마다 받는 팀 수 — 메인 페이지 상금표와 같게 (해커톤 1등 1 · 2등 2 · 3등 3, 구현과제 1 – 4등 각 1)
   PRIZES: { H: [1, 2, 3], A: [1, 1, 1, 1] },
+  // 팀을 다른 트랙으로 옮긴다 (번호 범위와 다르게). 스크립트 속성 TRACK_MOVES 에 '09:H' 처럼 (여러 팀은 '09:H, 03:A').
+  // 트랙은 키(H · A)나 이름(해커톤 · 구현과제). 지우면 원래대로. 바꾼 뒤 시트 메뉴 '현황 새로 읽기 (캐시 비우기)'.
+  TRACK_MOVES: '',
   // 점수를 적는 스프레드시트: 제출 폴더와 나란한 이 이름의 폴더 안, 이 이름의 시트 (처음 설정이 찾거나 만든다)
   SCORE_FOLDER_NAME: '심사위원',
   SCORE_SHEET_NAME: 'ENDPoinT 2026 심사',
@@ -1085,8 +1088,22 @@ function voteTrack_(key) {
 function trackKeyOf_(no) {
   var n = Number(no), k = '';
   if (no === TEST_TEAM) return '';
+  var mv = trackMoves_()[teamNo_(no)];
+  if (mv) return mv;                                                  // TRACK_MOVES 로 옮긴 팀
   voteTracks_().forEach(function (tr) { if (n >= tr.from && n <= tr.to) k = tr.key; });
   return k;
+}
+/** TRACK_MOVES: { '09': 'H' } — 번호 범위와 다른 트랙으로 옮긴 팀 (한 실행 안에서 한 번만 읽는다) */
+function trackMoves_() {
+  if (MEMO.moves) return MEMO.moves;
+  var out = {};
+  String(conf_('TRACK_MOVES') || '').split(/[,;\n]/).forEach(function (part) {
+    var m = /^\s*(\d{1,2})\s*(?::|=|->|→)\s*(\S+)\s*$/.exec(part);
+    if (!m) return;
+    var no = teamNo_(m[1]), key = trackKeyByName_(m[2]);
+    if (no && key) out[no] = key;
+  });
+  return (MEMO.moves = out);
 }
 function trackKeyByName_(name) {
   var k = '';
@@ -1129,13 +1146,15 @@ function voteTeams_(key) { return teamNos_().filter(function (no) { return track
  * 마감(+유예) 뒤에 운영진이 대신 올린 것은 '마지막 제출' 을 바꾸지 않으므로(teamPatch_) 순서가 흔들리지 않는다.
  */
 function presentRanks_(all) {
-  var out = {};
+  var out = {}, moves = trackMoves_();
   voteTracks_().forEach(function (tr) {
     voteTeams_(tr.key).map(function (no) { return all[no] || blank_(no); }).sort(function (x, y) {
       var ox = x.order || 0, oy = y.order || 0;
       if (ox || oy) { if (!ox) return 1; if (!oy) return -1; if (ox !== oy) return ox - oy; }
       var ax = x.at || 0, ay = y.at || 0;
       if (!ax !== !ay) return ax ? -1 : 1;                       // 낸 팀이 먼저
+      var mx = !!moves[x.no], my = !!moves[y.no];
+      if (mx !== my) return mx ? 1 : -1;                         // 다른 트랙에서 옮겨 온 팀은 그 트랙 맨 뒤 (안 낸 팀 앞)
       if (ax !== ay) return ay - ax;                             // 늦게 낸 팀이 먼저
       return x.no < y.no ? -1 : x.no > y.no ? 1 : 0;
     }).forEach(function (s, i) { out[s.no] = i + 1; });
@@ -1198,14 +1217,18 @@ function voteCount_(t, salt) {
     // 투표자마다 가장 나중에 낸 투표지만
     var last = null;
     Object.keys(ballots[id]).forEach(function (bid) { var b = ballots[id][bid]; if (!last || b.seq > last.seq || (b.seq === last.seq && b.pos > last.pos)) last = b; });
-    var seen = {}, ok = last.rows.length >= 1 && last.rows.length <= max;
+    var seen = {}, ok = last.rows.length >= 1 && last.rows.length <= max, keep = [];
     last.rows.forEach(function (r) {
-      if (seen[r.team] || trackKeyOf_(r.team) !== last.key || (!self && r.team === last.vt)) ok = false;
+      if (seen[r.team] || (!self && r.team === last.vt)) ok = false;
       seen[r.team] = 1;
+      // 투표한 뒤에 다른 트랙으로 옮긴 팀(TRACK_MOVES)은 그 표만 빼고, 같은 투표지의 나머지 표는 살린다
+      // (검증값 덕분에 트랙이 다른 줄은 서버가 받은 뒤에 팀이 옮겨진 경우뿐이다)
+      if (trackKeyOf_(r.team) === last.key) keep.push(r);
     });
     if (!ok) { out.bad[last.key] = (out.bad[last.key] || 0) + last.rows.length; return; }
+    if (!keep.length) return;
     var mine = (out.by[last.voter] = out.by[last.voter] || {})[last.key] = { teams: [], codes: {} };
-    last.rows.forEach(function (r) {
+    keep.forEach(function (r) {
       mine.teams.push(r.team);
       mine.codes[r.team] = r.sig.slice(0, 6).toUpperCase();
       out.n[r.team] = (out.n[r.team] || 0) + 1;
@@ -1730,6 +1753,8 @@ function teamNo_(v) {
 
 function trackOf_(no) {
   if (no === TEST_TEAM) return '연습';
+  var mv = trackMoves_()[teamNo_(no)];
+  if (mv) { var nm = ''; CONFIG.TRACKS.forEach(function (tr) { if (tr.key === mv) nm = tr.name; }); if (nm) return nm; }
   var n = Number(no), name = '';
   CONFIG.TRACKS.forEach(function (tr) { if (n >= tr.from && n <= tr.to) name = tr.name; });
   return name;
