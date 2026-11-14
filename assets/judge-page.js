@@ -210,7 +210,7 @@
     $('s-done').textContent = sum.complete + ' / ' + sum.teams + '팀';
     if (judgeMode()) paintProgress();
     else $('s-parts').textContent = '발표 ' + sum.deck + ' · 결과물 ' + sum.product;
-    if (staff() && !$('to-score')) {
+    if ((staff() || d.role === '심사위원') && !$('to-score')) {        // 교수님도 종합을 본다 (읽기만)
       var a = document.createElement('a');
       a.id = 'to-score'; a.className = 'chipbtn'; a.href = './score/'; a.textContent = '심사 종합 →';
       a.style.cssText = 'display:inline-flex;align-items:center;text-decoration:none';

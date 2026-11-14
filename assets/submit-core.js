@@ -719,14 +719,35 @@
     // ---- 심사 (미리보기). 로컬에서 ?staff=1 을 붙이면 현황판이 운영진 화면으로 열린다 ----
     var CRIT = [{ key: 'idea', name: '문제 정의 · 아이디어', max: 25 }, { key: 'done', name: '완성도', max: 25 },
                 { key: 'ux', name: '사용자 경험', max: 25 }, { key: 'arch', name: '구조적 이해', max: 25 }];
-    var SM = {}, SCORING = 'open', STAFF = LOCAL && /[?&]staff=1/.test(loc.search || '');
+    // 로컬에서 ?closed=1 이면 심사도 마감된 뒤 모습 (시상 화면 · 결과 발표 미리보기)
+    var SM = {}, SCORING = LOCAL && /[?&]closed=1/.test(loc.search || '') ? 'closed' : 'open', STAFF = LOCAL && /[?&]staff=1/.test(loc.search || '');
     var SCORE_UNTIL0 = Date.now() + 3 * 3600000, SCORE_UNTIL = SCORE_UNTIL0;
-    // 결과 발표 (미리보기): 심사를 마감하면 5분 뒤 공개 예정, '지금 공개' · '내리기' · '시간표대로'
-    var RES = { custom: false, at: 0 };
+    // 결과 발표 (미리보기): 서버와 같게 — '심사 마감'(또는 '결과 발표')을 누르면 메인에 뜬다 (기본은 누를 때까지 안 뜸)
+    var RES = SCORING === 'closed' ? { custom: true, at: Date.now() } : { custom: false, at: -1 };
     function resInfo() {
-      var at = RES.custom ? RES.at : SCORE_UNTIL + 5 * 60000;
+      var at = RES.custom ? RES.at : -1;
       var state = SCORING !== 'closed' ? 'judging' : (at !== -1 && Date.now() >= at ? 'open' : 'ready');
       return { state: state, at: at, custom: RES.custom };
+    }
+    /** 시상 화면 (미리보기): 종합 순위표를 상금표대로 (해커톤 1 · 2 · 3팀, 구현과제 1 – 4등) — 서버 resultsBuild_ 와 같은 규칙 */
+    function demoAward() {
+      var PR = { H: [1, 2, 3], A: [1, 1, 1, 1] };
+      return demoSummary().tracks.map(function (tr) {
+        var counts = PR[tr.key] || [], places = counts.map(function (n, i) { return { place: i + 1, teams: [] }; });
+        var total = counts.reduce(function (a, n) { return a + n; }, 0), pos = 0, last = null;
+        tr.rows.forEach(function (r) {
+          if (r.rank === null || r.rank === undefined) return;
+          var place;
+          if (last && r.rank === last.rank) place = last.place;
+          else {
+            if (pos >= total) return;
+            for (var i = 0, c = 0; i < counts.length; i++) { c += counts[i]; if (pos < c) { place = i + 1; break; } }
+          }
+          places[place - 1].teams.push({ no: r.no, title: r.title || '', s: r.S });
+          pos++; last = { rank: r.rank, place: place };
+        });
+        return { key: tr.key, name: tr.name, places: places };
+      });
     }
     function scoreRec(s, comment, at) {
       var total = 0, filled = 0;
@@ -944,11 +965,14 @@
         }
         case 'results.state':
           if (b.op === 'now' && SCORING !== 'closed') return { ok: false, error: 'RESULTS_NOT_READY' };
-          RES = b.op === 'now' ? { custom: true, at: Date.now() } : b.op === 'hide' ? { custom: true, at: -1 } : { custom: false, at: 0 };
+          RES = b.op === 'now' ? { custom: true, at: Date.now() } : b.op === 'hide' ? { custom: true, at: -1 } : { custom: false, at: -1 };
           r.results = resInfo();
           return r;
+        case 'results.award':
+          r.scoring = SCORING; r.results = resInfo(); r.tracks = demoAward();
+          return r;
         case 'score.state':
-          if (b.op === 'close') { SCORING = 'closed'; SCORE_UNTIL = Date.now(); }
+          if (b.op === 'close') { SCORING = 'closed'; SCORE_UNTIL = Date.now(); RES = { custom: true, at: Date.now() }; }   // 마감 = 결과 발표
           else if (b.op === 'open') { SCORING = 'open'; SCORE_UNTIL = Date.now() + 10 * 60000; }
           else { SCORING = 'open'; SCORE_UNTIL = SCORE_UNTIL0; }
           r.scoring = SCORING; r.scoreUntil = SCORE_UNTIL; r.scoreCustom = SCORE_UNTIL !== SCORE_UNTIL0;
