@@ -880,11 +880,12 @@ function actScoreSave_(body) {
   });
 }
 
-/** 운영진: 종합 — 트랙별 순위표와 코멘트 */
+/** 운영진 · 심사위원: 종합 — 트랙별 순위표와 코멘트 (심사위원은 읽기만) */
 function actScoreSummary_(body) {
   var v = viewer_(body.key);
   if (!v) return fail_('KEY_INVALID');
-  if (v.role !== '운영진') return fail_('NOT_STAFF');
+  // 심사위원도 본다 (읽기만). 마감 · 결과 발표 · 시상 화면(score.state · results.state · results.award)은 운영진만
+  if (v.role !== '운영진' && v.role !== '심사위원') return fail_('NOT_STAFF');
   seen_(v);
   var res = scoreTable_();
   return { ok: true, api: API_VERSION, now: nowMs_(), name: v.name, role: v.role, criteria: criteria_(), weight: judgeW_(), popMax: popMax_(),

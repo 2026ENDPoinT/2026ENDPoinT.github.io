@@ -27,9 +27,9 @@
   function showGate(html) { gate.innerHTML = html; gate.hidden = false; app.hidden = true; }
   function gateKey(why) {
     showGate('<div class="t"><span class="lab ' + (why ? 'red' : 'blue') + '">Staff</span>' +
-      '<b>' + esc(why || '운영진 참여 토큰을 입력해 주세요') + '</b></div>' +
+      '<b>' + esc(why || '참여 토큰을 입력해 주세요') + '</b></div>' +
       '<form class="act rowy" id="key-form" autocomplete="off">' +
-        '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="참여 토큰" placeholder="운영진 참여 토큰" style="min-width:min(300px,70vw)">' +
+        '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="참여 토큰" placeholder="참여 토큰" style="min-width:min(300px,70vw)">' +
         '<button class="btn btn-o" type="submit"><span>열기</span></button></form>');
     $('key-form').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -51,7 +51,7 @@
       if (my !== seq) return;
       if (d && d.ok) { st.d = d; st.loadedAt = Date.now(); render(); return; }
       if (d && d.error === 'KEY_INVALID') { forget(); gateKey(EP.say(d)); return; }
-      if (d && d.error === 'NOT_STAFF') { gateKey('운영진 참여 토큰으로만 볼 수 있습니다'); return; }
+      if (d && d.error === 'NOT_STAFF') { gateKey('운영진 · 심사위원 참여 토큰으로만 볼 수 있습니다'); return; }
       if (!silent) showGate('<div class="t"><span class="lab red">Error</span><b>불러오지 못했습니다</b><span>' + esc(EP.say(d)) + '</span></div>');
     }, function (e) {
       if (my !== seq || silent) return;
@@ -86,6 +86,10 @@
     }
     if (auto) auto.hidden = !d.scoreCustom;
     paintRes(d.results);
+    var boss = d.role === '운영진';                         // 교수님은 읽기만 (마감 · 결과 발표는 운영진)
+    ['lock', 'res', 'lock-auto'].forEach(function (id) { var x = $(id); if (x && !boss) x.hidden = true; });
+    if ($('lock')) $('lock').hidden = !boss;
+    $('s-res').parentNode.hidden = !boss;
 
     if (!st.tab || !d.tracks.some(function (t) { return t.key === st.tab; })) st.tab = d.tracks[0] ? d.tracks[0].key : '';
     $('tabs').innerHTML = d.tracks.map(function (tr) {
@@ -185,12 +189,12 @@
   }
   $('lock').addEventListener('click', function () { if (st.d) lockOp(st.d.scoring !== 'closed' ? 'close' : 'open'); });
 
-  /* 메인 페이지 결과 발표 · 시상 화면: '심사 마감' 을 누르면 메인에 결과가 뜨고(투표가 아직이면 투표 마감 때) 시상 화면을 열 수 있다.
-     이미 (14:25 에 저절로) 마감됐으면 '결과 발표' 로 띄운다. '결과 내리기' 는 메인에서 감춘다. */
+  /* 메인 페이지 결과 발표: '심사 마감' 을 누르면 메인에 결과가 뜬다(투표가 아직이면 투표 마감 때).
+     이미 (14:25 에 저절로) 마감됐으면 '결과 발표' 로 띄운다. '결과 내리기' 는 메인에서 감춘다.
+     시상 화면(/judge/award/)은 어디에도 링크를 두지 않는다 — 운영진이 주소로 직접 연다. */
   function paintRes(r) {
     var el = $('s-res'), btn = $('res'), closed = st.d && st.d.scoring === 'closed';
-    var aw = $('to-award');
-    if (!r) { el.textContent = '—'; btn.hidden = true; if (aw) aw.hidden = true; return; }      // 서버가 아직 예전 버전
+    if (!r) { el.textContent = '—'; btn.hidden = true; return; }      // 서버가 아직 예전 버전
     var on = r.at !== -1 && (r.state === 'open' || r.state === 'judging');                      // 띄우기로 한 상태 (투표 마감 대기 포함)
     el.innerHTML = !closed ? '심사 마감을 누르면 메인에'
       : r.state === 'open' ? '<span style="color:var(--blue)">메인에 공개 중</span>'
@@ -200,14 +204,6 @@
     btn.disabled = false;
     btn.textContent = on ? '결과 내리기' : '결과 발표';
     btn.setAttribute('data-op', on ? 'hide' : 'now');
-    if (!aw) {
-      aw = document.createElement('a');
-      aw.id = 'to-award'; aw.className = 'chipbtn'; aw.textContent = '시상 화면 →'; aw.target = '_blank'; aw.rel = 'noopener';
-      aw.style.cssText = 'display:inline-flex;align-items:center;text-decoration:none';
-      btn.parentNode.insertBefore(aw, $('reload'));
-    }
-    aw.href = '../award/#k=' + encodeURIComponent(st.key);  // /judge/score/ → /judge/award/   // 새 창 (발표 화면용). 토큰은 그 창이 주소에서 바로 지운다
-    aw.hidden = !closed;
   }
   function resOp(op) {
     if (!st.d || st.busy) return;

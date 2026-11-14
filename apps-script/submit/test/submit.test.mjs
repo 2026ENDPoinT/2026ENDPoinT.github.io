@@ -1347,13 +1347,17 @@ describe('심사위원 평가', () => {
     assert.equal(b.scoreBook().getSheetByName('점수').objects()[0]['코멘트'], 'HYPERLINK("x")');   // 수식으로 들어가지 않는다
   });
 
-  test('심사위원만 점수를 적고, 자기 점수만 본다 · 운영진은 종합을 본다', () => {
+  test('심사위원만 점수를 적고, 점수 칸에는 자기 점수만 · 종합은 운영진과 심사위원이 본다 (마감 · 결과 발표는 운영진만)', () => {
     const b = sb();
     const a = judge(b, '한 교수님'), c = judge(b, '김 교수님'), op = b.viewer('박운영', '운영진');
     save(b, a, '03', { idea: 20, done: 20, ux: 20, arch: 20 });
     assert.deepEqual(Object.keys(b.post({ action: 'view.list', key: c }).mine), []);      // 남의 점수는 안 보인다
     assert.equal(save(b, op, '03', { idea: 1 }).error, 'NOT_JUDGE');
-    assert.equal(b.post({ action: 'score.summary', key: a }).error, 'NOT_STAFF');
+    const js = b.post({ action: 'score.summary', key: a });                                 // 교수님도 종합을 본다 (읽기만)
+    assert.deepEqual([js.ok, js.role, js.tracks.length], [true, '심사위원', 2]);
+    assert.equal(b.post({ action: 'score.state', key: a, op: 'close' }).error, 'NOT_STAFF');
+    assert.equal(b.post({ action: 'results.state', key: a, op: 'now' }).error, 'NOT_STAFF');
+    assert.equal(b.post({ action: 'results.award', key: a }).error, 'NOT_STAFF');
     assert.equal(b.post({ action: 'score.summary', key: 'x'.repeat(40) }).error, 'KEY_INVALID');
     assert.equal(b.post({ action: 'score.summary', key: op }).ok, true);
     assert.equal(b.post({ action: 'score.save', idToken: 'tok-a1', team: '03', scores: { idea: 1 } }).error, 'KEY_INVALID');   // 참가자 로그인으로는 안 된다

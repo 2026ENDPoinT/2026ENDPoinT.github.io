@@ -642,7 +642,7 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
 });
 
 /* ---------------------------------------------------------------- */
-await scenario('결과 발표: 심사 마감 단추 → 메인에 해커톤 1 – 3등 · 구현과제 1 – 4등, 시상 화면 (스페이스로 4 → 1, 3 → 1)', async (w) => {
+await scenario('결과 발표: 심사 마감 단추 → 메인에 해커톤 1 – 3등 · 구현과제 1 – 4등, 교수님 종합 보기, 시상 화면 (스페이스로 4 → 1, 3 → 1)', async (w) => {
   w.b.run('setup');
   const prof = w.b.viewer('가 교수님', '심사위원'), staffKey = w.b.viewer('운영 담당', '운영진');
   w.at('2026-11-14T13:00:00+09:00');
@@ -668,12 +668,11 @@ await scenario('결과 발표: 심사 마감 단추 → 메인에 해커톤 1 �
   await sp.goto(SITE + '/judge/score/#k=' + staffKey);
   await sp.waitForSelector('.stable');
   R.match('마감 전: 메인 결과 발표 칸 · 단추 이름', [await text(sp, '#s-res'), await text(sp, '#lock')].join(' | '), /심사 마감을 누르면 메인에 \| 심사 마감 · 결과 발표/);
-  R.eq('마감 전에는 시상 화면 단추가 없다', await sp.locator('#to-award').count() ? await sp.locator('#to-award').isVisible() : false, false);
   sp.once('dialog', (d) => d.accept());
   await sp.click('#lock');
   await sp.waitForFunction(() => /다시 열기/.test(document.getElementById('lock').textContent));
   R.match('투표가 남았으면 투표가 끝나는 대로', await text(sp, '#s-res'), /투표가 끝나는 대로 공개/);
-  R.eq('마감하면 시상 화면 단추가 생긴다', await sp.isVisible('#to-award'), true);
+  R.eq('시상 화면으로 가는 단추는 어디에도 없다 (운영진이 주소로 연다)', await sp.locator('a[href*="award"]').count(), 0);
   R.eq('구현과제 투표 중에는 메인에 아직 없다', await mainHidden('2026-11-14T14:21:00+09:00'), true);
 
   // 14:26 — 투표도 끝났다 → 메인에 뜬다
@@ -691,10 +690,21 @@ await scenario('결과 발표: 심사 마감 단추 → 메인에 해커톤 1 �
   R.check('메인에는 점수 · 심사위원 이름이 없다', !/교수님|\d+\.\d\d/.test(await text(page, '#results-grid')));
   await shot(page, 'e2e-results-main');
 
-  // 시상 화면: 심사 종합의 '시상 화면 →' (새 창, 토큰은 주소에서 지운다)
-  const href = await sp.getAttribute('#to-award', 'href');
+  // 교수님도 종합을 본다 (읽기만 — 마감 · 결과 발표 단추 없음)
+  const pp = await newPage(browser);
+  await pp.goto(SITE + '/judge/#k=' + prof);
+  await pp.waitForSelector('#to-score');
+  R.eq('교수님 현황판에도 심사 종합 → 이 있다', await pp.getAttribute('#to-score', 'href'), './score/');
+  await pp.click('#to-score');
+  await pp.waitForSelector('.stable');
+  R.eq('교수님 종합: 표는 보이고 마감 · 결과 발표 단추와 결과 칸은 없다',
+    [await pp.locator('tr.row').count() > 0, await pp.isVisible('#lock'), await pp.isVisible('#res'), await pp.isVisible('#s-res')], [true, false, false, false]);
+  R.eq('화면 오류 없음 (교수님 종합)', pp.errs, []);
+  await pp.context().close();
+
+  // 시상 화면: 운영진이 주소로 직접 연다 (토큰은 주소에서 지운다)
   const aw = await newPage(browser);
-  await aw.goto(new URL(href, SITE + '/judge/score/').href);
+  await aw.goto(SITE + '/judge/award/#k=' + staffKey);
   await aw.waitForSelector('.aw-slide.cover.in, #gate-wrap:not([hidden]) .t', { timeout: 30000 });
   R.eq('시상 화면이 열린다 (토큰 안내 없이)', await aw.evaluate(() => document.getElementById('gate-wrap').hidden ? '' : document.getElementById('gate').textContent), '');
   R.eq('시상 화면은 /judge/award/ 이고 주소에서 토큰을 지운다', await aw.evaluate(() => location.pathname + location.hash), '/judge/award/');
