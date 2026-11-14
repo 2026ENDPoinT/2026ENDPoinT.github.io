@@ -642,7 +642,7 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
 });
 
 /* ---------------------------------------------------------------- */
-await scenario('메인 결과 발표: 심사 · 투표가 마감되고 14:30 이 지나면 해커톤 1 – 3등 · 구현과제 1 – 4등', async (w) => {
+await scenario('결과 발표: 심사 마감 단추 → 메인에 해커톤 1 – 3등 · 구현과제 1 – 4등, 시상 화면 (스페이스로 4 → 1, 3 → 1)', async (w) => {
   w.b.run('setup');
   const prof = w.b.viewer('가 교수님', '심사위원'), staffKey = w.b.viewer('운영 담당', '운영진');
   w.at('2026-11-14T13:00:00+09:00');
@@ -652,36 +652,81 @@ await scenario('메인 결과 발표: 심사 · 투표가 마감되고 14:30 이
   }
   // 브라우저 시계도 그 시각으로 (메인 페이지는 14:00 전에는 서버에 묻지 않는다)
   const clock = (page, iso) => page.addInitScript((t) => { const d = t - Date.now(), N = Date.now.bind(Date); Date.now = () => N() + d; }, Date.parse(iso));
+  const mainHidden = async (iso) => {
+    const p = await newPage(browser);
+    await clock(p, iso);
+    await p.goto(SITE + '/');
+    await p.waitForTimeout(1500);
+    const hidden = await p.locator('#results').isHidden();
+    await p.context().close();
+    return hidden;
+  };
 
-  w.at('2026-11-14T14:26:00+09:00');                             // 다 마감됐지만 발표(14:30) 전
-  const p1 = await newPage(browser);
-  await clock(p1, '2026-11-14T14:26:00+09:00');
-  await p1.goto(SITE + '/');
-  await p1.waitForTimeout(1500);
-  R.eq('발표 시각 전에는 결과 절이 숨어 있다', await p1.locator('#results').isHidden(), true);
-  await p1.context().close();
+  // 14:20 — 운영진이 심사 종합에서 '심사 마감 · 결과 발표' (구현과제 투표는 14:25 까지)
+  w.at('2026-11-14T14:20:00+09:00');
+  const sp = await newPage(browser);
+  await sp.goto(SITE + '/judge/score/#k=' + staffKey);
+  await sp.waitForSelector('.stable');
+  R.match('마감 전: 메인 결과 발표 칸 · 단추 이름', [await text(sp, '#s-res'), await text(sp, '#lock')].join(' | '), /심사 마감을 누르면 메인에 \| 심사 마감 · 결과 발표/);
+  R.eq('마감 전에는 시상 화면 단추가 없다', await sp.locator('#to-award').count() ? await sp.locator('#to-award').isVisible() : false, false);
+  sp.once('dialog', (d) => d.accept());
+  await sp.click('#lock');
+  await sp.waitForFunction(() => /다시 열기/.test(document.getElementById('lock').textContent));
+  R.match('투표가 남았으면 투표가 끝나는 대로', await text(sp, '#s-res'), /투표가 끝나는 대로 공개/);
+  R.eq('마감하면 시상 화면 단추가 생긴다', await sp.isVisible('#to-award'), true);
+  R.eq('구현과제 투표 중에는 메인에 아직 없다', await mainHidden('2026-11-14T14:21:00+09:00'), true);
 
-  w.at('2026-11-14T14:31:00+09:00');
+  // 14:26 — 투표도 끝났다 → 메인에 뜬다
+  w.at('2026-11-14T14:26:00+09:00');
   const page = await newPage(browser);
-  await clock(page, '2026-11-14T14:31:00+09:00');
+  await clock(page, '2026-11-14T14:26:00+09:00');
   await page.goto(SITE + '/');
   await page.waitForSelector('#results:not([hidden]) .res-trk');
   const got = await page.$$eval('#results .res-trk', (ts) => ts.map((t) => [t.dataset.track,
     [...t.querySelectorAll('.pl')].map((p) => [p.querySelector('b').textContent, [...p.querySelectorAll('.tm .no')].map((x) => x.textContent)])]));
-  R.eq('해커톤 1등 1 · 2등 2 · 3등 3팀, 구현과제 1 – 4등 (최종 S 순서)', got, [
+  R.eq('메인: 해커톤 1등 1 · 2등 2 · 3등 3팀, 구현과제 1 – 4등 (최종 S 순서)', got, [
     ['H', [['1등', ['11팀']], ['2등', ['12팀', '13팀']], ['3등', ['14팀', '15팀', '16팀']]]],
     ['A', [['1등', ['01팀']], ['2등', ['02팀']], ['3등', ['03팀']], ['4등', ['04팀']]]]]);
   R.eq('맨 위 단추가 결과 보기로', (await page.locator('#v-home .hero-cta a.btn').first().textContent()).trim(), '결과 보기');
-  R.check('점수 · 심사위원 이름은 메인에 없다', !/교수님|점수 [0-9]|\d+\.\d\d/.test(await text(page, '#results-grid')));
+  R.check('메인에는 점수 · 심사위원 이름이 없다', !/교수님|\d+\.\d\d/.test(await text(page, '#results-grid')));
   await shot(page, 'e2e-results-main');
-  R.eq('화면 오류 없음', page.errs, []);
 
-  // 운영진이 내리면 사라진다 (화면은 1분마다 다시 묻는다 — 여기서는 탭을 다시 보는 것으로 바로)
-  R.eq('운영진: 내리기', w.b.post({ action: 'results.state', key: staffKey, op: 'hide' }).results.state, 'ready');
+  // 시상 화면: 심사 종합의 '시상 화면 →' (새 창, 토큰은 주소에서 지운다)
+  const href = await sp.getAttribute('#to-award', 'href');
+  const aw = await newPage(browser);
+  await aw.goto(new URL(href, SITE + '/judge/score/').href);
+  await aw.waitForSelector('.aw-slide.cover.in, #gate-wrap:not([hidden]) .t', { timeout: 30000 });
+  R.eq('시상 화면이 열린다 (토큰 안내 없이)', await aw.evaluate(() => document.getElementById('gate-wrap').hidden ? '' : document.getElementById('gate').textContent), '');
+  R.eq('시상 화면은 /judge/award/ 이고 주소에서 토큰을 지운다', await aw.evaluate(() => location.pathname + location.hash), '/judge/award/');
+  const seen = [];
+  for (let i = 0; i < 14; i++) {
+    await aw.waitForTimeout(150);
+    seen.push(await aw.evaluate(() => { const x = [...document.querySelectorAll('.aw-slide')].pop();
+      const q = (c) => x.querySelector(c)?.textContent.trim() || '';
+      return x.classList.contains('team') ? q('.trk').slice(0, 2) + ' ' + q('.place').replace(/\s+/g, '') + ' ' + q('.no') : x.className.replace('aw-slide ', '').replace(' in', ''); }));
+    await aw.keyboard.press('Space');
+  }
+  R.eq('스페이스로: 표지 → 구현과제 4 · 3 · 2 · 1등 → 해커톤 3등(S 낮은 팀부터) · 2등 · 1등 → 축하합니다', seen, [
+    'cover', 'sec', '구현 4등 04팀', '구현 3등 03팀', '구현 2등 02팀', '구현 1등 01팀', 'sec',
+    'Ha 3등 16팀', 'Ha 3등 15팀', 'Ha 3등 14팀', 'Ha 2등 13팀', 'Ha 2등 12팀', 'Ha 1등 11팀', 'end']);
+  await aw.keyboard.press('Home');
+  for (let i = 0; i < 5; i++) await aw.keyboard.press('ArrowRight');
+  await aw.waitForTimeout(2600);                                    // 점수가 0 에서 올라가 멈출 때까지
+  R.eq('구현과제 1등 장면: 최종 S', await text(aw, '.aw-slide.first .score b'), '85.00');
+  await shot(aw, 'e2e-award-1st');
+  await aw.keyboard.press('ArrowLeft');
+  await aw.waitForTimeout(200);
+  R.match('← 로 이전 장면', await text(aw, '.aw-slide:last-child .place'), /^2/);
+  R.eq('화면 오류 없음', [...page.errs, ...sp.errs, ...aw.errs], []);
+
+  // 운영진이 결과를 내리면 메인에서 사라진다 (화면은 1분마다 다시 묻는다 — 여기서는 탭을 다시 보는 것으로 바로)
+  sp.once('dialog', (d) => d.accept());
+  await sp.click('#res');
+  await sp.waitForFunction(() => /공개 전/.test(document.getElementById('s-res').textContent));
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await page.waitForFunction(() => document.getElementById('results').hidden);
-  R.check('내리면 메인에서 사라진다', true);
-  await page.context().close();
+  R.check('결과 내리기 → 메인에서 사라진다', true);
+  await page.context().close(); await sp.context().close(); await aw.context().close();
 });
 
 /* ---------------------------------------------------------------- */

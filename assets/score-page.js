@@ -76,7 +76,7 @@
     var until = d.scoreUntil ? EP.fmtTime(d.scoreUntil).slice(6) : '';
     $('s-state').innerHTML = d.scoring === 'closed' ? '마감됨' + (until ? ' · ' + until : '')
       : '<span style="color:var(--blue)">받는 중</span>' + (until ? ' · ' + until + '까지' : '');
-    $('lock').textContent = d.scoring === 'closed' ? '심사 다시 열기' : '심사 마감';
+    $('lock').textContent = d.scoring === 'closed' ? '심사 다시 열기' : '심사 마감 · 결과 발표';
     var auto = $('lock-auto');
     if (d.scoreCustom && !auto) {
       auto = document.createElement('button');
@@ -173,52 +173,51 @@
   // 마감 · 다시 열기(10분 뒤 저절로 마감) · 시간표대로. 서버는 SCORE_UNTIL 속성에 시각을 적는다
   function lockOp(op) {
     if (!st.d || st.busy) return;
-    var ask = { close: '심사를 지금 마감할까요?\n심사위원이 더 고칠 수 없게 됩니다 (다시 열 수 있습니다).',
+    var ask = { close: '심사를 지금 마감하고 메인 페이지에 결과를 띄울까요?\n심사위원이 더 고칠 수 없게 되고(다시 열 수 있습니다), 시상 화면을 열 수 있습니다.\n구현과제 투표가 아직이면 결과는 투표가 끝나는 대로 뜹니다.',
                 open: '심사를 다시 열까요?\n10분 뒤 저절로 마감됩니다.', auto: '심사 마감 시각을 시간표대로 되돌릴까요?' }[op];
     if (!window.confirm(ask)) return;
     st.busy = true;
     EP.api('score.state', { op: op }, { key: st.key, tries: 2 }).then(function (r) {
       st.busy = false;
-      if (r && r.ok) { EP.toast({ close: '심사를 마감했습니다', open: '심사를 다시 열었습니다', auto: '시간표대로 되돌렸습니다' }[op]); load(true); }
+      if (r && r.ok) { EP.toast({ close: '심사를 마감했습니다 · 메인에 결과를 띄웁니다', open: '심사를 다시 열었습니다 (결과는 메인에서 내려갑니다)', auto: '시간표대로 되돌렸습니다' }[op]); load(true); }
       else EP.toast(EP.say(r));
     }, function (e) { st.busy = false; EP.toast(EP.say(e)); });
   }
   $('lock').addEventListener('click', function () { if (st.d) lockOp(st.d.scoring !== 'closed' ? 'close' : 'open'); });
 
-  /* 메인 페이지 결과 발표: 심사 · 두 트랙 투표가 모두 마감되고 발표 시각(RESULTS_AT, 14:30)이 지나면 메인에 등수가 뜬다.
-     '지금 공개' 는 발표 시각을 지금으로, '내리기' 는 메인에서 감추고, '시간표대로' 는 14:30 규칙으로 되돌린다. */
+  /* 메인 페이지 결과 발표 · 시상 화면: '심사 마감' 을 누르면 메인에 결과가 뜨고(투표가 아직이면 투표 마감 때) 시상 화면을 열 수 있다.
+     이미 (14:25 에 저절로) 마감됐으면 '결과 발표' 로 띄운다. '결과 내리기' 는 메인에서 감춘다. */
   function paintRes(r) {
-    var el = $('s-res'), btn = $('res');
-    if (!r) { el.textContent = '—'; btn.hidden = true; return; }      // 서버가 아직 예전 버전
-    var at = r.at > 0 ? EP.fmtTime(r.at).slice(6) : '';
-    el.innerHTML = r.state === 'open' ? '<span style="color:var(--blue)">메인에 공개 중</span>'
-      : r.at === -1 ? '내림 · 메인에 안 보임'
-      : r.state === 'ready' ? (at ? at + ' 공개 예정' : '곧 공개')
-      : '심사 · 투표 마감 뒤' + (at ? ' · ' + at : '');
-    btn.hidden = false;
-    btn.disabled = r.state === 'judging';
-    btn.title = r.state === 'judging' ? '심사와 두 트랙 투표가 모두 마감된 뒤 공개할 수 있습니다' : '';
-    btn.textContent = r.state === 'open' ? '결과 내리기' : '결과 지금 공개';
-    btn.setAttribute('data-op', r.state === 'open' ? 'hide' : 'now');
-    var auto = $('res-auto');
-    if (r.custom && !auto) {
-      auto = document.createElement('button');
-      auto.id = 'res-auto'; auto.type = 'button'; auto.className = 'chipbtn'; auto.textContent = '결과 시간표대로';
-      btn.parentNode.insertBefore(auto, $('reload'));
-      auto.addEventListener('click', function () { resOp('auto'); });
+    var el = $('s-res'), btn = $('res'), closed = st.d && st.d.scoring === 'closed';
+    var aw = $('to-award');
+    if (!r) { el.textContent = '—'; btn.hidden = true; if (aw) aw.hidden = true; return; }      // 서버가 아직 예전 버전
+    var on = r.at !== -1 && (r.state === 'open' || r.state === 'judging');                      // 띄우기로 한 상태 (투표 마감 대기 포함)
+    el.innerHTML = !closed ? '심사 마감을 누르면 메인에'
+      : r.state === 'open' ? '<span style="color:var(--blue)">메인에 공개 중</span>'
+      : on ? '투표가 끝나는 대로 공개'
+      : r.at > 0 && r.at > (st.d.now || 0) ? EP.fmtTime(r.at).slice(6) + ' 공개 예정' : '공개 전';
+    btn.hidden = !closed;
+    btn.disabled = false;
+    btn.textContent = on ? '결과 내리기' : '결과 발표';
+    btn.setAttribute('data-op', on ? 'hide' : 'now');
+    if (!aw) {
+      aw = document.createElement('a');
+      aw.id = 'to-award'; aw.className = 'chipbtn'; aw.textContent = '시상 화면 →'; aw.target = '_blank'; aw.rel = 'noopener';
+      aw.style.cssText = 'display:inline-flex;align-items:center;text-decoration:none';
+      btn.parentNode.insertBefore(aw, $('reload'));
     }
-    if (auto) auto.hidden = !r.custom;
+    aw.href = '../award/#k=' + encodeURIComponent(st.key);  // /judge/score/ → /judge/award/   // 새 창 (발표 화면용). 토큰은 그 창이 주소에서 바로 지운다
+    aw.hidden = !closed;
   }
   function resOp(op) {
     if (!st.d || st.busy) return;
-    var ask = { now: '메인 페이지에 결과(해커톤 1 – 3등 · 구현과제 1 – 4등)를 지금 띄울까요?',
-                hide: '메인 페이지에서 결과를 내릴까요?\n다시 공개할 때까지 보이지 않습니다.',
-                auto: '결과 발표를 시간표대로(심사 · 투표 마감 + 발표 시각) 되돌릴까요?' }[op];
+    var ask = { now: '메인 페이지에 결과(해커톤 1 – 3등 · 구현과제 1 – 4등)를 띄울까요?\n투표가 아직이면 투표가 끝나는 대로 뜹니다.',
+                hide: '메인 페이지에서 결과를 내릴까요?\n다시 띄울 때까지 보이지 않습니다.' }[op];
     if (!window.confirm(ask)) return;
     st.busy = true;
     EP.api('results.state', { op: op }, { key: st.key, tries: 2 }).then(function (r) {
       st.busy = false;
-      if (r && r.ok) { EP.toast({ now: '메인에 결과를 띄웠습니다 (1분 안에 보입니다)', hide: '메인에서 결과를 내렸습니다', auto: '시간표대로 되돌렸습니다' }[op]); load(true); }
+      if (r && r.ok) { EP.toast({ now: '메인에 결과를 띄웠습니다 (1분 안에 보입니다)', hide: '메인에서 결과를 내렸습니다' }[op]); load(true); }
       else EP.toast(EP.say(r));
     }, function (e) { st.busy = false; EP.toast(EP.say(e)); });
   }

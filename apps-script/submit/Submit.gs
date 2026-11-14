@@ -89,9 +89,10 @@ var CONFIG = {
   // 심사위원이 점수를 고칠 수 있는 마지막 시각 (투표 취합 시작). 비우면 운영진이 마감할 때까지.
   // 종합 화면의 '심사 마감' · '다시 열기' 는 스크립트 속성 SCORE_UNTIL 에 시각을 적는다.
   SCORE_UNTIL: '2026-11-14T14:25:00+09:00',
-  // 결과 발표: 심사와 두 트랙 투표가 모두 마감되고 이 시각이 지나면 메인 페이지에 등수가 뜬다 (발표 전에 새지 않게).
-  // 'none' 이면 마감되는 대로 바로. 종합 화면의 '지금 공개' 는 스크립트 속성 RESULTS_AT 에 지금 시각을 적는다.
-  RESULTS_AT: '2026-11-14T14:30:00+09:00',
+  // 결과 발표: 운영진이 종합 화면에서 '심사 마감'(또는 '결과 발표')을 누르면 메인 페이지에 등수가 뜬다.
+  // 그 단추가 스크립트 속성 RESULTS_AT 에 지금 시각을 적는다. 'off' = 누를 때까지 안 뜸 (14:25 자동 마감으로는 뜨지 않는다 — 발표 전에 새지 않게).
+  // 시각을 적어 두면 그 시각에 (심사 · 투표가 다 마감돼 있으면) 저절로, 'none' 이면 마감되는 대로 바로.
+  RESULTS_AT: 'off',
   // 등수마다 받는 팀 수 — 메인 페이지 상금표와 같게 (해커톤 1등 1 · 2등 2 · 3등 3, 구현과제 1 – 4등 각 1)
   PRIZES: { H: [1, 2, 3], A: [1, 1, 1, 1] },
   // 점수를 적는 스프레드시트: 제출 폴더와 나란한 이 이름의 폴더 안, 이 이름의 시트 (처음 설정이 찾거나 만든다)
@@ -246,6 +247,7 @@ function route_(action, body) {
     case 'status.public': return actStatusPublic_(body);
     case 'results.public': return actResultsPublic_(body);
     case 'results.state': return actResultsState_(body);
+    case 'results.award': return actResultsAward_(body);
     case 'deck.pdf':      return actDeckPdf_(body);
     default:              return fail_('UNKNOWN_ACTION');
   }
@@ -904,7 +906,7 @@ function actScoreState_(body) {
   withLock_(function () {
     var P = PropertiesService.getScriptProperties(), u = cutMs_('SCORE_UNTIL');
     P.deleteProperty('SCORE_CLOSED');                     // 예전 마감 버튼이 남긴 값
-    if (op === 'close') P.setProperty('SCORE_UNTIL', iso_(now));
+    if (op === 'close') { P.setProperty('SCORE_UNTIL', iso_(now)); P.setProperty('RESULTS_AT', iso_(now)); }   // 마감 = 결과 발표 (투표가 남았으면 투표 마감 때)
     else if (op === 'open') P.setProperty('SCORE_UNTIL', iso_(Math.max(now + reopenMin_() * 60000, u > now ? u : 0)));
     else P.deleteProperty('SCORE_UNTIL');
   });
@@ -916,10 +918,11 @@ function actScoreState_(body) {
 /* ================================================================
    결과 발표 — 메인 페이지 (로그인 없이)
    ----------------------------------------------------------------
-   심사(SCORE_UNTIL)와 두 트랙 투표가 모두 마감되고 RESULTS_AT(14:30 결과 발표)이 지나면 공개된다.
+   운영진이 종합 화면에서 '심사 마감'(이미 마감됐으면 '결과 발표')을 누르면 공개된다 — 두 트랙 투표가 아직이면 투표가 마감되는 대로.
+   (그 단추가 RESULTS_AT 에 지금 시각을 적는다. 기본 'off' 라 14:25 자동 마감만으로는 뜨지 않는다.)
    등수는 최종 S 순서대로 PRIZES(등수마다 팀 수)에 맞춰 나눈다 — 해커톤 1등 1 · 2등 2 · 3등 3, 구현과제 1 – 4등 각 1.
    동점(S · 심사위원 점수 · 동점 문항까지 같음)이면 같은 등수를 준다. 점수는 내보내지 않는다 (등수 · 팀 번호 · 프로젝트 이름만).
-   운영진은 종합 화면에서 '지금 공개' (RESULTS_AT = 지금) · '내리기' (RESULTS_AT = off) · '시간표대로' (속성 지움).
+   운영진: '결과 발표' (RESULTS_AT = 지금) · '결과 내리기' (RESULTS_AT = off). 시상 화면(/judge/award/)은 results.award (최종 S 포함).
    ================================================================ */
 
 /** RESULTS_AT: 0 = 시각 조건 없음, Infinity = 내림(off) */
@@ -939,8 +942,8 @@ function resultsInfo_() {
   var at = resultsAt_(), p = str_(props_().RESULTS_AT);
   return { state: resultsState_(), at: at === Infinity ? -1 : at, custom: !!p };
 }
-/** 트랙마다 [{ place, teams: [{ no, title }] }] — scoreTable_ 의 S 순서대로 PRIZES 에 맞춰 */
-function resultsBuild_() {
+/** 트랙마다 [{ place, teams: [{ no, title (, s) }] }] — scoreTable_ 의 S 순서대로 PRIZES 에 맞춰. withS 면 최종 S 도 (운영진 시상 화면) */
+function resultsBuild_(withS) {
   var prizes = CONFIG.PRIZES || {};
   return scoreTable_().tracks.map(function (tr) {
     var counts = prizes[tr.key] || [], places = counts.map(function (n, i) { return { place: i + 1, teams: [] }; });
@@ -954,7 +957,9 @@ function resultsBuild_() {
         var c = 0;
         for (var i = 0; i < counts.length; i++) { c += counts[i]; if (pos < c) { place = i + 1; break; } }
       }
-      places[place - 1].teams.push({ no: r.no, title: r.title || '' });
+      var t = { no: r.no, title: r.title || '' };
+      if (withS) t.s = r.S;
+      places[place - 1].teams.push(t);
       pos++; last = { rank: r.rank, place: place };
     });
     return { key: tr.key, name: tr.name, places: places };
@@ -970,6 +975,14 @@ function actResultsPublic_(body) {
   out.tracks = hit.tracks;
   return out;
 }
+/** 운영진: 시상 화면 (/judge/award/) — 등수마다 팀 · 프로젝트 이름 · 최종 S. 공개 전에도 볼 수 있다 (리허설) */
+function actResultsAward_(body) {
+  var v = viewer_(body.key);
+  if (!v) return fail_('KEY_INVALID');
+  if (v.role !== '운영진') return fail_('NOT_STAFF');
+  seen_(v);
+  return { ok: true, api: API_VERSION, now: nowMs_(), scoring: scoreState_(), results: resultsInfo_(), tracks: resultsBuild_(true) };
+}
 /** 운영진: { key, op } — 'now' 지금 공개 · 'hide' 내리기 · 'auto' 시간표대로 (RESULTS_AT 속성) */
 function actResultsState_(body) {
   var v = viewer_(body.key);
@@ -977,7 +990,8 @@ function actResultsState_(body) {
   if (v.role !== '운영진') return fail_('NOT_STAFF');
   var op = String(body.op || '');
   if (op !== 'now' && op !== 'hide' && op !== 'auto') return fail_('BAD_OP');
-  if (op === 'now' && resultsState_() === 'judging') return fail_('RESULTS_NOT_READY', { results: resultsInfo_() });
+  // 심사가 마감돼 있어야 한다. 투표가 아직이면 투표가 마감되는 대로 뜬다 ('심사 마감' 단추와 같게)
+  if (op === 'now' && scoreState_() !== 'closed') return fail_('RESULTS_NOT_READY', { results: resultsInfo_() });
   var now = nowMs_();
   withLock_(function () {
     var P = PropertiesService.getScriptProperties();
@@ -1269,7 +1283,8 @@ function actVoteSubmit_(body) {
     propsDrop_();                                                // 운영진이 방금 닫았을 수 있다 — 캐시가 아니라 지금 값으로
     var now = voteState_(tr.key, t0);
     if (now !== 'open') return fail_(now === 'closed' ? 'VOTE_CLOSED' : 'VOTE_NOT_OPEN');
-    var ms = nowMs_(), at = kst_(ms), ballot = 'B' + ms + '-' + ('00' + Math.floor(Math.random() * 1000)).slice(-3);
+    // 투표지 번호: 받은 시각(ms) + 겹치지 않는 꼬리 (같은 1/1000초에 여럿이 내도 번호가 갈리게 — 세 자리 난수는 1/1000 로 겹쳤다)
+    var ms = nowMs_(), at = kst_(ms), ballot = 'B' + ms + '-' + rand_(8);
     var sh = voteSheet_(), head = voteHead_(sh), codes = {}, recs = {};
     pick.forEach(function (no) {
       var sig = voteSig_(salt, ballot, tr.key, voter, a.team, no, at);
@@ -1295,12 +1310,14 @@ function voteVerify_(sh, head, ballot, recs) {
   try {
     var last = sh.getLastRow(), from = Math.max(2, last - Object.keys(recs).length - 60);
     if (last < from) return;
-    var iB = head.indexOf('투표지'), iT = head.indexOf('대상 팀');
+    var iB = head.indexOf('투표지'), iT = head.indexOf('대상 팀'), iV = head.indexOf('투표자(익명)');
     var vals = sh.getRange(from, 1, last - from + 1, head.length).getValues();
     vals.forEach(function (row, j) {
       if (str_(row[iB]) !== ballot) return;
       var rec = recs[teamNo_(row[iT])];
-      if (!rec || head.every(function (h, k) { return rec[h] === undefined || str_(row[k]) === String(rec[h]); })) return;
+      // 내 줄만 — 같은 1/1000초에 같은 난수로 투표지 번호가 겹친 다른 사람의 줄은 건드리지 않는다
+      if (!rec || iV < 0 || str_(row[iV]) !== String(rec['투표자(익명)'])) return;
+      if (head.every(function (h, k) { return rec[h] === undefined || str_(row[k]) === String(rec[h]); })) return;
       var r = sh.getRange(from + j, 1, 1, head.length);
       r.setNumberFormat('@');
       r.setValues([head.map(function (h, k) { return rec[h] === undefined ? row[k] : String(rec[h]); })]);

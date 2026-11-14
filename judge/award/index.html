@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E0E0F">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>시상 · ENDPoinT</title>
+<link rel="icon" href="../../assets/img/icon-192.png" sizes="192x192" type="image/png">
+<link rel="icon" href="../../assets/img/icon-512.png" sizes="512x512" type="image/png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@100;200;300;400;500;600&display=swap">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="stylesheet" href="../../assets/submit.css?v=b34bc05d">
+<style>
+/* 시상 화면 — 발표 화면(프로젝터)용. 늘 어두운 화면, 화면 크기에 맞춰 글자가 커진다 (vmin) */
+html,body{height:100%}
+body.aw{margin:0;background:#0E0E0F;color:#F4F4F4;overflow:hidden;-webkit-font-smoothing:antialiased;cursor:default;
+  font-family:'Gothic A1',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',system-ui,sans-serif}
+body.aw.idle{cursor:none}
+.aw-stage{position:fixed;inset:0}
+.aw-slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:2.2vmin;padding:8vmin 10vmin;box-sizing:border-box;
+  transition:opacity .5s ease}
+.aw-slide.gone{opacity:0}
+.aw-slide .trk{font-size:1.7vmin;letter-spacing:.34em;text-transform:uppercase;font-weight:500;color:#8C8C8C}
+.aw-slide .trk.red{color:#E8636D}
+.aw-slide .trk.blue{color:#6AA3F0}
+.aw-slide .place{font-size:min(27vmin,22vw);font-weight:100;letter-spacing:-.045em;line-height:.88;margin:1vmin 0 1.4vmin}
+.aw-slide .place small{font-size:.3em;font-weight:200;letter-spacing:0;margin-left:.12em}
+.aw-slide .no{font-size:2.6vmin;color:#9A9A9A;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+.aw-slide .title{font-size:min(8.4vmin,6.6vw);font-weight:200;letter-spacing:-.025em;line-height:1.18;max-width:22ch;overflow-wrap:anywhere}
+.aw-slide .score{display:flex;align-items:baseline;gap:2vmin;margin-top:1.6vmin}
+.aw-slide .score span{font-size:1.7vmin;letter-spacing:.3em;color:#8C8C8C;text-transform:uppercase}
+.aw-slide .score b{font-size:6.4vmin;font-weight:200;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.aw-slide .of{position:absolute;right:10vmin;top:8vmin;font-size:1.8vmin;color:#7A7A7A;letter-spacing:.12em;font-variant-numeric:tabular-nums}
+/* 1등 — 파랗게, 뒤에 은은한 빛 */
+.aw-slide.first .place{color:#6AA3F0;text-shadow:0 0 7vmin rgba(106,163,240,.35)}
+.aw-slide.first::before{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 1.6s ease .2s;
+  background:radial-gradient(70vmin 60vmin at 18% 48%,rgba(22,85,173,.32),transparent 70%)}
+.aw-slide.first.in::before{opacity:1}
+/* 등장: 흐림에서 또렷하게, 위로 살짝 (차례대로) */
+.aw-slide [data-a]{opacity:0;transform:translateY(2.6vmin);filter:blur(12px);
+  transition:opacity 1s cubic-bezier(.32,.72,0,1),transform 1s cubic-bezier(.32,.72,0,1),filter 1s cubic-bezier(.32,.72,0,1)}
+.aw-slide.in [data-a]{opacity:1;transform:none;filter:none}
+.aw-slide.in [data-a="2"]{transition-delay:.45s}
+.aw-slide.in [data-a="3"]{transition-delay:.75s}
+.aw-slide.in [data-a="4"]{transition-delay:1.05s}
+/* 표지 · 트랙 · 끝 */
+.aw-slide.cover .wm{font-size:min(17vmin,14vw);font-weight:100;letter-spacing:-.05em;line-height:1}
+.aw-slide.cover .sub{font-size:3.2vmin;font-weight:200;color:#D0D0D0;letter-spacing:-.01em}
+.aw-slide .hint{position:absolute;left:10vmin;bottom:8vmin;font-size:1.7vmin;color:#6F6F6F;letter-spacing:.14em}
+.aw-badge{align-self:flex-start;font-size:1.5vmin;letter-spacing:.16em;padding:.7vmin 1.3vmin;border:1px solid #E8636D;color:#E8636D}
+.aw-slide.sec .big{font-size:min(15vmin,12vw);font-weight:100;letter-spacing:-.045em;line-height:1}
+.aw-slide.sec .sub{font-size:2.8vmin;color:#9A9A9A;font-weight:200}
+.aw-slide.end .big{font-size:min(10vmin,8vw);font-weight:100;letter-spacing:-.04em;line-height:1}
+.aw-slide.end .cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6vmin;margin-top:3vmin}
+.aw-slide.end .col>.trk{display:block;margin-bottom:1.4vmin}
+.aw-slide.end .r{display:grid;grid-template-columns:5.6vmin 6.4vmin minmax(0,1fr) auto;gap:1.6vmin;align-items:baseline;padding:1.3vmin 0;border-top:1px solid #262626}
+.aw-slide.end .r b{font-size:2.2vmin;font-weight:400}
+.aw-slide.end .r.p1 b{color:#6AA3F0}
+.aw-slide.end .r .n{font-size:1.7vmin;color:#8C8C8C;font-variant-numeric:tabular-nums}
+.aw-slide.end .r .t{font-size:2.3vmin;font-weight:300;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aw-slide.end .r .s{font-size:1.9vmin;color:#BDBDBD;font-variant-numeric:tabular-nums}
+.aw-slide.empty .big{font-size:5vmin;font-weight:200}
+/* 아래 안내 · 진행 */
+.aw-hud{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:2vmin;padding:2.2vmin 3vmin;
+  font-size:1.35vmin;color:#5E5E5E;letter-spacing:.08em;transition:opacity .6s ease}
+body.aw.idle .aw-hud{opacity:0}
+.aw-hud button{background:none;border:1px solid #333;color:#8C8C8C;font:inherit;letter-spacing:inherit;padding:.5vmin 1.1vmin;cursor:pointer}
+.aw-bar{position:fixed;left:0;top:0;height:2px;width:0;background:#1655AD;transition:width .7s cubic-bezier(.32,.72,0,1)}
+.aw-gate{position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:#0E0E0F;z-index:5}
+.aw-gate .gate{max-width:640px;width:100%}
+@media (prefers-reduced-motion:reduce){
+  .aw-slide [data-a]{transition:none;filter:none;transform:none}
+  .aw-slide,.aw-slide.first::before{transition:none}
+}
+</style>
+</head>
+<body class="aw">
+<div class="aw-bar" id="bar" aria-hidden="true"></div>
+<main class="aw-stage" id="stage" aria-live="polite"></main>
+<div class="aw-hud" id="hud"><span id="prog"></span><span>Space · → 다음 &nbsp; ← 이전 &nbsp; F 전체 화면 &nbsp; R 새로 읽기 &nbsp;<button type="button" id="fs">전체 화면</button></span></div>
+<div class="aw-gate" id="gate-wrap" hidden><div class="gate" id="gate"></div></div>
+
+<script src="../../assets/submit-config.js?v=1f1bcd66"></script>
+<script src="../../assets/submit-core.js?v=ef300c28"></script>
+<script src="../../assets/award-page.js?v=1e6756ee"></script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { loadBackend, token, bytesOf, md5, FakeSheet } from './harness.mjs';
 
 const TOKENS = {
@@ -1201,6 +1202,19 @@ describe('참가자 인기투표', () => {
     assert.deepEqual([h.votes, h.mean, h.rows.every((r) => r.p === 0)], [0, 0, true]);    // 표가 없으면 모두 0
   });
 
+  test('같은 1/1000초에 같은 난수로 투표지 번호가 겹쳐도 다른 사람의 표를 덮어쓰지 않는다', () => {
+    const b = vb();
+    open(b, 'A');
+    // 시계가 멈춰 있고 꼬리까지 같게 해서 투표지 번호를 일부러 겹친다 (실제로는 거의 없는 일)
+    vm.runInContext("Utilities.getUuid = function () { return 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'; };", b.ctx);
+    assert.equal(vote(b, 'tok-a1', 'A', ['01', '02', '04']).ok, true);
+    assert.equal(vote(b, 'tok-a2', 'A', ['01', '05']).ok, true);
+    assert.equal(vote(b, 'tok-c1', 'A', ['01']).ok, true);
+    assert.equal(new Set(b.rows('투표').map((r) => r['투표지'])).size, 1);
+    const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((x) => x.key === 'A');
+    assert.deepEqual([t.votes, t.voters], [6, 3]);
+  });
+
   test('운영진 열람 링크(현황판)에는 결과가 보이고, 심사위원 링크에는 없다', () => {
     const b = vb();
     open(b, 'A');
@@ -1225,7 +1239,7 @@ describe('참가자 인기투표', () => {
     assert.deepEqual(tl.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['01', 3], ['02', 3], ['04', 1]]);
     assert.equal(b.isLocked(), false);
     assert.equal(new Set(b.rows('투표').map((r) => r['투표지'] + '|' + r['대상 팀'])).size, b.rows('투표').length);   // 줄이 겹치지 않는다
-    assert.ok(b.rows('투표').every((r) => /^B\d{13}-\d{3}$/.test(r['투표지'])));                                  // 투표지 번호 = 시각(ms) - 세 자리
+    assert.ok(b.rows('투표').every((r) => /^B\d{13}-[0-9a-f]{8}$/.test(r['투표지'])));                             // 투표지 번호 = 시각(ms) - 겹치지 않는 꼬리 8자리
   });
 
   test('운영진이 닫는 순간과 겹친 투표는 잠근 뒤 다시 보고 거절한다', () => {
@@ -1813,7 +1827,7 @@ describe('발표 순서 — 트랙마다 마지막 제출이 늦은 팀부터 (1
   });
 });
 
-describe('결과 발표 — 메인 페이지 (심사 · 투표가 모두 마감되고 14:30 이 지나면)', () => {
+describe('결과 발표 — 운영진이 심사 마감(결과 발표)을 누르면 메인 페이지에 · 시상 화면', () => {
   const ms = (iso) => Date.parse(iso);
   const four = (n) => ({ idea: n, done: n, ux: n, arch: n });
   function rb() {
@@ -1833,55 +1847,86 @@ describe('결과 발표 — 메인 페이지 (심사 · 투표가 모두 마감�
   const pub = (b) => b.post({ action: 'results.public' });
   const shape = (r, key) => r.tracks.find((t) => t.key === key).places.map((p) => [p.place, p.teams.map((t) => t.no)]);
 
-  test('심사 · 투표 중에는 아무것도 없고, 다 마감돼도 14:30 전에는 시각만 — 14:30 이 지나면 등수', () => {
-    const { b } = rb();
+  test('14:25 에 저절로 마감돼도 메인에는 안 뜬다 — 운영진이 결과 발표를 누르면 뜬다', () => {
+    const { b, op } = rb();
     let r = pub(b);
-    assert.deepEqual([r.ok, r.state, r.at, r.tracks], [true, 'judging', ms('2026-11-14T14:30:00+09:00'), undefined]);
-    b.at('2026-11-14T14:25:00+09:00');                                   // 심사 마감 · 구현과제 투표 마감
+    assert.deepEqual([r.ok, r.state, r.at, r.tracks], [true, 'judging', -1, undefined]);
+    b.at('2026-11-14T14:40:00+09:00');                                   // 심사 · 투표 모두 마감 (시각으로)
     r = pub(b);
     assert.deepEqual([r.state, r.tracks], ['ready', undefined]);
-    b.at('2026-11-14T14:30:00+09:00');
+    const s = b.post({ action: 'results.state', key: op, op: 'now' });
+    assert.deepEqual([s.ok, s.results.state], [true, 'open']);
     r = pub(b);
     assert.equal(r.state, 'open');
     assert.deepEqual(r.tracks.map((t) => [t.key, t.name]), [['H', '해커톤'], ['A', '구현과제']]);
   });
 
+  test("'심사 마감' 단추 = 결과 발표 — 구현과제 투표가 아직이면 투표가 마감되는 순간 뜬다", () => {
+    const { b, op } = rb();
+    b.at('2026-11-14T14:20:00+09:00');                                   // 구현과제 투표 14:15 – 14:25 진행 중
+    assert.equal(b.post({ action: 'score.state', key: op, op: 'close' }).scoring, 'closed');
+    assert.equal(b.store.RESULTS_AT, '2026-11-14T14:20:00+09:00');
+    assert.equal(pub(b).state, 'judging');                                // 투표가 끝나야 P 가 정해진다
+    b.at('2026-11-14T14:25:00+09:00');
+    assert.equal(pub(b).state, 'open');
+    assert.equal(b.post({ action: 'score.summary', key: op }).results.state, 'open');
+  });
+
   test('최종 S 순서대로 상금표에 맞춰 — 해커톤 1등 1 · 2등 2 · 3등 3, 구현과제 1 – 4등 (동점은 같은 등수, 덜 채운 팀은 빠진다)', () => {
-    const { b } = rb();
+    const { b, op } = rb();
     b.at('2026-11-14T14:31:00+09:00');
+    b.post({ action: 'results.state', key: op, op: 'now' });
     const r = pub(b);
     assert.deepEqual(shape(r, 'A'), [[1, ['02']], [2, ['04']], [3, ['01']], [4, ['03']]]);
     assert.deepEqual(shape(r, 'H'), [[1, ['11']], [2, ['12', '13', '14']], [3, ['15', '16']]]);
     assert.equal(r.tracks.find((t) => t.key === 'H').places[1].teams[0].title, '십이팀 서비스');
     const text = JSON.stringify(r);
-    assert.ok(!/교수님|@x\.com|"S"|"J"|"P"|comment|가나다/.test(text), text.slice(0, 300));      // 등수 · 팀 · 프로젝트 이름만
+    assert.ok(!/교수님|@x\.com|"S"|"J"|"P"|"s"|comment|가나다/.test(text), text.slice(0, 300));      // 메인에는 등수 · 팀 · 프로젝트 이름만
   });
 
-  test('운영진: 지금 공개 · 내리기 · 시간표대로, 심사를 다시 열면 저절로 내려간다', () => {
+  test('시상 화면 (운영진만): 등수마다 팀 · 프로젝트 이름 · 최종 S — 공개 전에도 (리허설)', () => {
+    const { b, op, prof } = rb();
+    assert.equal(b.post({ action: 'results.award', key: prof }).error, 'NOT_STAFF');
+    assert.equal(b.post({ action: 'results.award', key: 'x'.repeat(40) }).error, 'KEY_INVALID');
+    const r = b.post({ action: 'results.award', key: op });
+    assert.deepEqual([r.ok, r.scoring, r.results.state], [true, 'open', 'judging']);
+    const A = r.tracks.find((t) => t.key === 'A');
+    assert.deepEqual(A.places.map((p) => p.teams.map((t) => [t.no, t.s])), [[['02', 85]], [['04', 74.8]], [['01', 68]], [['03', 51]]]);   // 0.85 × J (투표 0)
+    assert.ok(!/@x\.com|교수님|comment/.test(JSON.stringify(r)));
+  });
+
+  test('운영진: 결과 내리기 · 시간표대로(=누를 때까지 안 뜸), 심사를 다시 열면 저절로 내려가고 다시 마감되면 다시 뜬다', () => {
     const { b, op, prof } = rb();
     assert.equal(b.post({ action: 'results.state', key: op, op: 'now' }).error, 'RESULTS_NOT_READY');   // 심사 중에는 공개 못 함
     assert.equal(b.post({ action: 'results.state', key: prof, op: 'now' }).error, 'NOT_STAFF');
     b.at('2026-11-14T14:26:00+09:00');
-    let s = b.post({ action: 'results.state', key: op, op: 'now' });
-    assert.deepEqual([s.ok, s.results.state, s.results.custom], [true, 'open', true]);
-    assert.equal(pub(b).state, 'open');
-    s = b.post({ action: 'results.state', key: op, op: 'hide' });
+    assert.equal(b.post({ action: 'results.state', key: op, op: 'now' }).results.state, 'open');
+    let s = b.post({ action: 'results.state', key: op, op: 'hide' });
     assert.deepEqual([s.results.state, s.results.at], ['ready', -1]);
     assert.equal(pub(b).tracks, undefined);
-    b.at('2026-11-14T14:40:00+09:00');
-    assert.equal(pub(b).state, 'ready');                                  // 내린 것은 14:30 이 지나도 그대로
     s = b.post({ action: 'results.state', key: op, op: 'auto' });
-    assert.deepEqual([s.results.state, s.results.custom], ['open', false]);
+    assert.deepEqual([s.results.state, s.results.custom], ['ready', false]);
+    b.post({ action: 'results.state', key: op, op: 'now' });
     assert.equal(b.post({ action: 'score.state', key: op, op: 'open' }).ok, true);   // 점수를 고치려고 다시 열면
     assert.equal(pub(b).state, 'judging');
-    assert.equal(b.post({ action: 'score.summary', key: op }).results.state, 'judging');
+    b.at('2026-11-14T14:37:00+09:00');                                   // 10분 뒤 저절로 다시 마감
+    assert.equal(pub(b).state, 'open');
     assert.ok(b.rows('기록').some((l) => l['동작'] === 'results.now'));
     assert.equal(b.post({ action: 'results.state', key: op, op: 'wipe' }).error, 'BAD_OP');
   });
 
-  test("스크립트 속성 RESULTS_AT 이 'none' 이면 마감되는 대로 바로", () => {
+  test('스크립트 속성 RESULTS_AT 에 시각을 적으면 그 시각에 저절로', () => {
     const { b } = rb();
-    b.store.RESULTS_AT = 'none';
+    b.store.RESULTS_AT = '2026-11-14 14:30'; b.ctx.propsDrop_();
+    b.at('2026-11-14T14:29:00+09:00');
+    assert.equal(pub(b).state, 'ready');
+    b.at('2026-11-14T14:30:00+09:00');
+    assert.equal(pub(b).state, 'open');
+  });
+
+  test("RESULTS_AT 이 'none' 이면 마감되는 대로 바로", () => {
+    const { b } = rb();
+    b.store.RESULTS_AT = 'none'; b.ctx.propsDrop_();
     b.at('2026-11-14T14:25:00+09:00');
     assert.equal(pub(b).state, 'open');
   });
