@@ -615,8 +615,8 @@ await scenario('심사: 교수님 토큰으로 4문항 점수(소수점) · 코�
 
   const p2 = await newPage(browser);
   await p2.goto(SITE + '/judge/score/#k=' + prof);
-  await p2.waitForSelector('#key-form');
-  R.match('심사위원 토큰으로는 종합을 못 본다', await text(p2, '#gate'), /운영진 참여 토큰으로만/);
+  await p2.waitForSelector('tr.row');
+  R.eq('심사위원 토큰으로도 종합을 본다 (읽기만 — 마감 · 결과 발표 단추 없음)', [await p2.isVisible('#lock'), await p2.isVisible('#res')], [false, false]);
   await p2.context().close();
 
   const sp = await newPage(browser);
