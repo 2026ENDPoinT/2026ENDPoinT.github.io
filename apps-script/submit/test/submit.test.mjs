@@ -1130,19 +1130,25 @@ describe('참가자 인기투표', () => {
     assert.equal(vote(b, 'tok-d1', 'H', ['15']).error, 'VOTE_SELF');
   });
 
-  test('다시 내면 마지막 투표지만 센다 · 같은 사람의 다른 계정도 한 장을 함께 쓴다', () => {
+  test('다시 내면 마지막 투표지만 센다 · 투표자는 구글 계정마다 따로 (같은 팀 · 같은 이름이어도)', () => {
     const b = vb();
     open(b, 'A');
     assert.equal(vote(b, 'tok-a1', 'A', ['01', '02', '04']).ok, true);
-    assert.equal(vote(b, 'tok-a1alt', 'A', ['05', '06']).ok, true);         // 같은 사람(가나다)의 다른 계정
-    const me = b.post({ action: 'vote.me', idToken: 'tok-a1' });
+    assert.equal(vote(b, 'tok-a1', 'A', ['05', '06']).ok, true);            // 같은 계정이 다시 냈다
+    let me = b.post({ action: 'vote.me', idToken: 'tok-a1' });
     assert.deepEqual(me.tracks.find((t) => t.key === 'A').mine, ['05', '06']);
-    const t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
-    assert.equal(t.voters, 1);                                              // 한 사람
+    let t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
+    assert.equal(t.voters, 1);
     assert.deepEqual(t.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['05', 1], ['06', 1]]);
-    assert.ok(b.rows('투표').every((r) => r['상태'] === '유효'));         // 표시는 그대로 — 셀 때 가장 나중 투표지만 센다 (잠그지 않고 붙이므로)
-    assert.equal(vote(b, 'tok-a2', 'A', ['05']).ok, true);                  // 같은 팀의 다른 사람은 따로
-    assert.equal(b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A').voters, 2);
+    assert.ok(b.rows('투표').every((r) => r['상태'] === '유효'));
+    // 명단에서 이름이 같은 다른 계정도 따로 센다 — 앞사람 표를 덮어쓰거나 앞사람 표가 내 것으로 보이지 않는다
+    assert.equal(vote(b, 'tok-a1alt', 'A', ['01']).ok, true);
+    assert.deepEqual(b.post({ action: 'vote.me', idToken: 'tok-a1alt' }).tracks.find((x) => x.key === 'A').mine, ['01']);
+    assert.deepEqual(b.post({ action: 'vote.me', idToken: 'tok-a1' }).tracks.find((x) => x.key === 'A').mine, ['05', '06']);
+    assert.equal(vote(b, 'tok-a2', 'A', ['05']).ok, true);                  // 같은 팀의 다른 사람도 따로
+    t = b.post({ action: 'vote.me', idToken: 'tok-op' }).tally.find((t) => t.key === 'A');
+    assert.equal(t.voters, 3);
+    assert.deepEqual(t.rows.filter((r) => r.votes).map((r) => [r.no, r.votes]), [['01', 1], ['05', 2], ['06', 1]]);
   });
 
   test('시트에는 누가 냈는지 남지 않고, 표마다 검증값이 있다 — 대상 팀을 몰래 바꾸면 세지 않는다', () => {

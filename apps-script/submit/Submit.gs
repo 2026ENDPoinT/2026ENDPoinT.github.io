@@ -1178,7 +1178,9 @@ function voteSalt_() {
 }
 /** 투표자 = 사람: 팀 + 이름(띄어쓰기 · 대소문자 무시). 이름이 빈 줄이면 계정으로. 솔트를 섞어 남이 거꾸로 알아내지 못하게. */
 function voterKey_(a, salt) {
-  var who = nameKey_(a.name) || ('acct:' + (a.sub || a.email));
+  // 사람마다 한 표: 로그인한 구글 계정으로 가른다. (예전에는 명단의 이름으로 가려 같은 사람의 다른 계정을 묶었는데,
+  // 실제로는 팀원들이 한 투표자로 묶이는 일이 생겼다 — 2026-11-14 투표 탭에서 팀마다 투표자 1명)
+  var who = 'acct:' + (a.sub || mailKey_(a.email));
   return sha256hex_(salt + '|voter|' + a.team + '|' + who).slice(0, 16);
 }
 function voteSig_(salt, ballot, key, voter, voterTeam, team, at) {
