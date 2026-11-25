@@ -93,6 +93,9 @@ var CONFIG = {
   // 그 단추가 스크립트 속성 RESULTS_AT 에 지금 시각을 적는다. 'off' = 누를 때까지 안 뜸 (14:25 자동 마감으로는 뜨지 않는다 — 발표 전에 새지 않게).
   // 시각을 적어 두면 그 시각에 (심사 · 투표가 다 마감돼 있으면) 저절로, 'none' 이면 마감되는 대로 바로.
   RESULTS_AT: 'off',
+  // 공개 현황(status.public — /judge/ 를 토큰 없이 연 화면): 'auto' 면 결과가 공개(open)되는 순간부터 팀별 제출 여부 · 발표 순서와
+  // 마지막 제출 시각 · 투표한 사람 수를 더는 주지 않는다 (행사 기록은 비공개). 'off' 면 언제나 숨김, 'on' 이면 예전처럼 늘 보임.
+  PUBLIC_BOARD: 'auto',
   // 등수마다 받는 팀 수 — 메인 페이지 상금표와 같게 (해커톤 1등 1 · 2등 2 · 3등 3, 구현과제 1 – 4등 각 1)
   PRIZES: { H: [1, 2, 3], A: [1, 1, 1, 1] },
   // 팀을 다른 트랙으로 옮긴다 (번호 범위와 다르게). 스크립트 속성 TRACK_MOVES 에 '09:H' 처럼 (여러 팀은 '09:H, 03:A').
@@ -1438,7 +1441,16 @@ function actVoteAdmin_(body) {
 
 function boardSec_(k, def) { var n = Number(conf_(k)); return n >= 10 && n <= 3600 ? Math.floor(n) : def; }
 
+/** 공개 현황을 닫았는가 — PUBLIC_BOARD ('auto' · 'off' · 'on') */
+function publicBoardClosed_(now) {
+  var m = str_(conf_('PUBLIC_BOARD')).toLowerCase();
+  if (m === 'on') return false;
+  if (m === 'off') return true;
+  return resultsState_(now) === 'open';
+}
 function actStatusPublic_(body) {
+  // 행사가 끝나 결과가 공개되면 팀 정보는 하나도 주지 않는다 — 단계와 closed 만 (화면은 '행사 종료 · 결과는 홈에서' 를 띄운다)
+  if (publicBoardClosed_(nowMs_())) return { ok: true, api: API_VERSION, now: nowMs_(), phase: phase_(), closed: true };
   var now = nowMs_(), sSec = boardSec_('BOARD_SUBMIT_SEC', 300), vSec = boardSec_('BOARD_VOTE_SEC', 60);
   var sb = Math.floor(now / (sSec * 1000)), vb = Math.floor(now / (vSec * 1000));
   var ph = phase_(), sk = 'pub:s:' + sSec + ':' + sb + ':' + ph, sub = cacheGet_(sk);   // 마감 · 유예 끝에는 바로 새로 센다

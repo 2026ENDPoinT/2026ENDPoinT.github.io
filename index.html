@@ -8,6 +8,8 @@
 <script>try{if(localStorage.getItem('ep-theme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
 <script src="assets/theme.js?v=547fe78e" defer></script>
 <script src="assets/submit-config.js?v=1f1bcd66" defer></script>
+<script src="assets/results-2026.js?v=26008078" defer></script>
+<script src="assets/results-page.js?v=525470ae" defer></script>
 <script>document.documentElement.className+=" js";</script>
 <title>ENDPoinT</title>
 <meta name="description" content="서울과학기술대학교 컴퓨터공학과 해커톤 ENDPoinT. 컴퓨터공학과 주최 · 5개 학술 동아리 주관, 2026년 11월 13일–14일, 1박 2일.">
@@ -882,6 +884,66 @@ p{text-wrap:pretty}
 @keyframes resIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @media (max-width:720px){ #results .res-grid{grid-template-columns:1fr} #results .pl{grid-template-columns:3.8em minmax(0,1fr)} }
 @media (prefers-reduced-motion:reduce){ #results.show .res-trk{animation:none} }
+#results[hidden],#winners[hidden],#decks[hidden],.viewer[hidden]{display:none}
+
+/* 2026 우승 서비스 소개 — 두 1등 팀을 같은 틀 · 같은 크기로 (assets/results-page.js) */
+.win-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(12px,1.6vw,20px)}
+.win{border:1px solid var(--line);padding:clamp(22px,3vw,34px);display:flex;flex-direction:column;gap:16px;min-width:0}
+.win-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.win-top .no{font-size:12.5px;letter-spacing:.04em;color:var(--dim-2);font-variant-numeric:tabular-nums}
+.win h3{font-size:clamp(26px,3vw,36px);font-weight:200;letter-spacing:-.02em}
+.win .one{font-size:15px;line-height:1.75;color:var(--fg);min-height:3.5em}
+.win figure{margin:0;min-width:0}
+.win figcaption{font-size:12px;line-height:1.6;color:var(--dim-2);margin-top:8px}
+.win-stage .frame{aspect-ratio:16/10;background:#0E0E0E;border:1px solid var(--line);overflow:hidden}
+.win-stage video{display:block;width:100%;height:100%;object-fit:contain;background:#0E0E0E}
+.win-shots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.win .shot{display:block;width:100%;padding:0;border:1px solid var(--line);background:#0E0E0E;cursor:zoom-in;overflow:hidden}
+.win .shot img{width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;transition:transform .5s var(--ease)}
+.win .shot:hover img{transform:scale(1.03)}
+.win .shot:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.win-pts{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;flex:1}
+.win-pts li{position:relative;padding-left:18px;font-size:14.5px;line-height:1.85;color:var(--fg)}
+.win-pts li::before{content:"";position:absolute;left:0;top:.9em;width:8px;height:1px;background:var(--dim-2)}
+.win-links{display:flex;flex-wrap:wrap;gap:8px}
+.win-links .btn svg{position:relative;z-index:1}
+.win-note{font-size:12px;line-height:1.6;color:var(--dim-2);min-height:1.6em;margin-top:-6px}
+@media (max-width:900px){ .win-grid{grid-template-columns:1fr} .win .one{min-height:0} }
+@media (prefers-reduced-motion:reduce){ .win .shot img{transition:none} .win .shot:hover img{transform:none} }
+
+/* 수상팀 발표자료 — 결과 발표와 같은 두 칸 */
+.dk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(12px,1.6vw,20px)}
+.dk-trk{border:1px solid var(--line);padding:clamp(22px,3vw,34px);min-width:0}
+.dk-trk>.lab{margin-bottom:10px}
+.dk-trk ul{list-style:none;margin:0;padding:0}
+.dk{display:grid;grid-template-columns:3em 3.3em minmax(0,1fr) auto;align-items:center;gap:6px 14px;padding:14px 0;border-top:1px solid var(--line);min-height:70px}
+.dk:first-child{border-top:0}
+.dk .pl{font-size:14px;color:var(--hi);white-space:nowrap}
+.dk .no{font-size:12.5px;letter-spacing:.04em;color:var(--dim-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dk .ti{font-size:15.5px;line-height:1.45;color:var(--hi);overflow-wrap:anywhere}
+.dk .btn{min-height:40px;padding:0 14px;font-size:12.5px}
+@media (max-width:720px){
+  .dk-grid{grid-template-columns:1fr}
+  .dk{grid-template-columns:2.8em 3em minmax(0,1fr)}
+  .dk .btn{grid-column:3;justify-self:start}
+}
+
+/* 보기 창 — 심사위원 현황의 '발표 자료 보기' 창(assets/submit.css .viewer)과 같은 틀. 어두운 바탕이라 두 테마 모두 같은 색 */
+.viewer{position:fixed;inset:0;z-index:200;background:rgba(14,14,14,.96);display:flex;flex-direction:column;color:#E8E8E8}
+.viewer-bar{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:12px clamp(14px,3vw,28px);padding-top:max(12px,env(safe-area-inset-top));border-bottom:1px solid rgba(255,255,255,.16)}
+.viewer-bar .t{margin-right:auto;min-width:0;flex:1 1 220px}
+.viewer-bar .t b{display:block;font-size:15px;font-weight:400;color:#fff;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viewer-bar .t span{display:block;font-size:12px;color:#9A9A9A;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viewer .mini{height:32px;padding:0 13px;border:1px solid rgba(255,255,255,.34);background:transparent;color:#fff;font:500 12.5px/1 var(--font);
+  cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;transition:background .3s var(--ease),color .3s var(--ease)}
+.viewer .mini:hover{background:#fff;color:#151515;border-color:#fff}
+.viewer .mini:focus-visible{outline:2px solid #6AA3F0;outline-offset:2px}
+.viewer .mini[hidden]{display:none}
+.viewer-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;padding-bottom:env(safe-area-inset-bottom)}
+.viewer-body iframe{position:relative;z-index:1;display:block;width:100%;height:100%;border:0;background:transparent}
+.viewer-body img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+.viewer-body .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13.5px;color:#9A9A9A;padding:20px;text-align:center}
+@media (max-width:720px){ .viewer .mini{height:40px} }
 /* 인앱 브라우저(카카오톡 등) 안내 띠 */
 .inapp{border-bottom:1px solid var(--line);background:var(--inapp)}
 .inapp .wrap{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;padding-block:12px}
@@ -1355,7 +1417,8 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
       <a href="#/teams" data-nav="/teams">팀 모집</a>
       <a href="#/apply" data-nav="/apply" id="nav-apply">신청 안내</a>
       <a href="#prize" id="nav-prize" class="sm-hide" hidden>심사안내</a>
-      <a href="judge/" id="nav-judge"><span class="sm-hide">제출·투표 </span>현황</a>
+      <a href="#results" id="nav-results">결과</a>
+      <a href="#decks" id="nav-decks" class="sm-hide">발표자료</a>
       <a href="submit/" id="nav-submit" hidden><span class="sm-hide">결과물 </span>제출</a>
       <a href="judge/vote/" id="nav-vote" hidden>투표</a>
       <a class="lang" href="en/" hreflang="en" lang="en" title="English version">EN</a>
@@ -1416,7 +1479,8 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
     <div data-anim style="--d:.25s" id="fact-round"><span class="lab">1차 모집</span><b>10.07 (수) – 10.31 (토) 23:59</b></div>
   </div>
 
-  <!-- 결과 발표 — 아래 '결과 발표' 스크립트가 채운다. 공개되기 전에는 절 자체가 숨겨진다 -->
+  <!-- 결과 발표 · 우승 서비스 소개 · 수상팀 발표자료 — assets/results-page.js 가 assets/results-2026.js 의 값으로 채운다.
+       등수만 보인다 (점수 · 투표 수 · 심사 코멘트는 데이터에도 없다). 스크립트가 못 돌면 세 절 모두 숨은 채로 남는다 -->
   <section id="results" hidden aria-labelledby="results-h">
     <div class="wrap">
       <div class="head">
@@ -1427,6 +1491,32 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
         <p>심사위원 점수 85% · 참가자 투표 15% 를 합친 최종 점수 순서입니다. 수상한 모든 팀을 축하합니다.</p>
       </div>
       <div class="res-grid" id="results-grid"></div>
+    </div>
+  </section>
+
+  <section id="winners" hidden aria-labelledby="winners-h">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <span class="lab blue">Winners</span>
+          <h2 id="winners-h">2026 우승 서비스 소개</h2>
+        </div>
+        <p>두 트랙의 1등 서비스를 소개합니다. 소개 글은 각 팀의 발표자료와 제출 설명을 바탕으로 했습니다.</p>
+      </div>
+      <div class="win-grid" id="win-grid"></div>
+    </div>
+  </section>
+
+  <section id="decks" hidden aria-labelledby="decks-h">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <span class="lab blue">Decks</span>
+          <h2 id="decks-h">수상팀 발표자료</h2>
+        </div>
+        <p>행사 당일 발표에 쓴 자료입니다. 누르면 이 화면 안에서 열리고(Google Drive), 창 위의 ‘새 탭에서 열기’로 따로 볼 수도 있습니다.</p>
+      </div>
+      <div class="dk-grid" id="deck-grid"></div>
     </div>
   </section>
 
@@ -1867,6 +1957,16 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
     </div>
   </div>
 </footer>
+
+<!-- 보기 창 — 심사위원 현황(/judge/)의 '발표 자료 보기' 창과 같은 틀. assets/results-page.js 가 열고 닫는다 -->
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-labelledby="vw-title">
+  <div class="viewer-bar">
+    <div class="t"><b id="vw-title"></b><span id="vw-sub"></span></div>
+    <a class="mini" id="vw-open" target="_blank" rel="noopener noreferrer" hidden>새 탭에서 열기</a>
+    <button class="mini" type="button" id="vw-close">닫기</button>
+  </div>
+  <div class="viewer-body" id="vw-body"></div>
+</div>
 
 <script>
 (function () {
@@ -2581,87 +2681,6 @@ window.EPUI = {
     if (lab) lab.textContent = '결과물 제출';
     if (b) b.textContent = '{due} 까지'.replace('{due}', DUE);
   }
-})();
-
-/* ==============================================================
-   결과 발표 — 심사와 두 트랙 투표가 모두 마감되고 발표 시각(14:30)이 지나면 제출 서버가 등수를 준다.
-   (서버 쪽 규칙: SUBMIT.md · PARAMS.md 의 RESULTS_AT · PRIZES. 운영진은 심사 종합 화면에서 '지금 공개' · '내리기')
-   해커톤 1등 1 · 2등 2 · 3등 3팀, 구현과제 1 – 4등 각 1팀을 최종 S 순서대로. 점수는 보이지 않는다.
-
-   [고칠 곳은 바로 아래 두 줄뿐입니다]
-     CHECK_FROM  이 시각 전에는 서버에 아무것도 묻지 않는다 (행사 중 서버를 아끼려고).
-     POLL_UNTIL  이 시각까지는 1분마다 다시 묻는다 — 발표 순간 새로 고치지 않아도 뜨게. 그 뒤에는 열 때 한 번만.
-   로컬에서는 ?results=demo 로 예시 결과를 볼 수 있다.
-   ============================================================== */
-(function () {
-  var CHECK_FROM = '2026-11-14T14:00:00+09:00';
-  var POLL_UNTIL = '2026-11-14T18:00:00+09:00';
-
-  var sec = document.getElementById('results'), grid = document.getElementById('results-grid');
-  if (!sec || !grid) return;
-  var G = window.EPGATE || {}, shown = '';
-  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-
-  function paint(d) {
-    var html = d.tracks.map(function (tr) {
-      var rows = tr.places.filter(function (p) { return p.teams && p.teams.length; }).map(function (p) {
-        return '<div class="pl p' + p.place + '"><b>' + p.place + '등</b><div class="tms">' + p.teams.map(function (t) {
-          return '<div class="tm"><span class="no">' + esc(t.no) + '팀</span><span class="ti">' + esc(t.title || '—') + '</span></div>';
-        }).join('') + '</div></div>';
-      }).join('');
-      var lab = tr.key === 'H' ? '<span class="lab red">Hackathon track</span>' : '<span class="lab blue">' + esc(tr.name) + ' 트랙</span>';
-      return '<div class="res-trk" data-track="' + esc(tr.key) + '">' + lab + rows + '</div>';
-    }).join('');
-    if (html === shown) return;
-    shown = html;
-    grid.innerHTML = html;
-    sec.hidden = false;
-    sec.classList.remove('show');
-    void sec.offsetWidth;                                   // 다시 띄울 때도 애니메이션이 처음부터
-    sec.classList.add('show');
-    // 맨 위 단추도 결과로 (행사 중에는 '결과물 제출' 자리)
-    var a = document.querySelector('#v-home .hero-cta a.btn');
-    if (a) { a.setAttribute('href', '#results'); a.classList.remove('gated'); a.removeAttribute('aria-disabled'); a.removeAttribute('data-gate'); a.innerHTML = '<span>결과 보기</span>'; }
-  }
-  function hide() { shown = ''; sec.hidden = true; sec.classList.remove('show'); grid.innerHTML = ''; }
-
-  function ask() {
-    var url = (window.EPSUBMIT || {}).ENDPOINT;
-    if (!url || !window.fetch) return;
-    fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'results.public' }) })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d || !d.ok) return;
-        if (d.state === 'open' && d.tracks) paint(d); else hide();
-      })['catch'](function () {});
-  }
-
-  function start() {
-    if (G.local && /[?&]results=demo/.test(location.search || '')) {
-      var T = function (no, title) { return { no: no, title: title }; };
-      paint({ tracks: [
-        { key: 'H', name: '해커톤', places: [{ place: 1, teams: [T('12', '코드 리뷰 도우미')] },
-          { place: 2, teams: [T('15', '운동 메이트 찾기'), T('11', '회의록 요약기')] },
-          { place: 3, teams: [T('17', '논문 한 줄 요약'), T('13', '중고 교재 장터'), T('19', '기숙사 세탁기 알림')] }] },
-        { key: 'A', name: '구현과제', places: [{ place: 1, teams: [T('04', '분실물 찾기 지도')] }, { place: 2, teams: [T('02', '시간표 짜기 도우미')] },
-          { place: 3, teams: [T('07', '길고양이 급식 지도')] }, { place: 4, teams: [T('01', '발표 연습 코치')] }] }] });
-      return;
-    }
-    var now = Date.now();
-    if (!(now >= Date.parse(CHECK_FROM))) return;
-    ask();
-    if (now < Date.parse(POLL_UNTIL)) {
-      (function next(first) {
-        setTimeout(function () {
-          if (Date.now() >= Date.parse(POLL_UNTIL)) return;
-          if (!document.hidden) ask();
-          next(false);
-        }, 60000 + Math.floor(Math.random() * (first ? 20000 : 5000)));   // 사람마다 어긋나게
-      })(true);
-    }
-    document.addEventListener('visibilitychange', function () { if (!document.hidden && Date.now() < Date.parse(POLL_UNTIL)) ask(); });
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
 
 /* ==============================================================

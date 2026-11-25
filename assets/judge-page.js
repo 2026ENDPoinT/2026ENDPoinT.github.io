@@ -57,11 +57,22 @@
   /* ------------------------------ 안내 패널 ------------------------------ */
   function showGate(html) { gate.innerHTML = html; gate.hidden = false; app.hidden = true; }
   /** 열람 링크 없이 들어온 사람 (메인 메뉴 '제출·투표 현황'): 참가자는 제출 · 투표로, 심사위원 · 운영진은 열람 코드로 */
+  /* 행사가 끝난 뒤(ENDED 이후, 또는 서버가 closed 라고 하면) 토큰 없이 온 사람에게는 공개 현황(팀별 제출 여부 · 발표 순서와
+     제출 시각 · 투표한 사람 수)을 보이지 않는다 — 행사 기록은 비공개. 결과(등수)는 홈에서. 토큰 화면은 그대로 */
+  var ENDED = Date.parse('2026-11-14T15:00:00+09:00');
+  function ended() { return pub.closed || EP.now() >= ENDED; }
+  function stackShow(on) { var x = document.querySelector('.pagehead .stack'); if (x) x.hidden = !on; }
   function gateKey(why) {
+    var over = ended();
+    stackShow(!over);
     showGate('<div class="hub">' +
-      '<div class="row"><div class="t"><span class="lab blue">Participants</span><b>결과물 제출 · 참가자 투표</b></div>' +
-        '<div class="act rowy"><a class="btn" href="../submit/"><span>결과물 제출</span></a>' +
-        '<a class="btn btn-o" href="./vote/"><span>참가자 투표</span></a></div></div>' +
+      (over
+        ? '<div class="row"><div class="t"><span class="lab blue">Results</span><b>행사가 끝났습니다</b>' +
+            '<span>등수 · 우승 서비스 소개 · 수상팀 발표자료는 홈에서 볼 수 있습니다.</span></div>' +
+            '<div class="act rowy"><a class="btn" href="../#results"><span>결과 보기</span></a></div></div>'
+        : '<div class="row"><div class="t"><span class="lab blue">Participants</span><b>결과물 제출 · 참가자 투표</b></div>' +
+            '<div class="act rowy"><a class="btn" href="../submit/"><span>결과물 제출</span></a>' +
+            '<a class="btn btn-o" href="./vote/"><span>참가자 투표</span></a></div></div>') +
       '<div class="row"><div class="t"><span class="lab' + (why ? ' red' : '') + '">Judges</span>' +
         '<b>' + (why ? esc(why) : '참여 토큰을 입력해 주세요') + '</b>' +
         (why ? '<span>토큰이 만료됐다면 운영진에게 새 토큰을 요청해 주세요.</span>' : '') + '</div>' +
@@ -69,7 +80,7 @@
           '<input class="tin" id="key-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="참여 토큰" placeholder="참여 토큰" style="min-width:min(260px,70vw)">' +
           '<button class="btn btn-o" type="submit"><span>열기</span></button></form></div>' +
       '</div>');
-    pubShow(true);
+    pubShow(!over);
     $('key-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var v = $('key-in').value.trim(), m = /k=([A-Za-z0-9_\-]{24,128})/.exec(v);   // 링크를 통째로 붙여 넣어도 된다
@@ -83,7 +94,7 @@
   /* ------------------------------ 공개 현황 (열람 링크 없이) ------------------------------
      팀 번호 · 낸 것의 유무 · 투표한 사람 수만 보인다. 서버가 제출 현황은 5분, 투표한 사람 수는 1분마다 새로 센다 —
      화면은 그 갱신 시각이 지나면(사람마다 몇 초씩 어긋나게) 다시 읽는다. */
-  var pub = { d: null, on: false, seq: 0, nextAt: 0, jit: 1500 + Math.floor(Math.random() * 6000) };
+  var pub = { d: null, on: false, closed: false, seq: 0, nextAt: 0, jit: 1500 + Math.floor(Math.random() * 6000) };
   function pubShow(on) {
     pub.on = on;
     var el = $('pub');
@@ -98,6 +109,7 @@
     pub.nextAt = EP.now() + 60000;                               // 실패해도 1분 뒤 다시
     EP.api('status.public', {}, { anon: true, tries: 2 }).then(function (d) {
       if (seq !== pub.seq || !pub.on) return;
+      if (d && d.ok && d.closed) { pub.closed = true; pub.d = null; if (!st.key) gateKey(); return; }   // 서버가 공개 현황을 닫았다
       if (d && d.ok && d.submit && d.vote) {
         pub.d = d;
         pub.nextAt = Math.min(d.submit.next, d.vote.next) + pub.jit;
@@ -173,6 +185,7 @@
   function load(silent) {
     if (!st.key) { gateKey(); return Promise.resolve(); }
     pubShow(false);
+    stackShow(true);
     var seq = ++loadSeq;
     if (!silent) showGate(EP.loading('제출 현황을 불러오는 중'));
     else $('reload').textContent = '불러오는 중…';
