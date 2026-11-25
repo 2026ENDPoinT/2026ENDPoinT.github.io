@@ -101,52 +101,124 @@
     sec.hidden = false;
   }
 
-  /* ---------------- 보기 창 ---------------- */
-  var back = null;
-  function openViewer(title, sub, html, newTab) {
-    var v = $('viewer');
-    back = document.activeElement;
+  /* ---------------- 보기 창 ----------------
+     열 때: 누른 단추 자리를 기준점으로 창이 0.9 배 · 투명에서 제자리로 커지고(0.45초), 바탕은 어두워지며 흐려진다.
+     닫을 때: 같은 길을 거꾸로, 더 짧게(0.28초) — 닫기 단추 · Esc · 바탕 누르기 모두. 다 닫힌 뒤에 iframe 을 지우고 단추로 포커스를 돌린다.
+     transform · opacity 만 움직이고 will-change 는 움직이는 동안만. 움직임 줄이기 설정이면 확대 없이 짧은 페이드만.
+     상태: closed → opening → open → closing → closed. 열리는 중에 닫으면 그 자리에서 되돌아가고, 닫히는 중에는 창이 누르기를 통과시켜
+     다른 단추를 바로 누를 수 있다 (그러면 남은 닫기를 바로 끝내고 새로 연다). */
+  var EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  var vw = { state: 'closed', back: null, anims: [], seq: 0 };
+  function reduced() { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  function parts() { var v = $('viewer'); return { v: v, panel: v.querySelector('.viewer-panel'), scrim: v.querySelector('.viewer-scrim') }; }
+  function move(el, frames, opts) {
+    if (!el || !el.animate) return null;
+    el.style.willChange = 'transform, opacity';
+    var a = el.animate(frames, opts);
+    vw.anims.push(a);
+    return a;
+  }
+  function stopMoves() {
+    vw.anims.forEach(function (a) { try { a.cancel(); } catch (e) {} });
+    vw.anims = [];
+    var x = parts();
+    [x.panel, x.scrim].forEach(function (el) { if (el) el.style.willChange = ''; });
+  }
+  function finishClose(restore) {
+    var x = parts();
+    x.v.hidden = true;                                             // 먼저 감추고 나서 움직임을 지운다 (제자리로 번쩍 돌아오지 않게)
+    stopMoves();
+    x.v.style.pointerEvents = '';
+    if (x.panel) x.panel.style.transformOrigin = '';
+    $('vw-body').innerHTML = '';                                  // iframe 을 지워 Drive 쪽 로딩도 멈춘다
+    document.documentElement.style.overflow = '';
+    vw.state = 'closed';
+    if (restore && vw.back && vw.back.focus) try { vw.back.focus({ preventScroll: true }); } catch (e) {}
+  }
+  // after(body): 내용을 넣은 바로 뒤. ready(body): 다 열린 뒤 (Drive iframe 처럼 무거운 것은 여기서 — 움직이는 동안 끼어들지 않게)
+  function openViewer(title, sub, html, newTab, from, after, ready) {
+    var x = parts();
+    if (vw.state === 'closing') finishClose(false);
+    var swap = vw.state !== 'closed';                             // 이미 열려 있으면 내용만 바꾼다
+    if (!swap) vw.back = from || document.activeElement;
     $('vw-title').textContent = title;
     $('vw-sub').textContent = sub;
     var o = $('vw-open');
     if (newTab) { o.href = newTab; o.hidden = false; } else { o.hidden = true; o.removeAttribute('href'); }
     $('vw-body').innerHTML = html;
-    document.querySelectorAll('#win-grid video').forEach(function (x) { if (!x.paused) x.pause(); });
-    v.hidden = false;
+    if (after) after($('vw-body'));
+    var body = $('vw-body'), seq = ++vw.seq;
+    function done() { if (ready && seq === vw.seq && vw.state !== 'closing' && vw.state !== 'closed') ready(body); }   // 그 사이 닫았거나 다른 것을 열었으면 안 붙인다
+    if (swap) { done(); return; }
+    document.querySelectorAll('#win-grid video').forEach(function (y) { if (!y.paused) y.pause(); });
+    x.v.hidden = false;
     document.documentElement.style.overflow = 'hidden';
-    $('vw-close').focus();
+    vw.state = 'opening';
+    try { $('vw-close').focus({ preventScroll: true }); } catch (e) { $('vw-close').focus(); }
+    var r = x.panel.getBoundingClientRect(), origin = '50% 50%';
+    if (from && from.getBoundingClientRect) {
+      var b = from.getBoundingClientRect();
+      if (b.width) origin = Math.round(b.left + b.width / 2 - r.left) + 'px ' + Math.round(b.top + b.height / 2 - r.top) + 'px';
+    }
+    x.panel.style.transformOrigin = origin;
+    var red = reduced();
+    var a = move(x.panel, red ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'scale(0.9)' }, { opacity: 1, transform: 'scale(1)' }],
+      { duration: red ? 160 : 450, easing: red ? 'linear' : EASE });
+    move(x.scrim, [{ opacity: 0 }, { opacity: 1 }], { duration: red ? 160 : 400, easing: red ? 'linear' : EASE });
+    if (!a) { vw.state = 'open'; done(); return; }
+    a.onfinish = function () { if (vw.state === 'opening') { stopMoves(); vw.state = 'open'; done(); } };
   }
   function closeViewer() {
-    var v = $('viewer');
-    if (!v || v.hidden) return;
-    v.hidden = true;
-    $('vw-body').innerHTML = '';                                  // iframe 을 지워 Drive 쪽 로딩도 멈춘다
-    document.documentElement.style.overflow = '';
-    if (back && back.focus) try { back.focus(); } catch (e) {}
+    var x = parts();
+    if (!x.v || x.v.hidden || vw.state === 'closing' || vw.state === 'closed') return;
+    var pc = getComputedStyle(x.panel), from = { opacity: pc.opacity, transform: pc.transform === 'none' ? 'scale(1)' : pc.transform },
+      sFrom = getComputedStyle(x.scrim).opacity;                  // 열리는 중이면 지금 모습에서 되돌아간다
+    stopMoves();
+    vw.state = 'closing';
+    x.v.style.pointerEvents = 'none';                             // 닫히는 동안 뒤의 단추를 바로 누를 수 있게
+    var red = reduced(), opts = { duration: red ? 120 : 280, easing: red ? 'linear' : EASE, fill: 'forwards' };
+    var a = move(x.panel, [from, { opacity: 0, transform: red ? from.transform : 'scale(0.9)' }], opts);
+    move(x.scrim, [{ opacity: sFrom }, { opacity: 0 }], opts);
+    if (!a) { finishClose(true); return; }
+    a.onfinish = function () { if (vw.state === 'closing') finishClose(true); };
   }
-  function openDeck(no) {
+  function reveal(el, l) {                                         // 다 불러오면 자리 표시를 걷고 내용을 보인다
+    el.classList.add('in');
+    if (l) { l.classList.add('out'); setTimeout(function () { if (l.parentNode) l.parentNode.removeChild(l); }, 300); }
+  }
+  function openDeck(no, from) {
     var id = (D.decks || {})[no], p = placeOf[no] || {};
     if (!id) return;
     var base = 'https://drive.google.com/file/d/' + encodeURIComponent(id);
     openViewer(no + '팀 · ' + (p.title || ''), (trackName[p.track] || '') + ' ' + (p.place ? p.place + '등' : '') + ' · 발표자료 (Google Drive)',
-      '<div class="loading" role="status"><span>발표자료를 불러오는 중입니다</span></div>' +
-      '<iframe src="' + base + '/preview" title="' + esc(no + '팀 발표자료') + '" allow="autoplay" referrerpolicy="strict-origin-when-cross-origin"></iframe>',
-      base + '/view');
-    var f = $('vw-body').querySelector('iframe'), l = $('vw-body').querySelector('.loading');
-    if (f && l) f.addEventListener('load', function () { l.remove(); });
+      '<div class="loading" role="status"><i aria-hidden="true"></i><span>발표자료를 불러오는 중입니다</span></div>',
+      base + '/view', from, null, function (body) {
+        var f = document.createElement('iframe'), l = body.querySelector('.loading');
+        f.title = no + '팀 발표자료';
+        f.setAttribute('allow', 'autoplay');
+        f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+        f.addEventListener('load', function () { reveal(f, l); });
+        f.src = base + '/preview';
+        body.appendChild(f);
+      });
   }
-  function openImg(src, cap, no) {
+  function openImg(src, cap, no, from) {
     var p = placeOf[no] || {};
-    openViewer(no + '팀 · ' + (p.title || ''), cap, '<img src="' + esc(src) + '" alt="' + esc(cap) + '">', src);
+    openViewer(no + '팀 · ' + (p.title || ''), cap, '<img src="' + esc(src) + '" alt="' + esc(cap) + '" decoding="async">', src, from, function (body) {
+      var im = body.querySelector('img');
+      if (!im) return;
+      if (im.complete && im.naturalWidth) reveal(im);
+      else { im.addEventListener('load', function () { reveal(im); }); im.addEventListener('error', function () { reveal(im); }); }
+    });
   }
 
   function wire() {
     document.addEventListener('click', function (e) {
-      var t = e.target.closest ? e.target.closest('[data-deck],[data-img],#vw-close') : null;
+      var t = e.target.closest ? e.target.closest('[data-deck],[data-img],#vw-close,.viewer-scrim') : null;
       if (!t) return;
-      if (t.id === 'vw-close') { closeViewer(); return; }
-      if (t.hasAttribute('data-deck')) openDeck(t.getAttribute('data-deck'));
-      else openImg(t.getAttribute('data-img'), t.getAttribute('data-cap') || '', t.getAttribute('data-team') || '');
+      if (t.id === 'vw-close' || t.classList.contains('viewer-scrim')) { closeViewer(); return; }
+      if (t.hasAttribute('data-deck')) openDeck(t.getAttribute('data-deck'), t);
+      else openImg(t.getAttribute('data-img'), t.getAttribute('data-cap') || '', t.getAttribute('data-team') || '', t);
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !$('viewer').hidden) closeViewer();

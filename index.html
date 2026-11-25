@@ -9,7 +9,7 @@
 <script src="assets/theme.js?v=547fe78e" defer></script>
 <script src="assets/submit-config.js?v=1f1bcd66" defer></script>
 <script src="assets/results-2026.js?v=26008078" defer></script>
-<script src="assets/results-page.js?v=525470ae" defer></script>
+<script src="assets/results-page.js?v=7f2f01c6" defer></script>
 <script>document.documentElement.className+=" js";</script>
 <title>ENDPoinT</title>
 <meta name="description" content="서울과학기술대학교 컴퓨터공학과 해커톤 ENDPoinT. 컴퓨터공학과 주최 · 5개 학술 동아리 주관, 2026년 11월 13일–14일, 1박 2일.">
@@ -929,7 +929,16 @@ p{text-wrap:pretty}
 }
 
 /* 보기 창 — 심사위원 현황의 '발표 자료 보기' 창(assets/submit.css .viewer)과 같은 틀. 어두운 바탕이라 두 테마 모두 같은 색 */
-.viewer{position:fixed;inset:0;z-index:200;background:rgba(14,14,14,.96);display:flex;flex-direction:column;color:#E8E8E8}
+/* 열고 닫는 움직임은 assets/results-page.js (Web Animations, transform · opacity 만). 넓은 화면에서는 창 둘레로 흐린 바탕이 보이고,
+   휴대폰에서는 창이 화면을 채우고 바탕은 어둡게만 (흐림은 휴대폰에서 무겁다) */
+.viewer{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;color:#E8E8E8;padding:clamp(0px,2.2vw,28px)}
+.viewer-scrim{position:absolute;inset:0;background:rgba(8,8,8,.66);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.viewer-panel{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:#141414;border:1px solid rgba(255,255,255,.14);box-shadow:0 28px 80px rgba(0,0,0,.5)}
+@media (max-width:720px){
+  .viewer{padding:0}
+  .viewer-scrim{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(8,8,8,.82)}
+  .viewer-panel{border:0;box-shadow:none}
+}
 .viewer-bar{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:12px clamp(14px,3vw,28px);padding-top:max(12px,env(safe-area-inset-top));border-bottom:1px solid rgba(255,255,255,.16)}
 .viewer-bar .t{margin-right:auto;min-width:0;flex:1 1 220px}
 .viewer-bar .t b{display:block;font-size:15px;font-weight:400;color:#fff;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -942,7 +951,15 @@ p{text-wrap:pretty}
 .viewer-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;padding-bottom:env(safe-area-inset-bottom)}
 .viewer-body iframe{position:relative;z-index:1;display:block;width:100%;height:100%;border:0;background:transparent}
 .viewer-body img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
-.viewer-body .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13.5px;color:#9A9A9A;padding:20px;text-align:center}
+/* 안쪽은 다 불러올 때까지 감춰 두고(흰 화면이 번쩍이지 않게) 자리 표시를 보이다가 부드럽게 바꾼다 */
+.viewer-body iframe,.viewer-body img{opacity:0;transition:opacity .32s ease}
+.viewer-body iframe.in,.viewer-body img.in{opacity:1}
+.viewer-body .loading{position:absolute;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;font-size:13px;color:#8A8A8A;padding:20px;text-align:center;transition:opacity .25s ease}
+.viewer-body .loading.out{opacity:0}
+.viewer-body .loading i{display:block;width:120px;height:2px;background:rgba(255,255,255,.1);overflow:hidden;position:relative}
+.viewer-body .loading i::after{content:"";position:absolute;top:0;left:0;bottom:0;width:40%;background:rgba(255,255,255,.5);transform:translateX(-100%);animation:vw-load 1.3s cubic-bezier(.32,.72,0,1) infinite}
+@keyframes vw-load{to{transform:translateX(260%)}}
+@media (prefers-reduced-motion:reduce){ .viewer-body .loading i::after{animation:none;transform:none;width:100%;opacity:.35} }
 @media (max-width:720px){ .viewer .mini{height:40px} }
 /* 인앱 브라우저(카카오톡 등) 안내 띠 */
 .inapp{border-bottom:1px solid var(--line);background:var(--inapp)}
@@ -1957,12 +1974,15 @@ html[lang=en] .pie-lg .n{white-space:nowrap}
 
 <!-- 보기 창 — 심사위원 현황(/judge/)의 '발표 자료 보기' 창과 같은 틀. assets/results-page.js 가 열고 닫는다 -->
 <div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-labelledby="vw-title">
+  <div class="viewer-scrim" aria-hidden="true"></div>
+  <div class="viewer-panel">
   <div class="viewer-bar">
     <div class="t"><b id="vw-title"></b><span id="vw-sub"></span></div>
     <a class="mini" id="vw-open" target="_blank" rel="noopener noreferrer" hidden>새 탭에서 열기</a>
     <button class="mini" type="button" id="vw-close">닫기</button>
   </div>
   <div class="viewer-body" id="vw-body"></div>
+  </div>
 </div>
 
 <script>
