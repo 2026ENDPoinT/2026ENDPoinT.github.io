@@ -101,6 +101,55 @@
     sec.hidden = false;
   }
 
+  /* ---------------- 교수님 코멘트 — 20팀 모두, 팀 번호순 ----------------
+     자료는 assets/comments-2026.js (window.EP2026_COMMENTS). 한 줄 = 팀 번호 + 프로젝트 이름 (수상팀만 등수). 기본은 모두 접힘,
+     여러 팀을 함께 펼쳐 둘 수 있다. 수상팀 이름은 결과 칸과 같은 표기(results-2026.js), 나머지는 코멘트 자료의 이름 */
+  function paintComments() {
+    var C = window.EP2026_COMMENTS, sec = $('comments'), grid = $('cm-grid');
+    if (!C || !C.tracks || !sec || !grid) return;
+    grid.innerHTML = C.tracks.map(function (tr) {
+      var rows = tr.teams.map(function (t) {
+        var p = placeOf[t.no], id = 'cm-' + esc(t.no), items = [];
+        (t.comments || []).forEach(function (c) { items = items.concat(c); });
+        var txt = items.length > 1 ? '<ul>' + items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>'
+          : '<p>' + esc(items[0] || '') + '</p>';
+        return '<li class="cm" data-no="' + esc(t.no) + '">' +
+          '<button class="cm-row" type="button" id="' + id + '-b" aria-expanded="false" aria-controls="' + id + '">' +
+            '<span class="no">' + esc(t.no) + '팀</span>' +
+            '<span class="ti">' + esc(p && p.title ? p.title : t.title) + (p ? '<span class="aw">' + p.place + '등</span>' : '') + '</span>' +
+            '<span class="chev" aria-hidden="true"></span></button>' +
+          '<div class="cm-body" id="' + id + '" role="region" aria-labelledby="' + id + '-b"><div class="cm-in"><div class="cm-txt">' + txt + '</div></div></div>' +
+        '</li>';
+      }).join('');
+      return '<div class="cm-trk">' + trackLab(tr.key, trackName[tr.key] || tr.name) + '<ul class="cm-list">' + rows + '</ul></div>';
+    }).join('');
+    sec.hidden = false;
+    var all = $('cm-all');
+    function items() { return Array.prototype.slice.call(grid.querySelectorAll('.cm')); }
+    function setOpen(li, on) {
+      li.classList.toggle('open', on);
+      li.querySelector('.cm-row').setAttribute('aria-expanded', String(on));
+    }
+    function sync() {
+      var open = items().every(function (li) { return li.classList.contains('open'); });
+      all.setAttribute('data-op', open ? 'close' : 'open');
+      all.innerHTML = '<span>' + (open ? '모두 접기' : '모두 펼치기') + '</span>';
+    }
+    grid.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.cm-row') : null;
+      if (!b) return;
+      var li = b.parentNode;
+      setOpen(li, !li.classList.contains('open'));
+      sync();
+    });
+    if (all) all.addEventListener('click', function () {
+      var on = all.getAttribute('data-op') !== 'close';
+      items().forEach(function (li) { setOpen(li, on); });
+      sync();
+    });
+    if (all) sync();
+  }
+
   /* ---------------- 보기 창 ----------------
      열 때: 누른 단추 자리를 기준점으로 창이 0.9 배 · 투명에서 제자리로 커지고(0.45초), 바탕은 어두워지며 흐려진다.
      닫을 때: 같은 길을 거꾸로, 더 짧게(0.28초) — 닫기 단추 · Esc · 바탕 누르기 모두. 다 닫힌 뒤에 iframe 을 지우고 단추로 포커스를 돌린다.
@@ -236,10 +285,11 @@
     paintResults();
     paintWinners();
     paintDecks();
+    paintComments();
     if ($('viewer')) wire();
-    // 주소에 #results · #winners · #decks 를 달고 들어왔으면 절이 채워진 뒤 거기로 (라우터는 절이 숨겨져 있을 때 지나갔다)
+    // 주소에 #results · #winners · #decks · #comments 를 달고 들어왔으면 절이 채워진 뒤 거기로 (라우터는 절이 숨겨져 있을 때 지나갔다)
     var h = (location.hash || '').slice(1);
-    if (/^(results|winners|decks)$/.test(h) && $(h)) $(h).scrollIntoView({ block: 'start', behavior: 'instant' });
+    if (/^(results|winners|decks|comments)$/.test(h) && $(h)) $(h).scrollIntoView({ block: 'start', behavior: 'instant' });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
