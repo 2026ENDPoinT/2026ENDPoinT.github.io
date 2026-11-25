@@ -1871,6 +1871,24 @@ describe('결과 발표 — 운영진이 심사 마감(결과 발표)을 누르�
     assert.deepEqual(r.tracks.map((t) => [t.key, t.name]), [['H', '해커톤'], ['A', '구현과제']]);
   });
 
+  test('결과가 공개되면 공개 현황(status.public)은 팀 정보를 주지 않는다 — PUBLIC_BOARD auto · on · off', () => {
+    const { b, op } = rb();
+    const board = () => b.post({ action: 'status.public' });
+    let r = board();
+    assert.equal(r.ok, true);
+    assert.ok(r.submit && r.vote && !r.closed);                            // 결과 공개 전에는 예전처럼
+    b.at('2026-11-14T14:40:00+09:00');
+    b.post({ action: 'results.state', key: op, op: 'now' });
+    r = board();
+    assert.deepEqual([r.ok, r.closed, r.submit, r.vote], [true, true, undefined, undefined]);
+    assert.ok(!/"no"|voters|"at"/.test(JSON.stringify(r)));                  // 팀 번호 · 투표한 사람 수 · 제출 시각이 없다
+    b.store.PUBLIC_BOARD = 'on'; b.ctx.propsDrop_();
+    assert.ok(board().submit);                                              // on: 늘 보임
+    b.post({ action: 'results.state', key: op, op: 'hide' });
+    b.store.PUBLIC_BOARD = 'off'; b.ctx.propsDrop_();
+    assert.equal(board().closed, true);                                     // off: 결과를 내려도 숨김
+  });
+
   test("'심사 마감 · 결과 발표' = 심사 마감 + 열려 있던 투표도 지금 마감 + 메인에 바로 결과", () => {
     const { b, op } = rb();
     b.at('2026-11-14T14:20:00+09:00');                                   // 구현과제 투표 14:15 – 14:25 진행 중

@@ -23,6 +23,9 @@ const ROSTER = [
 const pdf = (n, seed) => { const b = bytesOf(n, seed); b.write('%PDF-1.4\n'); return b; };
 const file = (name, buffer, mimeType = 'application/octet-stream') => ({ name, mimeType, buffer });
 const text = (page, sel) => page.locator(sel).first().innerText();
+// 브라우저 시계를 그 시각으로 (행사 날 화면 — /judge/ 는 행사가 끝난 뒤(11-14 15:00) 토큰 없이 오면 공개 현황을 닫는다)
+const clock = (page, iso) => page.addInitScript((t) => { const d = t - Date.now(), N = Date.now.bind(Date); Date.now = () => N() + d; }, Date.parse(iso));
+const worldClock = (page, w) => clock(page, new Date(w.tick()).toISOString());
 const driveFile = (w, re) => [...w.b.drive.files.values()].find((f) => re.test(f.name) && !f.trashed);
 const folderOf = (w, f) => w.b.drive.folders.get(f.parents[0]);
 
@@ -323,6 +326,7 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   const judgeKey = w.b.viewer('김교수', '심사위원'), staffKey = w.b.viewer('운영 담당', '운영진');
 
   const page = await newPage(browser);
+  await worldClock(page, w);
   await page.goto(SITE + '/judge/');
   await page.waitForSelector('#key-form');
   R.match('링크 없이 오면 안내만 보인다', await text(page, '#gate'), /참여 토큰을 입력해 주세요/);
@@ -434,6 +438,7 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   // 제출 마감(10:00) + 유예(5분)가 지나면 공개 현황판 맨 위에 발표 순서 (확정)
   w.at('2026-11-14T10:06:00+09:00');
   const pb = await newPage(browser);
+  await worldClock(pb, w);
   await pb.goto(SITE + '/judge/');
   await pb.waitForSelector('#pub-order .porder li');
   R.match('공개 현황판: 마감 뒤 발표 순서 · 확정', await text(pb, '#pub-order'), /발표 순서[\s\S]*마지막 제출이 늦은 팀부터 · 확정[\s\S]*해커톤[\s\S]*1\s*12팀[\s\S]*구현과제[\s\S]*1\s*03팀/);
@@ -442,6 +447,21 @@ await scenario('현황판: 열람 링크 · 자료 보기 · 받기 · 새로 �
   await shot(pb, 'e2e-judge-4-order');
   R.eq('화면 오류 없음 (공개 현황판)', pb.errs, []);
   await pb.context().close();
+
+  // 행사가 끝난 뒤(15:00) 토큰 없이 오면 공개 현황 대신 '행사가 끝났습니다 · 결과 보기' — 서버에 묻지도 않는다
+  w.at('2026-11-14T15:01:00+09:00');
+  const done = await newPage(browser);
+  await worldClock(done, w);
+  const asked = [];
+  done.on('request', (r) => { if (/status\.public/.test(r.postData() || '')) asked.push(1); });
+  await done.goto(SITE + '/judge/');
+  await done.waitForSelector('#key-form');
+  await done.waitForTimeout(1500);
+  R.match('행사 뒤: 결과는 홈에서', await text(done, '#gate'), /행사가 끝났습니다[\s\S]*결과 보기/);
+  R.eq('행사 뒤: 공개 현황은 감추고 묻지 않는다', [await done.locator('#pub').isHidden(), asked.length], [true, 0]);
+  R.eq('행사 뒤에도 토큰 입력은 그대로', await done.isVisible('#key-form'), true);
+  R.eq('화면 오류 없음 (행사 뒤)', done.errs, []);
+  await done.context().close();
 });
 
 /* ---------------------------------------------------------------- */
@@ -673,18 +693,6 @@ await scenario('결과 발표: 심사 마감 단추(투표도 마감) → 메인
   for (const [no, n] of [['11', 24], ['12', 23], ['13', 22], ['14', 21], ['15', 20], ['16', 19], ['17', 18], ['01', 25], ['02', 22], ['03', 20], ['04', 18], ['05', 10]]) {
     w.b.post({ action: 'score.save', key: prof, team: no, scores: four(n) });
   }
-  // 브라우저 시계도 그 시각으로 (메인 페이지는 14:00 전에는 서버에 묻지 않는다)
-  const clock = (page, iso) => page.addInitScript((t) => { const d = t - Date.now(), N = Date.now.bind(Date); Date.now = () => N() + d; }, Date.parse(iso));
-  const mainHidden = async (iso) => {
-    const p = await newPage(browser);
-    await clock(p, iso);
-    await p.goto(SITE + '/');
-    await p.waitForTimeout(1500);
-    const hidden = await p.locator('#results').isHidden();
-    await p.context().close();
-    return hidden;
-  };
-
   // 14:20 — 운영진이 심사 종합에서 '심사 마감 · 결과 발표' (구현과제 투표는 14:25 까지)
   w.at('2026-11-14T14:20:00+09:00');
   const sp = await newPage(browser);
@@ -696,22 +704,26 @@ await scenario('결과 발표: 심사 마감 단추(투표도 마감) → 메인
   await sp.waitForFunction(() => /다시 열기/.test(document.getElementById('lock').textContent));
   R.match('누르면 열려 있던 구현과제 투표도 마감되고 바로 공개', await text(sp, '#s-res'), /메인에 공개 중/);
   R.eq('시상 화면으로 가는 단추는 어디에도 없다 (운영진이 주소로 연다)', await sp.locator('a[href*="award"]').count(), 0);
-  R.eq('투표를 기다리지 않고 메인에 바로 뜬다 (14:21)', await mainHidden('2026-11-14T14:21:00+09:00'), false);
+  R.eq('투표를 기다리지 않고 바로 공개 상태 (results.public)', w.b.post({ action: 'results.public' }).state, 'open');
   R.eq('투표도 마감됐다', w.b.ctx.voteState_('A'), 'closed');
 
-  // 14:26 — 메인 화면 내용
+  // 14:26 — 메인 화면: 행사가 끝나 결과는 assets/results-2026.js 에 옮겨 두었다. 서버에 묻지 않고 그 등수를 그린다
   w.at('2026-11-14T14:26:00+09:00');
   const page = await newPage(browser);
-  await clock(page, '2026-11-14T14:26:00+09:00');
+  await worldClock(page, w);
+  const asked = [];
+  page.on('request', (r) => { if (/results\.public/.test(r.postData() || '')) asked.push(1); });
   await page.goto(SITE + '/');
   await page.waitForSelector('#results:not([hidden]) .res-trk');
   const got = await page.$$eval('#results .res-trk', (ts) => ts.map((t) => [t.dataset.track,
     [...t.querySelectorAll('.pl')].map((p) => [p.querySelector('b').textContent, [...p.querySelectorAll('.tm .no')].map((x) => x.textContent)])]));
-  R.eq('메인: 해커톤 1등 1 · 2등 2 · 3등 3팀, 구현과제 1 – 4등 (최종 S 순서)', got, [
-    ['H', [['1등', ['11팀']], ['2등', ['12팀', '13팀']], ['3등', ['14팀', '15팀', '16팀']]]],
-    ['A', [['1등', ['01팀']], ['2등', ['02팀']], ['3등', ['03팀']], ['4등', ['04팀']]]]]);
+  R.eq('메인: 2026 등수 그대로 — 해커톤 1 – 3등, 구현과제 1 – 4등', got, [
+    ['H', [['1등', ['19팀']], ['2등', ['12팀', '14팀']], ['3등', ['13팀', '20팀', '17팀']]]],
+    ['A', [['1등', ['05팀']], ['2등', ['03팀']], ['3등', ['02팀']], ['4등', ['10팀']]]]]);
+  R.eq('메인은 서버에 결과를 묻지 않는다', asked.length, 0);
   R.eq('맨 위 단추가 결과 보기로', (await page.locator('#v-home .hero-cta a.btn').first().textContent()).trim(), '결과 보기');
   R.check('메인에는 점수 · 심사위원 이름이 없다', !/교수님|\d+\.\d\d/.test(await text(page, '#results-grid')));
+  R.eq('우승 소개 두 칸 · 발표자료 10팀', [await page.locator('#win-grid .win').count(), await page.locator('#decks li.dk').count()], [2, 10]);
   await shot(page, 'e2e-results-main');
 
   // 교수님도 종합을 본다 (읽기만 — 마감 · 결과 발표 단추 없음)
@@ -753,13 +765,11 @@ await scenario('결과 발표: 심사 마감 단추(투표도 마감) → 메인
   R.match('← 로 이전 장면', await text(aw, '.aw-slide:last-child .place'), /^2/);
   R.eq('화면 오류 없음', [...page.errs, ...sp.errs, ...aw.errs], []);
 
-  // 운영진이 결과를 내리면 메인에서 사라진다 (화면은 1분마다 다시 묻는다 — 여기서는 탭을 다시 보는 것으로 바로)
+  // 운영진이 결과를 내리면 서버의 results.public 이 닫힌다 (메인은 옮겨 둔 2026 결과라 그대로)
   sp.once('dialog', (d) => d.accept());
   await sp.click('#res');
   await sp.waitForFunction(() => /공개 전/.test(document.getElementById('s-res').textContent));
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await page.waitForFunction(() => document.getElementById('results').hidden);
-  R.check('결과 내리기 → 메인에서 사라진다', true);
+  R.eq('결과 내리기 → results.public 이 등수를 주지 않는다', w.b.post({ action: 'results.public' }).tracks, undefined);
   await page.context().close(); await sp.context().close(); await aw.context().close();
 });
 
@@ -817,12 +827,13 @@ await scenario('메뉴: 행사 페이지 네 곳이 같은 메뉴 · 메인과 �
   await page.goto(SITE + '/' + EVENT);
   await page.waitForFunction(() => document.documentElement.classList.contains('ep-event'));
   const main = (await navOf(page)).map((x) => x.t);
-  R.check('메인 메뉴에 심사안내 · 제출·투표 현황 · 결과물 제출 · 투표', ['심사안내', '제출·투표 현황', '결과물 제출', '투표'].every((t) => main.includes(t)), main.join(','));
+  // 행사가 끝나 메인의 '제출·투표 현황' 자리는 결과 · 발표자료 (메인 안의 절로 간다)
+  R.check('메인 메뉴에 심사안내 · 결과 · 발표자료 · 결과물 제출 · 투표', ['심사안내', '결과', '발표자료', '결과물 제출', '투표'].every((t) => main.includes(t)) && !main.includes('제출·투표 현황'), main.join(','));
   R.check('메인 메뉴에서 신청 안내는 감춘다 (모집 끝)', !main.includes('신청 안내'), main.join(','));
   await page.goto(SITE + '/en/' + EVENT);
   await page.waitForFunction(() => document.documentElement.classList.contains('ep-event'));
   const en = (await navOf(page)).map((x) => x.t);
-  R.check('영문 메인: Judging · Submissions & votes · Submit · Vote', ['Judging', 'Submissions & votes', 'Submit', 'Vote'].every((t) => en.includes(t)) && !en.includes('How to apply'), en.join(','));
+  R.check('영문 메인: Judging · Results · Submit · Vote', ['Judging', 'Results', 'Submit', 'Vote'].every((t) => en.includes(t)) && !en.includes('How to apply') && !en.includes('Submissions & votes'), en.join(','));
   // 정책 문서: 참가 신청 자리에 제출·투표 현황
   for (const [path, label] of [['/privacy/', '제출·투표 현황'], ['/terms/', '제출·투표 현황'], ['/en/privacy/', 'Submissions & votes']]) {
     await page.goto(SITE + path);
@@ -837,7 +848,8 @@ await scenario('메뉴: 행사 페이지 네 곳이 같은 메뉴 · 메인과 �
     await m.goto(SITE + path + (path === '/' ? '?gate=after&submit=on' : ''));
     if (path === '/') await m.waitForFunction(() => document.documentElement.classList.contains('ep-event'));
     const nav = (await navOf(m)).map((x) => x.t);
-    R.check('휴대폰 ' + path + ' 메뉴: 현황 · 제출 · 투표', ['현황', '제출', '투표'].every((t) => nav.includes(t)), nav.join(','));
+    const want = path === '/' ? ['결과', '제출', '투표'] : ['현황', '제출', '투표'];   // 메인은 현황 자리가 결과
+    R.check('휴대폰 ' + path + ' 메뉴: ' + want.join(' · '), want.every((t) => nav.includes(t)), nav.join(','));
     const fit = await m.evaluate(() => {
       const h = document.querySelector('header.top, #top-bar'), n = h && h.querySelector('nav');
       return { wide: document.documentElement.scrollWidth - innerWidth, navRight: n ? Math.round(n.getBoundingClientRect().right) : 0, w: innerWidth, h: h ? Math.round(h.getBoundingClientRect().height) : 0 };
